@@ -33,7 +33,11 @@ not redistributable: keep it outside this repo. Check its current licence before
   Entries beyond the active channel count are inactive.
 - Bus layouts: any enabled layout up to 64 channels (discrete, standard, or ambisonic orders 1-7 as
   channel-count carriers). n inputs and m outputs may differ.
-- Edge cases to handle and test: source outside the convex hull (project to nearest hull edge),
+- Gain law (core/src/Gains.cpp): barycentric weights w, g_i = w_i / sqrt(sum w_j^2), so sum g^2 = 1.
+  Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
+  squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
+  Non-finite speaker positions are ignored.
+- Edge cases handled and tested in M2: source outside the convex hull (project to nearest hull edge),
   fewer than 3 speakers, collinear speakers, coincident points.
 - Claude cannot listen or drive a DAW: prefer numerical tests in `tests/`, and ask the user for
   host checks (Reaper, Pro Tools, Windows).

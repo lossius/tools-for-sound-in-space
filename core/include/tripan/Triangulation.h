@@ -1,0 +1,59 @@
+#pragma once
+
+#include <span>
+#include <vector>
+
+namespace tripan
+{
+struct Vec2
+{
+    double x = 0.0;
+    double y = 0.0;
+};
+
+/** Indices into the speaker array passed to Triangulation, counter-clockwise. */
+struct Triangle
+{
+    int a, b, c;
+};
+
+/** Directed boundary edge (counter-clockwise around the hull). */
+struct Edge
+{
+    int a, b;
+};
+
+/** Delaunay triangulation of the speaker positions.
+
+    Build it off the audio thread. Once built it is immutable, so the audio thread may read it
+    freely (hand a new one over with an atomic pointer swap).
+
+    Degenerate input is handled as follows:
+    - Non-finite positions are ignored (such speakers never receive signal).
+    - Coincident speakers: only the first one is used, later duplicates never receive signal.
+    - 0 usable speakers: no output. 1 usable speaker: that speaker only.
+    - All usable speakers collinear: no triangles; the "hull" is the chain of consecutive
+      speakers along the line (boundaryEdges()).
+*/
+class Triangulation
+{
+public:
+    Triangulation() = default;
+    explicit Triangulation (std::span<const Vec2> speakers);
+
+    std::span<const Vec2> speakers() const noexcept { return points; }
+    std::span<const Triangle> triangles() const noexcept { return tris; }
+
+    /** Hull edges (triangle case) or the chain of consecutive speakers (collinear case). */
+    std::span<const Edge> boundaryEdges() const noexcept { return edges; }
+
+    /** Index of the only usable speaker when there is exactly one, otherwise -1. */
+    int loneSpeaker() const noexcept { return lone; }
+
+private:
+    std::vector<Vec2> points;
+    std::vector<Triangle> tris;
+    std::vector<Edge> edges;
+    int lone = -1;
+};
+}
