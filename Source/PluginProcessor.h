@@ -57,6 +57,11 @@ public:
     EditMode getEditMode() const;
     void setEditMode (EditMode);
 
+    /** Message thread. Width of the editor window in pixels (0 if never set); saved with the state
+        so that the chosen GUI size is restored. */
+    int getEditorWidth() const;
+    void setEditorWidth (int width);
+
     /** Message thread. Rebuilds and publishes the triangulation if the active speaker positions
         or count changed. Called by a timer; also call it directly after changing speaker
         parameters when no message loop is running (e.g. in tests). */

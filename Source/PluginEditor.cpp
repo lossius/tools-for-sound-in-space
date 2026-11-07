@@ -4,23 +4,24 @@
 TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     : AudioProcessorEditor (&p), owner (p), field (p)
 {
-    addAndMakeVisible (field);
+    addAndMakeVisible (content);
+    content.addAndMakeVisible (field);
 
     for (auto* label : { &sourcesLabel, &speakersLabel, &modeLabel })
     {
         label->setJustificationType (juce::Justification::centredRight);
         label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
-        addAndMakeVisible (label);
+        content.addAndMakeVisible (label);
     }
 
     setUpCountSlider (sourceCount,  tripan::params::kNumSourcesId);
     setUpCountSlider (speakerCount, tripan::params::kNumSpeakersId);
-    addAndMakeVisible (sourceCount);
-    addAndMakeVisible (speakerCount);
+    content.addAndMakeVisible (sourceCount);
+    content.addAndMakeVisible (speakerCount);
 
     infoLabel.setJustificationType (juce::Justification::centredRight);
     infoLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
-    addAndMakeVisible (infoLabel);
+    content.addAndMakeVisible (infoLabel);
 
     modeBox.addItem ("1: Move sources", (int) EditMode::Sources);
     modeBox.addItem ("2: Move speakers", (int) EditMode::Speakers);
@@ -33,11 +34,11 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
         owner.setEditMode ((EditMode) modeBox.getSelectedId());
         syncControls();
     };
-    addAndMakeVisible (modeBox);
+    content.addAndMakeVisible (modeBox);
 
     showTriangulationButton.setToggleState (true, juce::dontSendNotification);
     showTriangulationButton.onClick = [this] { field.setShowTriangulation (showTriangulationButton.getToggleState()); };
-    addAndMakeVisible (showTriangulationButton);
+    content.addAndMakeVisible (showTriangulationButton);
 
     resetButton.setTooltip ("Place the unlocked sources and speakers in use on rings");
     resetButton.onClick = [this]
@@ -45,7 +46,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
         const auto mode = owner.getEditMode();
         owner.resetLayoutToRings (canEditSources (mode), canEditSpeakers (mode));
     };
-    addAndMakeVisible (resetButton);
+    content.addAndMakeVisible (resetButton);
 
     const auto setUpFileButton = [this] (juce::TextButton& b, tripan::io::Kind kind, bool isExport, const juce::String& tip)
     {
@@ -57,7 +58,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
             else
                 chooseFileAndImport (kind);
         };
-        addAndMakeVisible (b);
+        content.addAndMakeVisible (b);
     };
     using tripan::io::Kind;
     setUpFileButton (exportSourcesButton,  Kind::Sources,  true,  "Save the source positions in use to an XML file");
@@ -65,9 +66,14 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the speaker positions in use to an XML file");
     setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file (needs a mode that unlocks speakers)");
 
+    // Scalable GUI: the base size is the minimum, the aspect ratio is fixed.
     setResizable (true, true);
-    setResizeLimits (580, 560, 1200, 1300);
-    setSize (700, 810);
+    setResizeLimits (kBaseWidth, kBaseHeight, kBaseWidth * kMaxScale, kBaseHeight * kMaxScale);
+    getConstrainer()->setFixedAspectRatio ((double) kBaseWidth / (double) kBaseHeight);
+
+    const int savedWidth = juce::jlimit (kBaseWidth, kBaseWidth * kMaxScale, owner.getEditorWidth() > 0 ? owner.getEditorWidth() : kBaseWidth);
+    setSize (savedWidth, juce::roundToInt ((double) savedWidth * kBaseHeight / kBaseWidth));
+    sizeIsRestored = true;
 
     syncControls();
     startTimerHz (10);
@@ -249,7 +255,22 @@ void TriPanAudioProcessorEditor::paint (juce::Graphics& g)
 
 void TriPanAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds();
+    // Uniform scale; if the host ignores the aspect ratio the content is centred.
+    scale = std::min ((float) getWidth() / (float) kBaseWidth, (float) getHeight() / (float) kBaseHeight);
+    const float dx = ((float) getWidth()  - (float) kBaseWidth  * scale) * 0.5f;
+    const float dy = ((float) getHeight() - (float) kBaseHeight * scale) * 0.5f;
+
+    content.setBounds (0, 0, kBaseWidth, kBaseHeight);
+    content.setTransform (juce::AffineTransform::scale (scale).translated (dx, dy));
+    layoutContent();
+
+    if (sizeIsRestored) // not while the constructor sets the initial size
+        owner.setEditorWidth (getWidth());
+}
+
+void TriPanAudioProcessorEditor::layoutContent()
+{
+    auto area = content.getLocalBounds();
 
     // Top row: the number of sources and speakers in use.
     auto top = area.removeFromTop (40).reduced (10, 6);

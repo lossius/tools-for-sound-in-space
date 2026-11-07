@@ -51,6 +51,10 @@ not redistributable: keep it outside this repo. Check its current licence before
   parameter): 1 move sources (default), 2 move speakers, 3 move both, 4 view only. Locked handles can't be
   grabbed or moved, and "Reset layout" only resets unlocked kinds (disabled in mode 4). Host automation
   of the position parameters is unaffected by the mode.
+- Scalable GUI: all controls sit in `content`, laid out at the base size 700x810 (`kBaseWidth/Height`, also
+  the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
+  grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
+  saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
 - Export/import (`Source/PositionIO.*`, four buttons in the editor): separate XML files for sources
   (`<TriPanSources version="1" count="n"><Source index="1" x=".." y=".."/>`) and speakers
   (`<TriPanSpeakers>/<Speaker>`). Export writes the channels in use; import validates the whole file

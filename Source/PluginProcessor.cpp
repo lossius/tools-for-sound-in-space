@@ -9,6 +9,7 @@ namespace
 {
 const juce::Identifier kLayoutInitialised { "layoutInitialised" };
 const juce::Identifier kEditMode { "editMode" };
+const juce::Identifier kEditorWidth { "editorWidth" };
 
 /** k-th of `count` positions on a ring; k = 0 at the front (+y), going clockwise. */
 juce::Point<float> ringPosition (int k, int count, float radius)
@@ -116,6 +117,16 @@ EditMode TriPanAudioProcessor::getEditMode() const
 {
     const int value = (int) apvts.state.getProperty (kEditMode, (int) EditMode::Sources);
     return value >= (int) EditMode::Sources && value <= (int) EditMode::View ? (EditMode) value : EditMode::Sources;
+}
+
+int TriPanAudioProcessor::getEditorWidth() const
+{
+    return (int) apvts.state.getProperty (kEditorWidth, 0);
+}
+
+void TriPanAudioProcessor::setEditorWidth (int width)
+{
+    apvts.state.setProperty (kEditorWidth, width, nullptr);
 }
 
 void TriPanAudioProcessor::setEditMode (EditMode mode)

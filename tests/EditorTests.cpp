@@ -58,7 +58,7 @@ int main (int argc, char** argv)
     std::unique_ptr<juce::AudioProcessorEditor> base (p.createEditor());
     auto* editor = dynamic_cast<TriPanAudioProcessorEditor*> (base.get());
     CHECK (editor != nullptr);
-    editor->setSize (680, 740);
+    editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
     auto& field = editor->getField();
 
     // Count controls: their range follows the track's channel counts, while the stored
@@ -227,6 +227,52 @@ int main (int argc, char** argv)
         dir.deleteRecursively();
     }
 
+    // Scalable GUI: the base size is laid out once and scaled uniformly by the window size.
+    {
+        const auto baseW = TriPanAudioProcessorEditor::kBaseWidth, baseH = TriPanAudioProcessorEditor::kBaseHeight;
+        CHECK (editor->getWidth() == baseW && editor->getHeight() == baseH);
+        CHECK (std::abs (editor->getScale() - 1.0f) < 1e-6f);
+
+        const auto unscaled = field.toView (5.0, 0.0).getDistanceFrom (field.toView (0.0, 0.0));
+        const auto onScreen = [&] (double x, double y) { return editor->getLocalPoint (&field, field.toView (x, y)); };
+
+        const auto baseDistance = onScreen (5.0, 0.0).getDistanceFrom (onScreen (0.0, 0.0));
+        CHECK (std::abs (baseDistance - unscaled) < 0.01f);
+
+        for (double factor : { 1.5, 2.0, 3.0 })
+        {
+            editor->setSize (juce::roundToInt (baseW * factor), juce::roundToInt (baseH * factor));
+            CHECK (std::abs (editor->getScale() - (float) factor) < 0.01f);
+            CHECK (std::abs (onScreen (5.0, 0.0).getDistanceFrom (onScreen (0.0, 0.0)) - unscaled * factor) < 0.05 * factor);
+
+            // Everything stays inside the window and the field is still operable through the transform:
+            const auto bounds = editor->getLocalArea (&field, field.getLocalBounds());
+            CHECK (editor->getLocalBounds().contains (bounds));
+            const auto screenPos = onScreen (0.5, 1.0); // source 1
+            CHECK (field.getLocalPoint (editor, screenPos).getDistanceFrom (field.toView (0.5, 1.0)) < 0.05f);
+        }
+
+        // A host that ignores the aspect ratio gets a centred, uniformly scaled GUI.
+        editor->setSize (baseW * 2, baseH * 2 + 400);
+        CHECK (std::abs (editor->getScale() - 2.0f) < 0.01f);
+        const auto topLeft = editor->getLocalArea (&field, field.getLocalBounds()).getY();
+        CHECK (topLeft >= 200);
+
+        // The chosen size is remembered with the state and restored for a new editor.
+        editor->setSize (baseW * 2, baseH * 2);
+        CHECK (p.getEditorWidth() == baseW * 2);
+        {
+            std::unique_ptr<juce::AudioProcessorEditor> again (p.createEditor());
+            CHECK (again->getWidth() == baseW * 2 && again->getHeight() == baseH * 2);
+        }
+        p.setEditorWidth (50); // too small: clamped to the base size
+        { std::unique_ptr<juce::AudioProcessorEditor> again (p.createEditor()); CHECK (again->getWidth() == baseW); }
+        p.setEditorWidth (100000); // too large: clamped to the maximum
+        { std::unique_ptr<juce::AudioProcessorEditor> again (p.createEditor()); CHECK (again->getWidth() == baseW * TriPanAudioProcessorEditor::kMaxScale); }
+
+        editor->setSize (baseW, baseH);
+    }
+
     // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.
     {
         const auto s0 = field.toView (0.5, 1.0);
@@ -275,6 +321,8 @@ int main (int argc, char** argv)
     setParam (p, tripan::params::kNumSpeakersId, 6.0f);
     p.refreshTriangulation();
     editor->syncControls();
+
+    editor->setSize (1050, 1215); // snapshot at 1.5x
 
     if (argc > 1)
     {

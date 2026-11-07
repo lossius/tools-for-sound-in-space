@@ -11,8 +11,17 @@ public:
     explicit TriPanAudioProcessorEditor (TriPanAudioProcessor&);
     ~TriPanAudioProcessorEditor() override;
 
+    /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
+        window is resized. The base size is also the smallest allowed size. */
+    static constexpr int kBaseWidth = 700;
+    static constexpr int kBaseHeight = 810;
+    static constexpr int kMaxScale = 3;
+
     void paint (juce::Graphics&) override;
     void resized() override;
+
+    /** Current display scale (1.0 at the base size). */
+    float getScale() const noexcept { return scale; }
 
     FieldComponent& getField() noexcept { return field; }
     juce::Slider& getSourceCountSlider() noexcept { return sourceCount; }
@@ -34,6 +43,7 @@ public:
 
 private:
     void timerCallback() override { syncControls(); }
+    void layoutContent();
 
     void chooseFileAndExport (tripan::io::Kind);
     void chooseFileAndImport (tripan::io::Kind);
@@ -45,6 +55,12 @@ private:
     void syncCountSlider (juce::Slider&, int effectiveValue, int channels);
 
     TriPanAudioProcessor& owner;
+
+    // All controls live in `content`, which is laid out at the base size and scaled by a transform.
+    // (Declared before the controls so that it is destroyed after them.)
+    juce::Component content;
+    float scale = 1.0f;
+    bool sizeIsRestored = false;
 
     FieldComponent field;
 
