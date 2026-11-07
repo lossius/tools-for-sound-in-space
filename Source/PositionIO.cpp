@@ -33,11 +33,15 @@ void writeParam (TriPanAudioProcessor& p, const juce::String& id, float value)
     }
 }
 
-/** Coordinates are written rounded to 3 decimal places (1 mm); a tiny negative value becomes 0.000. */
+/** Coordinates are written rounded to 3 decimal places (1 mm); a tiny negative value becomes 0.000.
+    The text is padded on the left to a fixed width (the width of "-10.000"), so that positive and
+    negative numbers line up vertically in the file. Import ignores the padding. */
 juce::String formatCoordinate (float value)
 {
-    const auto text = juce::String (value, 3);
-    return text == "-0.000" ? juce::String ("0.000") : text;
+    auto text = juce::String (value, 3);
+    if (text == "-0.000")
+        text = "0.000";
+    return text.paddedLeft (' ', 7);
 }
 
 struct Entry
@@ -62,7 +66,7 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
     for (int i = 0; i < count; ++i)
     {
         auto* e = root->createNewChildElement (entryTag (kind));
-        e->setAttribute ("index", i + 1);
+        e->setAttribute ("index", juce::String (i + 1).paddedLeft (' ', 2)); // padded like the coordinates
         e->setAttribute ("x", formatCoordinate (readParam (p, idFor (kind, i, 'x'))));
         e->setAttribute ("y", formatCoordinate (readParam (p, idFor (kind, i, 'y'))));
     }
@@ -74,7 +78,11 @@ juce::Result save (const TriPanAudioProcessor& p, Kind kind, const juce::File& f
 {
     const auto xml = toXml (p, kind);
 
-    if (! file.replaceWithText (xml->toString()))
+    // A long wrap length keeps every entry on one line, so the columns stay aligned.
+    juce::XmlElement::TextFormat format;
+    format.lineWrapLength = 200;
+
+    if (! file.replaceWithText (xml->toString (format)))
         return juce::Result::fail ("Could not write to " + file.getFullPathName());
 
     return juce::Result::ok();

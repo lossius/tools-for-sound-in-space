@@ -22,13 +22,13 @@ Four buttons under the toolbar export and import source and speaker positions as
 file dialog each time. Sources and speakers are separate files:
 ```xml
 <TriPanSpeakers version="1" count="3">
-  <Speaker index="1" x="0.0" y="5.0"/>
-  <Speaker index="2" x="4.33" y="-2.5"/>
-  <Speaker index="3" x="-4.33" y="-2.5"/>
+  <Speaker index=" 1" x="  0.000" y="  5.000"/>
+  <Speaker index=" 2" x="  4.330" y=" -2.500"/>
+  <Speaker index=" 3" x=" -4.330" y=" -2.500"/>
 </TriPanSpeakers>
 ```
 (`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-10.
-Export writes the channels currently in use, with coordinates rounded to 3 decimal places. Import checks the whole file first, applies every valid
+Export writes the channels currently in use, with coordinates rounded to 3 decimal places and padded with spaces so that positive and negative values line up (import ignores the padding). Import checks the whole file first, applies every valid
 entry by index and leaves the "Number of Sources/Speakers" settings alone. Import is disabled while
 the edit mode locks that kind of position.
 

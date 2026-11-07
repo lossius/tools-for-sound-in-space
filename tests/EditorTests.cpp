@@ -163,13 +163,38 @@ int main (int argc, char** argv)
             CHECK (editor->exportPositionsTo (Kind::Sources, rounded).wasOk());
             const auto doc = juce::XmlDocument::parse (rounded);
             const auto* first = doc != nullptr ? doc->getChildElement (0) : nullptr;
-            CHECK (first != nullptr && first->getStringAttribute ("x") == "1.235" && first->getStringAttribute ("y") == "0.000");
+            CHECK (first != nullptr && first->getStringAttribute ("x").trim() == "1.235" && first->getStringAttribute ("y").trim() == "0.000");
             for (auto* e : doc->getChildIterator())
                 for (const auto* attribute : { "x", "y" })
                 {
                     const auto text = e->getStringAttribute (attribute);
                     CHECK (text.fromFirstOccurrenceOf (".", false, false).length() == 3);
+                    CHECK (text.length() == 7); // fixed width: positive and negative values align
                 }
+
+            // In the file every entry line has the same length and the decimal points line up.
+            const auto lines = juce::StringArray::fromLines (rounded.loadFileAsString());
+            int entryLines = 0;
+            int pointColumn = -1;
+            for (const auto& line : lines)
+                if (line.contains ("<Source "))
+                {
+                    ++entryLines;
+                    const int column = line.indexOfChar ('.');
+                    if (pointColumn < 0) pointColumn = column;
+                    CHECK (column == pointColumn);
+                    CHECK (line.length() == lines[lines.indexOf (line)].length());
+                }
+            if (argc > 1)
+                std::printf ("--- exported sample ---\n%s\n---\n", rounded.loadFileAsString().toRawUTF8());
+            CHECK (entryLines == 3);
+            {
+                int length = -1; bool same = true;
+                for (const auto& line : lines)
+                    if (line.contains ("<Source ")) { if (length < 0) length = line.length(); same = same && line.length() == length; }
+                CHECK (same);
+            }
+
             setParam (p, tripan::params::sourceId (0, 'x'), keepX);
             setParam (p, tripan::params::sourceId (0, 'y'), keepY);
             CHECK (editor->exportPositionsTo (Kind::Sources, srcFile).wasOk()); // re-export the original positions
