@@ -73,6 +73,7 @@ private:
 
     // Audio thread only
     std::array<tripan::SourceGains, tripan::kMaxChannels> prevGains {};
+    int prevUsedSpeakers = 0;
     std::atomic<bool> restartRamp { true }; // set from any thread: next block starts at its target gains
     juce::AudioBuffer<float> inputCopy;
 

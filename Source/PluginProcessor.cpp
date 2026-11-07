@@ -185,6 +185,7 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // Sources beyond the "Number of Sources" setting get no gains, so they fade out and stay silent.
     // (The triangulation only contains the speakers in use, so unused outputs stay silent too.)
     const int usedSources = getActiveSources();
+    const int usedSpeakers = getActiveSpeakers();
 
     std::array<tripan::SourceGains, tripan::kMaxChannels> target {};
     for (int s = 0; s < std::min (n, usedSources); ++s)
@@ -192,7 +193,10 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
             target[(size_t) s] = tripan::computeGains (*tri, { (double) srcX[(size_t) s]->load(), (double) srcY[(size_t) s]->load() });
 
     if (restartRamp.exchange (false))
+    {
         prevGains = target;
+        prevUsedSpeakers = usedSpeakers;
+    }
 
     // Gains ramp linearly from the previous block's values to the new ones across the whole block.
     // Blocks larger than the prepared size are processed in chunks, keeping the ramp continuous.
@@ -239,6 +243,29 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
                     accumulate (next.speaker[(size_t) i], 0.0f, next.gain[(size_t) i], in);
         }
     }
+
+    // Unused speakers are always silent, even while an older triangulation that still contains
+    // them is in use (the new one is published within ~33 ms). Outputs that were in use during
+    // the previous block fade out over this block; all others are cleared.
+    for (int ch = usedSpeakers; ch < m; ++ch)
+    {
+        if (ch < prevUsedSpeakers)
+        {
+            float* data = buffer.getWritePointer (ch);
+            const float step = 1.0f / (float) numSamples;
+            float g = 1.0f;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                data[i] *= g;
+                g -= step;
+            }
+        }
+        else
+        {
+            buffer.clear (ch, 0, numSamples);
+        }
+    }
+    prevUsedSpeakers = usedSpeakers;
 
     for (int s = 0; s < n; ++s)
         prevGains[(size_t) s] = target[(size_t) s];

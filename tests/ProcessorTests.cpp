@@ -400,12 +400,66 @@ static void testNumberOfSourcesAndSpeakersInUse()
     CHECK (p.getActiveSpeakers() == 8);
 }
 
+static void testUnusedSpeakersAreSilentImmediately()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 2, 8, 256));
+
+    juce::AudioBuffer<float> buf (8, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (10);
+
+    // Put source 1 on speaker 7 so that speaker is definitely carrying signal.
+    setParam (p, tripan::params::sourceId (0, 'x'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (6, 'x'))->load());
+    setParam (p, tripan::params::sourceId (0, 'y'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (6, 'y'))->load());
+    for (int block = 0; block < 3; ++block)
+    {
+        fillNoise (buf, 2, 0, rng);
+        p.processBlock (buf, midi);
+    }
+    CHECK (channelEnergy (buf, 6) > 1.0);
+
+    // Reduce to 4 speakers WITHOUT refreshing the triangulation (the audio thread still sees the
+    // old one with 8 speakers, as it does for up to ~33 ms in a real host).
+    setParam (p, tripan::params::kNumSpeakersId, 4.0f);
+
+    // First block: the outputs that just became unused fade out, ending at (almost) zero.
+    fillNoise (buf, 2, 0, rng);
+    p.processBlock (buf, midi);
+    for (int ch = 4; ch < 8; ++ch)
+        CHECK (std::abs (buf.getSample (ch, 255)) < 0.02f);
+
+    // From the next block on they are exactly silent, with or without the new triangulation.
+    for (int block = 0; block < 3; ++block)
+    {
+        if (block == 2)
+            p.refreshTriangulation();
+        fillNoise (buf, 2, 0, rng);
+        p.processBlock (buf, midi);
+        for (int ch = 4; ch < 8; ++ch)
+            CHECK (channelEnergy (buf, ch) == 0.0);
+    }
+
+    // Growing the count again lets the speakers carry signal again.
+    setParam (p, tripan::params::kNumSpeakersId, 8.0f);
+    p.refreshTriangulation();
+    double energy = 0.0;
+    for (int block = 0; block < 3; ++block)
+    {
+        fillNoise (buf, 2, 0, rng);
+        p.processBlock (buf, midi);
+        energy = channelEnergy (buf, 6);
+    }
+    CHECK (energy > 1.0);
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     testStationaryEnergyAndLocality();
     testNumberOfSourcesAndSpeakersInUse();
+    testUnusedSpeakersAreSilentImmediately();
     testMovingSourceIsSmoothAndBounded();
     testSourceOnSpeakerAndSpeakerUpdate();
     testOversizedBlock();
