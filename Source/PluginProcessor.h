@@ -42,6 +42,11 @@ public:
 
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
 
+    /** Number of sources / speakers in use: the "Number of ..." parameter clamped to 1..channels of
+        the track (0 if the track has no such channels). Safe to call from any thread. */
+    int getActiveSources() const noexcept;
+    int getActiveSpeakers() const noexcept;
+
     /** Message thread. Places the active sources and speakers on rings (speakers on radius 5 m,
         sources on radius 2.5 m, first speaker at front). */
     void resetLayoutToRings();
@@ -58,6 +63,8 @@ private:
     juce::AudioProcessorValueTreeState apvts;
 
     std::array<std::atomic<float>*, tripan::kMaxChannels> srcX {}, srcY {}, spkX {}, spkY {};
+    std::atomic<float>* numSourcesParam = nullptr;
+    std::atomic<float>* numSpeakersParam = nullptr;
 
     // Message thread -> audio thread
     tripan::TriangulationExchange exchange;

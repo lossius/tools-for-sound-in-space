@@ -59,6 +59,33 @@ int main (int argc, char** argv)
     editor->setSize (680, 740);
     auto& field = editor->getField();
 
+    // Count controls: their range follows the track's channel counts, while the stored
+    // parameter keeps its value (64) until the user changes it.
+    {
+        auto& srcSlider = editor->getSourceCountSlider();
+        auto& spkSlider = editor->getSpeakerCountSlider();
+        CHECK (srcSlider.getMinimum() == 1.0 && srcSlider.getMaximum() == 3.0 && srcSlider.getValue() == 3.0);
+        CHECK (spkSlider.getMinimum() == 1.0 && spkSlider.getMaximum() == 7.0 && spkSlider.getValue() == 7.0);
+        CHECK (std::abs (value (p, tripan::params::kNumSpeakersId) - 64.0f) < 1e-3f);
+
+        spkSlider.setValue (5.0, juce::sendNotificationSync); // as if the user changed it
+        CHECK (std::abs (value (p, tripan::params::kNumSpeakersId) - 5.0f) < 1e-3f);
+        CHECK (p.getActiveSpeakers() == 5);
+
+        setParam (p, tripan::params::kNumSourcesId, 2.0f); // as if automation changed it
+        editor->syncControls();
+        CHECK (srcSlider.getValue() == 2.0 && p.getActiveSources() == 2);
+
+        // Inactive channels cannot be grabbed.
+        field.refresh();
+        CHECK (! field.findHandleAt (field.toView (6.5, -1.0)).has_value() || field.findHandleAt (field.toView (6.5, -1.0))->index < 5);
+
+        // Back to everything in use for the remaining checks.
+        spkSlider.setValue (7.0, juce::sendNotificationSync);
+        srcSlider.setValue (3.0, juce::sendNotificationSync);
+        CHECK (p.getActiveSpeakers() == 7 && p.getActiveSources() == 3);
+    }
+
     // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.
     {
         const auto s0 = field.toView (0.5, 1.0);
@@ -102,6 +129,11 @@ int main (int argc, char** argv)
     setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
     setParam (p, tripan::params::sourceId (1, 'x'), -6.5f);
     setParam (p, tripan::params::sourceId (1, 'y'), 8.5f);
+
+    // The snapshot shows 6 of 7 speakers in use.
+    setParam (p, tripan::params::kNumSpeakersId, 6.0f);
+    p.refreshTriangulation();
+    editor->syncControls();
 
     if (argc > 1)
     {

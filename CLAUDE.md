@@ -47,6 +47,10 @@ not redistributable: keep it outside this repo. Check its current licence before
   Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
+- `numSources` / `numSpeakers` (int, 1..64, default 64): how many of the track's channels are used.
+  The host range is fixed; the effective count is clamped to the track's channel count
+  (`getActiveSources/Speakers`). Unused sources are silent, unused speakers are left out of the
+  triangulation. The GUI shows them at the top with their maximum set to the channel count.
 - Parameters (Source/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±10, +y front.
   Speaker changes are picked up by a 30 Hz message-thread timer (`refreshTriangulation`), which
   publishes an immutable Triangulation through `TriangulationExchange` (hazard-pointer handover).

@@ -48,12 +48,36 @@ TriPanAudioProcessor::TriPanAudioProcessor()
         spkY[(size_t) i] = apvts.getRawParameterValue (tripan::params::speakerId (i, 'y'));
     }
 
+    numSourcesParam  = apvts.getRawParameterValue (tripan::params::kNumSourcesId);
+    numSpeakersParam = apvts.getRawParameterValue (tripan::params::kNumSpeakersId);
+
     startTimerHz (30);
 }
 
 TriPanAudioProcessor::~TriPanAudioProcessor()
 {
     stopTimer();
+}
+
+namespace
+{
+int clampCount (float parameterValue, int channels) noexcept
+{
+    const int available = std::min (channels, tripan::kMaxChannels);
+    if (available <= 0)
+        return 0;
+    return std::clamp ((int) std::lround (parameterValue), 1, available);
+}
+}
+
+int TriPanAudioProcessor::getActiveSources() const noexcept
+{
+    return clampCount (numSourcesParam->load(), getTotalNumInputChannels());
+}
+
+int TriPanAudioProcessor::getActiveSpeakers() const noexcept
+{
+    return clampCount (numSpeakersParam->load(), getTotalNumOutputChannels());
 }
 
 void TriPanAudioProcessor::setParameterValue (const juce::String& id, float realValue)
@@ -64,8 +88,8 @@ void TriPanAudioProcessor::setParameterValue (const juce::String& id, float real
 
 void TriPanAudioProcessor::resetLayoutToRings()
 {
-    const int n = std::min (getTotalNumInputChannels(),  tripan::kMaxChannels);
-    const int m = std::min (getTotalNumOutputChannels(), tripan::kMaxChannels);
+    const int n = getActiveSources();
+    const int m = getActiveSpeakers();
 
     for (int i = 0; i < n; ++i)
     {
@@ -87,7 +111,7 @@ void TriPanAudioProcessor::resetLayoutToRings()
 
 void TriPanAudioProcessor::refreshTriangulation()
 {
-    const int m = std::min (getTotalNumOutputChannels(), tripan::kMaxChannels);
+    const int m = getActiveSpeakers();
 
     std::vector<tripan::Vec2> speakers;
     speakers.reserve ((size_t) m);
@@ -158,8 +182,12 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     // Target gains from the current source positions and the latest published triangulation.
     const tripan::Triangulation* tri = exchange.acquire();
 
+    // Sources beyond the "Number of Sources" setting get no gains, so they fade out and stay silent.
+    // (The triangulation only contains the speakers in use, so unused outputs stay silent too.)
+    const int usedSources = getActiveSources();
+
     std::array<tripan::SourceGains, tripan::kMaxChannels> target {};
-    for (int s = 0; s < n; ++s)
+    for (int s = 0; s < std::min (n, usedSources); ++s)
         if (tri != nullptr)
             target[(size_t) s] = tripan::computeGains (*tri, { (double) srcX[(size_t) s]->load(), (double) srcY[(size_t) s]->load() });
 

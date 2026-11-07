@@ -47,8 +47,8 @@ void FieldComponent::setShowTriangulation (bool shouldShow)
     repaint();
 }
 
-int FieldComponent::activeSources() const  { return std::min (processor.getTotalNumInputChannels(),  tripan::kMaxChannels); }
-int FieldComponent::activeSpeakers() const { return std::min (processor.getTotalNumOutputChannels(), tripan::kMaxChannels); }
+int FieldComponent::activeSources() const  { return processor.getActiveSources(); }
+int FieldComponent::activeSpeakers() const { return processor.getActiveSpeakers(); }
 
 juce::RangedAudioParameter* FieldComponent::parameter (const Handle& h, char axis) const
 {

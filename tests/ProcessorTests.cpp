@@ -335,11 +335,77 @@ static void testParameterAutomationWhileProcessing()
     CHECK (problems.load() == 0);
 }
 
+static void testNumberOfSourcesAndSpeakersInUse()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 4, 8, 256));
+
+    // Default: everything on the track is used; larger parameter values clamp to the channel counts.
+    CHECK (p.getActiveSources() == 4 && p.getActiveSpeakers() == 8);
+
+    juce::AudioBuffer<float> buf (8, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (9);
+
+    // One source in use: the other sources are silent.
+    setParam (p, tripan::params::kNumSourcesId, 1.0f);
+    CHECK (p.getActiveSources() == 1);
+    for (int block = 0; block < 3; ++block)
+    {
+        const double inE = fillNoise (buf, 4, 1, rng); // source 2 is not in use
+        p.processBlock (buf, midi);
+        if (block > 0)
+        {
+            double outE = 0.0;
+            for (int ch = 0; ch < 8; ++ch) outE += channelEnergy (buf, ch);
+            CHECK (inE > 0.0 && outE < 1e-9);
+        }
+    }
+
+    // Source 1 is in use and keeps constant power.
+    for (int block = 0; block < 3; ++block)
+    {
+        const double inE = fillNoise (buf, 4, 0, rng);
+        p.processBlock (buf, midi);
+        if (block > 0)
+        {
+            double outE = 0.0;
+            for (int ch = 0; ch < 8; ++ch) outE += channelEnergy (buf, ch);
+            CHECK (std::abs (outE - inE) < 1e-3 * inE);
+        }
+    }
+
+    // Three speakers in use: only outputs 1-3 may carry signal, power is still conserved.
+    setParam (p, tripan::params::kNumSpeakersId, 3.0f);
+    p.refreshTriangulation();
+    CHECK (p.getActiveSpeakers() == 3);
+    for (int block = 0; block < 3; ++block)
+    {
+        const double inE = fillNoise (buf, 4, 0, rng);
+        p.processBlock (buf, midi);
+        if (block > 0)
+        {
+            double outE = 0.0;
+            for (int ch = 0; ch < 8; ++ch)
+            {
+                outE += channelEnergy (buf, ch);
+                if (ch >= 3) CHECK (channelEnergy (buf, ch) < 1e-9);
+            }
+            CHECK (std::abs (outE - inE) < 1e-3 * inE);
+        }
+    }
+
+    // Parameter values above the channel count clamp, and below 1 cannot happen (range starts at 1).
+    setParam (p, tripan::params::kNumSpeakersId, 64.0f);
+    CHECK (p.getActiveSpeakers() == 8);
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     testStationaryEnergyAndLocality();
+    testNumberOfSourcesAndSpeakersInUse();
     testMovingSourceIsSmoothAndBounded();
     testSourceOnSpeakerAndSpeakerUpdate();
     testOversizedBlock();
