@@ -14,6 +14,9 @@ cmake -B build -G Xcode
 cmake --build build --config Release
 ```
 
+On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each build. Use
+`-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
+
 ## Build (Windows)
 ```
 git clone --recursive <repo-url>

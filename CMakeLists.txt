@@ -10,6 +10,11 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 option(TRIPAN_ENABLE_AAX "Build the AAX format (requires the Avid AAX SDK)" OFF)
 set(TRIPAN_AAX_SDK_PATH "" CACHE PATH "Path to the Avid AAX SDK (not redistributable, keep outside the repo)")
 
+# Copy the VST3 into the user's plug-in folder after every build (macOS only by default;
+# the Windows system VST3 folder needs administrator rights). CI turns this off.
+option(TRIPAN_INSTALL_VST3 "Copy the built VST3 to TRIPAN_VST3_INSTALL_DIR after building" ${APPLE})
+set(TRIPAN_VST3_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3" CACHE PATH "Where TRIPAN_INSTALL_VST3 copies the VST3")
+
 enable_testing()
 
 add_subdirectory(JUCE)
@@ -65,6 +70,17 @@ target_link_libraries(TriPan
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+if(TRIPAN_INSTALL_VST3)
+    set(TRIPAN_VST3_BUNDLE "$<GENEX_EVAL:$<TARGET_PROPERTY:TriPan_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>")
+    set(TRIPAN_VST3_DEST "${TRIPAN_VST3_INSTALL_DIR}/$<TARGET_PROPERTY:TriPan,JUCE_PRODUCT_NAME>.vst3")
+    add_custom_command(TARGET TriPan_VST3 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRIPAN_VST3_INSTALL_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_VST3_DEST}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_VST3_BUNDLE}" "${TRIPAN_VST3_DEST}"
+        COMMENT "Copying TriPan.vst3 to ${TRIPAN_VST3_INSTALL_DIR}"
+        VERBATIM)
+endif()
 
 # Offline processor tests (no DAW needed)
 add_executable(TriPanProcessorTests tests/ProcessorTests.cpp)
