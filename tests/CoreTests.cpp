@@ -22,7 +22,7 @@ static int failures = 0;
         }                                                                    \
     } while (false)
 
-static bool near (double a, double b, double tol = 1e-6) { return std::abs (a - b) <= tol; }
+static bool isNear (double a, double b, double tol = 1e-6) { return std::abs (a - b) <= tol; }
 
 static double cross (Vec2 o, Vec2 a, Vec2 b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); }
 
@@ -115,7 +115,7 @@ static void checkStructure (const std::vector<Vec2>& pts, const char* label)
                 delaunay = false;
 
     const int expected = 2 * (int) pts.size() - 2 - hc;
-    if (! (allCCW && near (sum, ha, 1e-9 * std::max (1.0, ha)) && delaunay && (int) tri.triangles().size() == expected
+    if (! (allCCW && isNear (sum, ha, 1e-9 * std::max (1.0, ha)) && delaunay && (int) tri.triangles().size() == expected
            && (int) tri.boundaryEdges().size() == hc))
     {
         std::printf ("structure FAIL (%s): n=%zu ccw=%d area=%g hull=%g delaunay=%d tris=%zu expected=%d edges=%zu hull=%d\n",
@@ -138,12 +138,12 @@ static void testDegenerateSpeakerCounts()
 
     std::vector<Vec2> one { { 3, 4 } };
     const auto g1 = computeGains (Triangulation (one), { -10, 7 });
-    CHECK (g1.count == 1 && g1.speaker[0] == 0 && near (g1.gain[0], 1.0));
+    CHECK (g1.count == 1 && g1.speaker[0] == 0 && isNear (g1.gain[0], 1.0));
 
     std::vector<Vec2> two { { -1, 0 }, { 1, 0 } };
     const Triangulation t2 (two);
     const auto mid = computeGains (t2, { 0, 0 });
-    CHECK (mid.count == 2 && near (mid.gain[0], std::sqrt (0.5)) && near (mid.gain[1], std::sqrt (0.5)));
+    CHECK (mid.count == 2 && isNear (mid.gain[0], std::sqrt (0.5)) && isNear (mid.gain[1], std::sqrt (0.5)));
     const auto beyond = computeGains (t2, { 5, 3 });
     CHECK (beyond.count == 1 && beyond.speaker[0] == 1);
 
@@ -159,8 +159,8 @@ static void testCollinear()
 
     const auto g = computeGains (tri, { 1.5, 4.0 }); // between x=1 (idx 3) and x=2 (idx 2)
     CHECK (g.count == 2);
-    CHECK (near (gainFor (g, 3), std::sqrt (0.5)) && near (gainFor (g, 2), std::sqrt (0.5)));
-    CHECK (near (sumSq (g), 1.0));
+    CHECK (isNear (gainFor (g, 3), std::sqrt (0.5)) && isNear (gainFor (g, 2), std::sqrt (0.5)));
+    CHECK (isNear (sumSq (g), 1.0));
 
     const auto end = computeGains (tri, { -9, 1 });
     CHECK (end.count == 1 && end.speaker[0] == 1);
@@ -175,11 +175,11 @@ static void testSquare()
     CHECK (tri.triangles().size() == 2);
 
     const auto c = computeGains (tri, { 0.5, 0.5 });
-    CHECK (near (sumSq (c), 1.0));
+    CHECK (isNear (sumSq (c), 1.0));
 
     // Exactly on a speaker: that speaker only.
     const auto v = computeGains (tri, { 1, 1 });
-    CHECK (near (gainFor (v, 2), 1.0) && near (sumSq (v), 1.0));
+    CHECK (isNear (gainFor (v, 2), 1.0) && isNear (sumSq (v), 1.0));
 }
 
 static void testGridsAndRandom()
@@ -225,7 +225,7 @@ static void testConstantPowerAndLocality()
             for (int i = 0; i < g.count; ++i) nonNeg = nonNeg && g.gain[(size_t) i] >= 0.0f;
             CHECK (g.count >= 1 && g.count <= 3);
             CHECK (nonNeg);
-            CHECK (near (sumSq (g), 1.0, 1e-5));
+            CHECK (isNear (sumSq (g), 1.0, 1e-5));
         }
     }
 }
@@ -268,7 +268,7 @@ static void testDuplicatesAndNonFinite()
         for (double y = -0.5; y <= 1.5; y += 0.1)
         {
             const auto g = computeGains (tri, { x, y });
-            CHECK (near (sumSq (g), 1.0, 1e-5));
+            CHECK (isNear (sumSq (g), 1.0, 1e-5));
             CHECK (gainFor (g, 3) == 0.0f && gainFor (g, 4) == 0.0f); // duplicate and NaN never used
         }
 }

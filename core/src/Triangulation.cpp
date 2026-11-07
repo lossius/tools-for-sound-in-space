@@ -88,22 +88,22 @@ Triangulation::Triangulation (std::span<const Vec2> speakers)
     // 2. Collinear case: chain of consecutive speakers along the line.
     {
         const int first = ids[0];
-        int far = ids[1];
+        int farthest = ids[1];
         double best = -1.0;
         for (int id : ids)
         {
             const double dx = points[(size_t) id].x - points[(size_t) first].x;
             const double dy = points[(size_t) id].y - points[(size_t) first].y;
-            if (dx * dx + dy * dy > best) { best = dx * dx + dy * dy; far = id; }
+            if (dx * dx + dy * dy > best) { best = dx * dx + dy * dy; farthest = id; }
         }
 
         const Vec2 o = points[(size_t) first];
-        const Vec2 dir { points[(size_t) far].x - o.x, points[(size_t) far].y - o.y };
+        const Vec2 dir { points[(size_t) farthest].x - o.x, points[(size_t) farthest].y - o.y };
         const double len = std::sqrt (dir.x * dir.x + dir.y * dir.y);
 
         const bool collinear = std::all_of (ids.begin(), ids.end(), [&] (int id)
         {
-            return std::abs (cross (o, points[(size_t) far], points[(size_t) id])) / len <= eps;
+            return std::abs (cross (o, points[(size_t) farthest], points[(size_t) id])) / len <= eps;
         });
 
         if (collinear)
