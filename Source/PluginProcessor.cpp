@@ -8,6 +8,7 @@
 namespace
 {
 const juce::Identifier kLayoutInitialised { "layoutInitialised" };
+const juce::Identifier kEditMode { "editMode" };
 
 /** k-th of `count` positions on a ring; k = 0 at the front (+y), going clockwise. */
 juce::Point<float> ringPosition (int k, int count, float radius)
@@ -86,27 +87,40 @@ void TriPanAudioProcessor::setParameterValue (const juce::String& id, float real
         p->setValueNotifyingHost (p->convertTo0to1 (realValue));
 }
 
-void TriPanAudioProcessor::resetLayoutToRings()
+void TriPanAudioProcessor::resetLayoutToRings (bool resetSources, bool resetSpeakers)
 {
     const int n = getActiveSources();
     const int m = getActiveSpeakers();
 
-    for (int i = 0; i < n; ++i)
-    {
-        const auto p = ringPosition (i, n, 2.5f);
-        setParameterValue (tripan::params::sourceId (i, 'x'), p.x);
-        setParameterValue (tripan::params::sourceId (i, 'y'), p.y);
-    }
+    if (resetSources)
+        for (int i = 0; i < n; ++i)
+        {
+            const auto p = ringPosition (i, n, 2.5f);
+            setParameterValue (tripan::params::sourceId (i, 'x'), p.x);
+            setParameterValue (tripan::params::sourceId (i, 'y'), p.y);
+        }
 
-    for (int i = 0; i < m; ++i)
-    {
-        const auto p = ringPosition (i, m, 5.0f);
-        setParameterValue (tripan::params::speakerId (i, 'x'), p.x);
-        setParameterValue (tripan::params::speakerId (i, 'y'), p.y);
-    }
+    if (resetSpeakers)
+        for (int i = 0; i < m; ++i)
+        {
+            const auto p = ringPosition (i, m, 5.0f);
+            setParameterValue (tripan::params::speakerId (i, 'x'), p.x);
+            setParameterValue (tripan::params::speakerId (i, 'y'), p.y);
+        }
 
     apvts.state.setProperty (kLayoutInitialised, true, nullptr);
     refreshTriangulation();
+}
+
+EditMode TriPanAudioProcessor::getEditMode() const
+{
+    const int value = (int) apvts.state.getProperty (kEditMode, (int) EditMode::Sources);
+    return value >= (int) EditMode::Sources && value <= (int) EditMode::View ? (EditMode) value : EditMode::Sources;
+}
+
+void TriPanAudioProcessor::setEditMode (EditMode mode)
+{
+    apvts.state.setProperty (kEditMode, (int) mode, nullptr);
 }
 
 void TriPanAudioProcessor::refreshTriangulation()

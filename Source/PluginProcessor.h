@@ -1,5 +1,6 @@
 #pragma once
 
+#include "EditMode.h"
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"
 #include "tripan/TriangulationExchange.h"
@@ -47,9 +48,13 @@ public:
     int getActiveSources() const noexcept;
     int getActiveSpeakers() const noexcept;
 
-    /** Message thread. Places the active sources and speakers on rings (speakers on radius 5 m,
+    /** Message thread. Places the active sources and/or speakers on rings (speakers on radius 5 m,
         sources on radius 2.5 m, first speaker at front). */
-    void resetLayoutToRings();
+    void resetLayoutToRings (bool resetSources = true, bool resetSpeakers = true);
+
+    /** Message thread. Which positions the editor lets the user change (saved with the state). */
+    EditMode getEditMode() const;
+    void setEditMode (EditMode);
 
     /** Message thread. Rebuilds and publishes the triangulation if the active speaker positions
         or count changed. Called by a timer; also call it directly after changing speaker

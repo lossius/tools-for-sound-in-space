@@ -16,6 +16,8 @@ public:
     FieldComponent& getField() noexcept { return field; }
     juce::Slider& getSourceCountSlider() noexcept { return sourceCount; }
     juce::Slider& getSpeakerCountSlider() noexcept { return speakerCount; }
+    juce::ComboBox& getModeBox() noexcept { return modeBox; }
+    juce::TextButton& getResetButton() noexcept { return resetButton; }
 
     /** Re-reads the parameters and channel counts into the controls (also called by a timer). */
     void syncControls();
@@ -36,6 +38,8 @@ private:
     juce::Label speakersLabel { {}, "Speakers" };
     juce::Slider sourceCount, speakerCount;
     juce::Label infoLabel;
+    juce::Label modeLabel { {}, "Mode" };
+    juce::ComboBox modeBox;
     juce::ToggleButton showTriangulationButton { "Show triangulation" };
     juce::TextButton resetButton { "Reset layout" };
 

@@ -53,6 +53,8 @@ int main (int argc, char** argv)
     setParam (p, tripan::params::sourceId (2, 'y'), -3.5f);
     p.refreshTriangulation();
 
+    CHECK (p.getEditMode() == EditMode::Sources); // Mode 1 is the default
+
     std::unique_ptr<juce::AudioProcessorEditor> base (p.createEditor());
     auto* editor = dynamic_cast<TriPanAudioProcessorEditor*> (base.get());
     CHECK (editor != nullptr);
@@ -84,6 +86,54 @@ int main (int argc, char** argv)
         spkSlider.setValue (7.0, juce::sendNotificationSync);
         srcSlider.setValue (3.0, juce::sendNotificationSync);
         CHECK (p.getActiveSpeakers() == 7 && p.getActiveSources() == 3);
+    }
+
+    // Edit modes: the menu selects them, and they decide what can be grabbed, moved and reset.
+    {
+        auto& box = editor->getModeBox();
+        CHECK (box.getSelectedId() == 1 && box.getNumItems() == 4);
+
+        for (int id = 1; id <= 4; ++id)
+        {
+            box.setSelectedId (id, juce::sendNotificationSync);
+            const auto mode = (EditMode) id;
+            CHECK (p.getEditMode() == mode);
+
+            const auto srcPos = field.toView (0.5, 1.0);   // source 1
+            const auto spkPos = field.toView (6.5, -1.0);  // speaker 3 (moved earlier in this test)
+
+            const auto hs = field.findHandleAt (srcPos);
+            CHECK (hs.has_value() == canEditSources (mode));
+            const auto hk = field.findHandleAt (spkPos);
+            CHECK (hk.has_value() == canEditSpeakers (mode));
+
+            field.moveHandle ({ true, 0 }, field.toView (2.0, 2.0));
+            CHECK ((std::abs (value (p, tripan::params::sourceId (0, 'x')) - 2.0f) < 0.02f) == canEditSources (mode));
+            field.moveHandle ({ false, 2 }, field.toView (-2.0, -2.0));
+            CHECK ((std::abs (value (p, tripan::params::speakerId (2, 'x')) + 2.0f) < 0.02f) == canEditSpeakers (mode));
+
+            // restore
+            setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
+            setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+            setParam (p, tripan::params::speakerId (2, 'x'), 6.5f);
+            setParam (p, tripan::params::speakerId (2, 'y'), -1.0f);
+
+            CHECK (editor->getResetButton().isEnabled() == (mode != EditMode::View));
+        }
+
+        // Reset layout only touches what the mode allows.
+        box.setSelectedId (1, juce::sendNotificationSync); // sources unlocked, speakers locked
+        setParam (p, tripan::params::speakerId (0, 'x'), 1.234f);
+        setParam (p, tripan::params::sourceId (0, 'x'), 7.0f);
+        editor->getResetButton().onClick(); // (triggerClick needs a visible button)
+        CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - 1.234f) < 1e-3f); // untouched
+        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 7.0f) > 0.5f);     // reset
+
+        // Restore the picture and leave the mode at "both" for the checks below.
+        setParam (p, tripan::params::speakerId (0, 'x'), 0.0f);
+        setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
+        setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+        box.setSelectedId (3, juce::sendNotificationSync);
     }
 
     // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.

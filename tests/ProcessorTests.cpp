@@ -183,6 +183,8 @@ static void testStateRoundTrip()
     CHECK (configure (a, 4, 6, 256));
     setParam (a, tripan::params::speakerId (3, 'x'), 1.25f);
     setParam (a, tripan::params::sourceId (2, 'y'), -2.5f);
+    CHECK (a.getEditMode() == EditMode::Sources); // default
+    a.setEditMode (EditMode::Both);
 
     juce::MemoryBlock state;
     a.getStateInformation (state);
@@ -194,6 +196,7 @@ static void testStateRoundTrip()
     const auto get = [] (TriPanAudioProcessor& p, const juce::String& id) { return p.getValueTreeState().getRawParameterValue (id)->load(); };
     CHECK (std::abs (get (b, tripan::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
     CHECK (std::abs (get (b, tripan::params::sourceId (2, 'y')) + 2.5f) < 1e-4f);
+    CHECK (b.getEditMode() == EditMode::Both);
 }
 
 static void testFullSize64x64()

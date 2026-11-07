@@ -6,7 +6,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
 {
     addAndMakeVisible (field);
 
-    for (auto* label : { &sourcesLabel, &speakersLabel })
+    for (auto* label : { &sourcesLabel, &speakersLabel, &modeLabel })
     {
         label->setJustificationType (juce::Justification::centredRight);
         label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -22,17 +22,34 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     infoLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
     addAndMakeVisible (infoLabel);
 
+    modeBox.addItem ("1: Move sources", (int) EditMode::Sources);
+    modeBox.addItem ("2: Move speakers", (int) EditMode::Speakers);
+    modeBox.addItem ("3: Move sources and speakers", (int) EditMode::Both);
+    modeBox.addItem ("4: View only (positions locked)", (int) EditMode::View);
+    modeBox.setSelectedId ((int) owner.getEditMode(), juce::dontSendNotification);
+    modeBox.setTooltip ("Which positions can be changed in this window");
+    modeBox.onChange = [this]
+    {
+        owner.setEditMode ((EditMode) modeBox.getSelectedId());
+        syncControls();
+    };
+    addAndMakeVisible (modeBox);
+
     showTriangulationButton.setToggleState (true, juce::dontSendNotification);
     showTriangulationButton.onClick = [this] { field.setShowTriangulation (showTriangulationButton.getToggleState()); };
     addAndMakeVisible (showTriangulationButton);
 
-    resetButton.setTooltip ("Place the sources and speakers in use on rings");
-    resetButton.onClick = [this] { owner.resetLayoutToRings(); };
+    resetButton.setTooltip ("Place the unlocked sources and speakers in use on rings");
+    resetButton.onClick = [this]
+    {
+        const auto mode = owner.getEditMode();
+        owner.resetLayoutToRings (canEditSources (mode), canEditSpeakers (mode));
+    };
     addAndMakeVisible (resetButton);
 
     setResizable (true, true);
-    setResizeLimits (440, 500, 1200, 1300);
-    setSize (680, 780);
+    setResizeLimits (580, 520, 1200, 1300);
+    setSize (700, 780);
 
     syncControls();
     startTimerHz (10);
@@ -101,6 +118,11 @@ void TriPanAudioProcessorEditor::syncControls()
     syncCountSlider (sourceCount,  owner.getActiveSources(),  channelsIn);
     syncCountSlider (speakerCount, owner.getActiveSpeakers(), channelsOut);
 
+    const auto mode = owner.getEditMode();
+    if (modeBox.getSelectedId() != (int) mode)
+        modeBox.setSelectedId ((int) mode, juce::dontSendNotification);
+    resetButton.setEnabled (mode != EditMode::View);
+
     infoLabel.setText ("track: " + juce::String (channelsIn) + " in, " + juce::String (channelsOut) + " out",
                        juce::dontSendNotification);
 }
@@ -123,10 +145,13 @@ void TriPanAudioProcessorEditor::resized()
     speakerCount.setBounds (top.removeFromLeft (110));
     infoLabel.setBounds (top);
 
-    // Second row: display options.
+    // Second row: edit mode and display options.
     auto bar = area.removeFromTop (34).reduced (10, 4);
-    showTriangulationButton.setBounds (bar.removeFromLeft (170));
-    resetButton.setBounds (bar.removeFromLeft (110));
+    modeLabel.setBounds (bar.removeFromLeft (40));
+    modeBox.setBounds (bar.removeFromLeft (230));
+    bar.removeFromLeft (12);
+    showTriangulationButton.setBounds (bar.removeFromLeft (150));
+    resetButton.setBounds (bar.removeFromLeft (100));
 
     field.setBounds (area);
 }

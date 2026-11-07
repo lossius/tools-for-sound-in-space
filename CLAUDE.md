@@ -47,6 +47,10 @@ not redistributable: keep it outside this repo. Check its current licence before
   Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
+- Edit mode (`Source/EditMode.h`, menu in the editor, saved in the state as property `editMode`, not a host
+  parameter): 1 move sources (default), 2 move speakers, 3 move both, 4 view only. Locked handles can't be
+  grabbed or moved, and "Reset layout" only resets unlocked kinds (disabled in mode 4). Host automation
+  of the position parameters is unaffected by the mode.
 - `numSources` / `numSpeakers` (int, 1..64, default 64): how many of the track's channels are used.
   The host range is fixed; the effective count is clamped to the track's channel count
   (`getActiveSources/Speakers`). Unused sources are silent, unused speakers are left out of the
