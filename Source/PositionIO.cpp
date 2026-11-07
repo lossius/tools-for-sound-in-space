@@ -33,6 +33,13 @@ void writeParam (TriPanAudioProcessor& p, const juce::String& id, float value)
     }
 }
 
+/** Coordinates are written rounded to 3 decimal places (1 mm); a tiny negative value becomes 0.000. */
+juce::String formatCoordinate (float value)
+{
+    const auto text = juce::String (value, 3);
+    return text == "-0.000" ? juce::String ("0.000") : text;
+}
+
 struct Entry
 {
     float x, y;
@@ -56,8 +63,8 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
     {
         auto* e = root->createNewChildElement (entryTag (kind));
         e->setAttribute ("index", i + 1);
-        e->setAttribute ("x", juce::String (readParam (p, idFor (kind, i, 'x')), 5));
-        e->setAttribute ("y", juce::String (readParam (p, idFor (kind, i, 'y')), 5));
+        e->setAttribute ("x", formatCoordinate (readParam (p, idFor (kind, i, 'x'))));
+        e->setAttribute ("y", formatCoordinate (readParam (p, idFor (kind, i, 'y'))));
     }
 
     return root;

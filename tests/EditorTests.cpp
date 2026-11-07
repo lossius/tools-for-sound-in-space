@@ -154,6 +154,27 @@ int main (int argc, char** argv)
         CHECK (srcXml != nullptr && srcXml->hasTagName ("TriPanSources") && srcXml->getNumChildElements() == 3);
         CHECK (spkXml != nullptr && spkXml->hasTagName ("TriPanSpeakers") && spkXml->getNumChildElements() == 7);
 
+        // Positions are exported rounded to 3 decimal places (and never as "-0.000").
+        {
+            const float keepX = value (p, tripan::params::sourceId (0, 'x')), keepY = value (p, tripan::params::sourceId (0, 'y'));
+            setParam (p, tripan::params::sourceId (0, 'x'), 1.23456f);
+            setParam (p, tripan::params::sourceId (0, 'y'), -0.0004f);
+            const auto rounded = dir.getChildFile ("rounded.xml");
+            CHECK (editor->exportPositionsTo (Kind::Sources, rounded).wasOk());
+            const auto doc = juce::XmlDocument::parse (rounded);
+            const auto* first = doc != nullptr ? doc->getChildElement (0) : nullptr;
+            CHECK (first != nullptr && first->getStringAttribute ("x") == "1.235" && first->getStringAttribute ("y") == "0.000");
+            for (auto* e : doc->getChildIterator())
+                for (const auto* attribute : { "x", "y" })
+                {
+                    const auto text = e->getStringAttribute (attribute);
+                    CHECK (text.fromFirstOccurrenceOf (".", false, false).length() == 3);
+                }
+            setParam (p, tripan::params::sourceId (0, 'x'), keepX);
+            setParam (p, tripan::params::sourceId (0, 'y'), keepY);
+            CHECK (editor->exportPositionsTo (Kind::Sources, srcFile).wasOk()); // re-export the original positions
+        }
+
         // Round trip: remember, scramble, import, compare.
         float srcX[3], srcY[3], spkX[7], spkY[7];
         for (int i = 0; i < 3; ++i) { srcX[i] = value (p, tripan::params::sourceId (i, 'x'));  srcY[i] = value (p, tripan::params::sourceId (i, 'y')); }

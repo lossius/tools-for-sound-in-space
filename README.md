@@ -28,7 +28,7 @@ file dialog each time. Sources and speakers are separate files:
 </TriPanSpeakers>
 ```
 (`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-10.
-Export writes the channels currently in use. Import checks the whole file first, applies every valid
+Export writes the channels currently in use, with coordinates rounded to 3 decimal places. Import checks the whole file first, applies every valid
 entry by index and leaves the "Number of Sources/Speakers" settings alone. Import is disabled while
 the edit mode locks that kind of position.
 
