@@ -40,6 +40,8 @@ juce_add_plugin(TriPan
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
+    MICROPHONE_PERMISSION_ENABLED TRUE
+    MICROPHONE_PERMISSION_TEXT "The TriPan standalone app needs audio input to process the source channels."
     COPY_PLUGIN_AFTER_BUILD FALSE
     VST3_CATEGORIES Fx Spatial
     AU_MAIN_TYPE kAudioUnitType_Effect

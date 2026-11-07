@@ -14,6 +14,8 @@ env:
 jobs:
   macos:
     runs-on: macos-latest
+    env:
+      HAS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,7 +40,33 @@ jobs:
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --timeout-ms 120000 \
             build/TriPan_artefacts/Release/VST3/TriPan.vst3
 
-      - name: Package
+      # Signing and notarization run only when the repository has the signing secrets
+      # (see README.md, "Signing and notarization"). Otherwise unsigned zips are produced.
+      - name: Sign and notarize
+        if: env.HAS_SIGNING == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain
+          NO_BUILD=1 BUILD_DIR=build scripts/sign-and-notarize.sh
+          security delete-keychain "$KEYCHAIN"
+
+      - name: Package (unsigned)
+        if: env.HAS_SIGNING != 'true'
         run: |
           mkdir -p dist
           ditto -c -k --keepParent build/TriPan_artefacts/Release/VST3/TriPan.vst3 dist/TriPan-macOS-VST3.zip

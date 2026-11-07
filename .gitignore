@@ -5,3 +5,5 @@ cmake-build-*/
 xcuserdata/
 .idea/
 .vscode/
+dist/
+build-release/

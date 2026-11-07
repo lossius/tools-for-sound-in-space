@@ -34,6 +34,31 @@ need a Pro Tools Developer build; release builds need signing arranged with Avid
 been built or tested yet, and the channel/stem formats Pro Tools accepts for 64-channel layouts
 must be verified.
 
+## Signing and notarization (macOS)
+Unsigned downloads are blocked by Gatekeeper, so releases are signed with a **Developer ID
+Application** certificate (not "Apple Development") and notarized.
+
+One-time setup:
+1. Create the certificate: Xcode > Settings > Accounts > Manage Certificates > + > Developer ID Application
+   (only the Apple Developer account holder can create it).
+2. Store notarization credentials in your keychain (uses an app-specific password from appleid.apple.com):
+   `xcrun notarytool store-credentials tripan-notary --apple-id <id> --team-id <TEAMID>`
+
+Then:
+```
+SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=tripan-notary \
+    scripts/sign-and-notarize.sh
+```
+This builds a universal binary, signs with the hardened runtime, notarizes, staples and writes
+zips to `dist/`. Add `DRY_RUN=1` to test the signing step only (no upload, zips are not releasable).
+
+In CI, the macOS job signs and notarizes automatically when these repository secrets exist:
+`MACOS_CERT_P12` (base64 of the exported .p12), `MACOS_CERT_PASSWORD`, `MACOS_SIGN_IDENTITY`,
+`APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_APP_PASSWORD`. Without them it uploads unsigned zips.
+
+The Standalone app is signed with `resources/Standalone.entitlements` (audio input under the
+hardened runtime). Windows builds are unsigned; Windows may show a SmartScreen warning.
+
 ## Continuous integration
 `.github/workflows/build.yml` builds, tests and validates (pluginval, strictness 10) on macOS
 (universal arm64 + x86_64) and Windows, and uploads zips. Pushing a tag such as `v0.1.0`
