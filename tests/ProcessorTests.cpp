@@ -3,7 +3,9 @@
 #include "../Source/Parameters.h"
 #include "../Source/PluginProcessor.h"
 
+#include <atomic>
 #include <chrono>
+#include <thread>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -227,6 +229,112 @@ static void testFullSize64x64()
     (void) inE;
 }
 
+
+static void testFullSizeEnergyConservation()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 64, 64, 256));
+
+    // Scatter the speakers irregularly (deterministically) so the triangulation is non-trivial.
+    std::mt19937 rng (6);
+    std::uniform_real_distribution<float> pos (-8.0f, 8.0f);
+    for (int i = 0; i < 64; ++i)
+    {
+        setParam (p, tripan::params::speakerId (i, 'x'), pos (rng));
+        setParam (p, tripan::params::speakerId (i, 'y'), pos (rng));
+    }
+    p.refreshTriangulation();
+
+    juce::AudioBuffer<float> buf (64, 256);
+    juce::MidiBuffer midi;
+
+    for (int src : { 0, 17, 63 })
+    {
+        setParam (p, tripan::params::sourceId (src, 'x'), pos (rng));
+        setParam (p, tripan::params::sourceId (src, 'y'), pos (rng));
+
+        for (int block = 0; block < 3; ++block)
+        {
+            const double inE = fillNoise (buf, 64, src, rng);
+            p.processBlock (buf, midi);
+
+            double outE = 0.0;
+            int active = 0;
+            for (int ch = 0; ch < 64; ++ch)
+            {
+                const double e = channelEnergy (buf, ch);
+                outE += e;
+                if (e > 1e-9) ++active;
+            }
+            if (block > 0) // the first block ramps in from the previous position
+            {
+                CHECK (std::abs (outE - inE) < 1e-3 * inE);
+                CHECK (active <= 3);
+            }
+        }
+    }
+}
+
+static void testParameterAutomationWhileProcessing()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 16, 16, 256));
+
+    std::atomic<bool> done { false };
+    std::atomic<int> problems { 0 };
+
+    std::thread audio ([&]
+    {
+        juce::AudioBuffer<float> buf (16, 256);
+        juce::MidiBuffer midi;
+        std::mt19937 rng (7);
+        std::uniform_real_distribution<float> u (-1.0f, 1.0f);
+
+        while (! done.load())
+        {
+            double inE = 0.0;
+            for (int ch = 0; ch < 16; ++ch)
+                for (int i = 0; i < 256; ++i)
+                {
+                    const float v = u (rng);
+                    buf.setSample (ch, i, v);
+                    inE += (double) v * v;
+                }
+            p.processBlock (buf, midi);
+
+            double outE = 0.0;
+            for (int ch = 0; ch < 16; ++ch)
+                for (int i = 0; i < 256; ++i)
+                {
+                    const float v = buf.getSample (ch, i);
+                    if (! std::isfinite (v)) ++problems;
+                    outE += (double) v * v;
+                }
+            // 16 independent noise sources may share speakers, so only a loose upper bound applies.
+            if (outE > 40.0 * inE) ++problems;
+        }
+    });
+
+    // Message-thread side: move speakers and sources, republish the triangulation, repeatedly.
+    std::mt19937 rng (8);
+    std::uniform_real_distribution<float> pos (-9.0f, 9.0f);
+    for (int iter = 0; iter < 1500; ++iter)
+    {
+        const int k = (int) (rng() % 16);
+        setParam (p, tripan::params::speakerId (k, 'x'), pos (rng));
+        setParam (p, tripan::params::speakerId (k, 'y'), pos (rng));
+        setParam (p, tripan::params::sourceId (k, 'x'), pos (rng));
+        setParam (p, tripan::params::sourceId (k, 'y'), pos (rng));
+        p.refreshTriangulation();
+        if (iter % 50 == 0)
+            std::this_thread::sleep_for (std::chrono::milliseconds (1));
+    }
+
+    done = true;
+    audio.join();
+    CHECK (problems.load() == 0);
+}
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -236,6 +344,8 @@ int main()
     testSourceOnSpeakerAndSpeakerUpdate();
     testOversizedBlock();
     testStateRoundTrip();
+    testFullSizeEnergyConservation();
+    testParameterAutomationWhileProcessing();
     testFullSize64x64();
 
     if (failures == 0)

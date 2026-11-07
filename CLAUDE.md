@@ -19,6 +19,12 @@ cmake -B build -G Xcode          # or: cmake -B build -G Ninja -DCMAKE_BUILD_TYP
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
+Validation: `scripts/validate.sh` builds the Release VST3 and runs pluginval at strictness 10
+(passes as of M5). pluginval can only scan an AU that is installed in ~/Library/Audio/Plug-Ins/Components.
+For threading checks, build `TriPanProcessorTests` in a separate dir with
+`-DCMAKE_CXX_FLAGS=-fsanitize=thread` (clean as of M5); it includes a test that automates parameters
+on one thread while another processes audio.
+
 AAX (optional): `-DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK`. The Avid AAX SDK is
 not redistributable: keep it outside this repo. Check its current licence before publishing AAX builds.
 
