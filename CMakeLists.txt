@@ -62,3 +62,15 @@ target_link_libraries(TriPan
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# Offline processor tests (no DAW needed)
+add_executable(TriPanProcessorTests tests/ProcessorTests.cpp)
+target_include_directories(TriPanProcessorTests PRIVATE Source)
+target_link_libraries(TriPanProcessorTests
+    PRIVATE
+        TriPan
+        TriPanCore
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+add_test(NAME TriPanProcessorTests COMMAND TriPanProcessorTests)

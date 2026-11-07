@@ -37,6 +37,12 @@ not redistributable: keep it outside this repo. Check its current licence before
   Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
+- Parameters (Source/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±10, +y front.
+  Speaker changes are picked up by a 30 Hz message-thread timer (`refreshTriangulation`), which
+  publishes an immutable Triangulation through `TriangulationExchange` (hazard-pointer handover).
+  processBlock computes per-source gains each block and ramps linearly from the previous block's gains.
+- First run only (flag `layoutInitialised` in saved state): active channels get default rings.
+- `tests/ProcessorTests.cpp` drives the processor offline (energy conservation, locality, state, 64x64).
 - Edge cases handled and tested in M2: source outside the convex hull (project to nearest hull edge),
   fewer than 3 speakers, collinear speakers, coincident points.
 - Claude cannot listen or drive a DAW: prefer numerical tests in `tests/`, and ask the user for

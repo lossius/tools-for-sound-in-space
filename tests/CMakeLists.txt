@@ -1,3 +1,7 @@
 add_executable(TriPanCoreTests CoreTests.cpp)
 target_link_libraries(TriPanCoreTests PRIVATE TriPanCore)
 add_test(NAME TriPanCoreTests COMMAND TriPanCoreTests)
+
+add_executable(TriPanExchangeTests ExchangeTests.cpp)
+target_link_libraries(TriPanExchangeTests PRIVATE TriPanCore)
+add_test(NAME TriPanExchangeTests COMMAND TriPanExchangeTests)
