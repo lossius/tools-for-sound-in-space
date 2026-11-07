@@ -93,7 +93,7 @@ target_link_libraries(TriPanProcessorTests
         juce::juce_audio_utils
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
-add_test(NAME TriPanProcessorTests COMMAND TriPanProcessorTests)
+add_test(NAME TriPanProcessorTests COMMAND TriPanProcessorTests "${CMAKE_CURRENT_SOURCE_DIR}/Preset")
 
 # Editor interaction test; with a path argument it also writes a PNG snapshot of the editor.
 add_executable(TriPanEditorTests tests/EditorTests.cpp)

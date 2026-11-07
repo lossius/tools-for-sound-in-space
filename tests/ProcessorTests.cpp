@@ -2,6 +2,8 @@
 // speaker updates, state round-trip, large layouts.
 #include "../Source/Parameters.h"
 #include "../Source/PluginProcessor.h"
+#include "../Source/PositionIO.h"
+#include "tripan/Gains.h"
 
 #include <atomic>
 #include <chrono>
@@ -456,7 +458,103 @@ static void testUnusedSpeakersAreSilentImmediately()
     CHECK (energy > 1.0);
 }
 
-int main()
+// The speaker layouts in Preset/ must import cleanly and give a usable triangulation.
+static void testSpeakerPresets (const juce::File& dir)
+{
+    struct Expected { const char* file; int count; };
+    const Expected expected[] = { { "Quad.xml", 4 }, { "5.1.xml", 5 }, { "7.1.xml", 7 },
+                                  { "Hexagon-front-centre.xml", 6 }, { "Hexagon-symmetric.xml", 6 },
+                                  { "Octagon-front-centre.xml", 8 }, { "Octagon-symmetric.xml", 8 },
+                                  { "Grid-3x3.xml", 9 }, { "Grid-4x4.xml", 16 }, { "Random-16.xml", 16 } };
+
+    CHECK (dir.isDirectory());
+    CHECK (dir.findChildFiles (juce::File::findFiles, false, "*.xml").size() == (int) std::size (expected));
+
+    for (const auto& e : expected)
+    {
+        TriPanAudioProcessor p;
+        CHECK (configure (p, 2, 16, 256));
+
+        tripan::io::ImportReport report;
+        const auto result = tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (e.file), report);
+        if (result.failed())
+            std::printf ("preset %s: %s\n", e.file, result.getErrorMessage().toRawUTF8());
+        CHECK (result.wasOk());
+        CHECK (report.applied == e.count && report.skipped == 0 && report.clamped == 0);
+
+        setParam (p, tripan::params::kNumSpeakersId, (float) e.count);
+
+        std::vector<tripan::Vec2> pts;
+        for (int i = 0; i < e.count; ++i)
+            pts.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'x'))->load(),
+                             (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'y'))->load() });
+
+        // Within the plane, distinct, and a proper triangulation (non-collinear).
+        double minDistance = 1e9;
+        for (size_t i = 0; i < pts.size(); ++i)
+        {
+            CHECK (std::abs (pts[i].x) <= 10.0 && std::abs (pts[i].y) <= 10.0);
+            for (size_t j = i + 1; j < pts.size(); ++j)
+                minDistance = std::min (minDistance, std::hypot (pts[i].x - pts[j].x, pts[i].y - pts[j].y));
+        }
+        CHECK (minDistance > 1.0);
+
+        const tripan::Triangulation tri (pts);
+        CHECK (! tri.triangles().empty());
+
+        // Constant power everywhere on a coarse sweep, including outside the speakers.
+        for (double x = -9.0; x <= 9.0; x += 1.5)
+            for (double y = -9.0; y <= 9.0; y += 1.5)
+            {
+                const auto g = tripan::computeGains (tri, { x, y });
+                double sum = 0.0;
+                for (int k = 0; k < g.count; ++k) sum += (double) g.gain[(size_t) k] * g.gain[(size_t) k];
+                CHECK (std::abs (sum - 1.0) < 1e-5);
+            }
+    }
+
+    // Spot checks of the geometry (+y front, +x right, radius 5 m).
+    const auto load = [&] (const char* file, std::vector<tripan::Vec2>& out)
+    {
+        TriPanAudioProcessor p;
+        configure (p, 2, 16, 256);
+        tripan::io::ImportReport r;
+        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
+        out.clear();
+        for (int i = 0; i < r.applied; ++i)
+            out.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'x'))->load(),
+                             (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'y'))->load() });
+    };
+    const auto azimuth = [] (tripan::Vec2 v) { return std::atan2 (v.x, v.y) * 180.0 / 3.14159265358979; };
+
+    std::vector<tripan::Vec2> v;
+    load ("5.1.xml", v);
+    CHECK (std::abs (v[2].x) < 1e-3 && std::abs (v[2].y - 5.0) < 1e-3);                  // centre
+    CHECK (std::abs (azimuth (v[0]) + 30.0) < 0.1 && std::abs (azimuth (v[1]) - 30.0) < 0.1);
+    CHECK (std::abs (azimuth (v[3]) + 110.0) < 0.1 && std::abs (azimuth (v[4]) - 110.0) < 0.1);
+
+    load ("Quad.xml", v);
+    CHECK (std::abs (azimuth (v[0]) + 45.0) < 0.1 && std::abs (azimuth (v[3]) - 135.0) < 0.1);
+
+    load ("Hexagon-front-centre.xml", v);
+    CHECK (std::abs (v[0].x) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3);                  // speaker at front centre
+    load ("Hexagon-symmetric.xml", v);
+    CHECK (std::abs (azimuth (v[0]) + 30.0) < 0.1 && std::abs (azimuth (v[1]) - 30.0) < 0.1);
+    for (const auto& s : v) CHECK (std::abs (s.x) > 1.0);                                // none on the centre line
+
+    load ("Octagon-front-centre.xml", v);
+    CHECK (std::abs (v[0].x) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3);
+    load ("Octagon-symmetric.xml", v);
+    CHECK (std::abs (azimuth (v[0]) + 22.5) < 0.1 && std::abs (azimuth (v[1]) - 22.5) < 0.1);
+    for (const auto& s : v) CHECK (std::abs (s.x) > 1.0);
+
+    load ("Grid-3x3.xml", v);
+    CHECK (std::abs (v[4].x) < 1e-3 && std::abs (v[4].y) < 1e-3);                        // centre of the grid
+    load ("Grid-4x4.xml", v);
+    CHECK (std::abs (v[0].x + 5.0) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3 && std::abs (v[15].x - 5.0) < 1e-3 && std::abs (v[15].y + 5.0) < 1e-3);
+}
+
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
@@ -470,6 +568,11 @@ int main()
     testFullSizeEnergyConservation();
     testParameterAutomationWhileProcessing();
     testFullSize64x64();
+
+    if (argc > 1)
+        testSpeakerPresets (juce::File (argv[1]));
+    else
+        std::printf ("(speaker preset test skipped: pass the Preset folder as argument)\n");
 
     if (failures == 0)
         std::printf ("All processor tests passed\n");

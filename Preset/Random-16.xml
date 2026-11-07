@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<TriPanSpeakers version="1" count="16">
+  <!-- 16 random positions: 16 speakers at random positions within 6 m of the centre, at least 1.5 m apart (fixed seed) -->
+  <Speaker index=" 1" x=" -3.115" y="  1.479"/>
+  <Speaker index=" 2" x=" -1.419" y="  5.152"/>
+  <Speaker index=" 3" x=" -1.873" y=" -3.391"/>
+  <Speaker index=" 4" x="  1.856" y="  0.075"/>
+  <Speaker index=" 5" x="  2.923" y="  2.706"/>
+  <Speaker index=" 6" x=" -2.589" y=" -2.004"/>
+  <Speaker index=" 7" x="  0.216" y="  5.111"/>
+  <Speaker index=" 8" x="  0.659" y="  2.636"/>
+  <Speaker index=" 9" x=" -3.236" y="  3.098"/>
+  <Speaker index="10" x=" -3.871" y=" -0.129"/>
+  <Speaker index="11" x=" -1.192" y="  0.185"/>
+  <Speaker index="12" x="  4.997" y="  3.013"/>
+  <Speaker index="13" x="  2.211" y=" -2.984"/>
+  <Speaker index="14" x="  5.543" y="  1.593"/>
+  <Speaker index="15" x="  3.250" y="  4.632"/>
+  <Speaker index="16" x="  1.688" y=" -5.694"/>
+</TriPanSpeakers>
