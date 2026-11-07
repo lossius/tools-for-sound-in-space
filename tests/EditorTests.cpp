@@ -136,6 +136,97 @@ int main (int argc, char** argv)
         box.setSelectedId (3, juce::sendNotificationSync);
     }
 
+    // Export / import of positions as XML (mode is "both" here).
+    {
+        using tripan::io::Kind;
+        auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("tripan_io_test");
+        dir.deleteRecursively();
+        dir.createDirectory();
+        const auto srcFile = dir.getChildFile ("sources.xml");
+        const auto spkFile = dir.getChildFile ("speakers.xml");
+
+        CHECK (editor->exportPositionsTo (Kind::Sources, srcFile).wasOk());
+        CHECK (editor->exportPositionsTo (Kind::Speakers, spkFile).wasOk());
+
+        // Separate files with their own root elements and one entry per channel in use.
+        const auto srcXml = juce::XmlDocument::parse (srcFile);
+        const auto spkXml = juce::XmlDocument::parse (spkFile);
+        CHECK (srcXml != nullptr && srcXml->hasTagName ("TriPanSources") && srcXml->getNumChildElements() == 3);
+        CHECK (spkXml != nullptr && spkXml->hasTagName ("TriPanSpeakers") && spkXml->getNumChildElements() == 7);
+
+        // Round trip: remember, scramble, import, compare.
+        float srcX[3], srcY[3], spkX[7], spkY[7];
+        for (int i = 0; i < 3; ++i) { srcX[i] = value (p, tripan::params::sourceId (i, 'x'));  srcY[i] = value (p, tripan::params::sourceId (i, 'y')); }
+        for (int i = 0; i < 7; ++i) { spkX[i] = value (p, tripan::params::speakerId (i, 'x')); spkY[i] = value (p, tripan::params::speakerId (i, 'y')); }
+
+        for (int i = 0; i < 3; ++i) { setParam (p, tripan::params::sourceId (i, 'x'), -9.0f);  setParam (p, tripan::params::sourceId (i, 'y'), 9.0f); }
+        for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), -9.0f); setParam (p, tripan::params::speakerId (i, 'y'), 9.0f); }
+
+        CHECK (editor->importPositionsFrom (Kind::Sources, srcFile).wasOk());
+        for (int i = 0; i < 3; ++i)
+        {
+            CHECK (std::abs (value (p, tripan::params::sourceId (i, 'x')) - srcX[i]) < 1e-3f);
+            CHECK (std::abs (value (p, tripan::params::sourceId (i, 'y')) - srcY[i]) < 1e-3f);
+        }
+        // Importing sources did not touch the speakers.
+        CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) + 9.0f) < 1e-3f);
+
+        CHECK (editor->importPositionsFrom (Kind::Speakers, spkFile).wasOk());
+        for (int i = 0; i < 7; ++i)
+        {
+            CHECK (std::abs (value (p, tripan::params::speakerId (i, 'x')) - spkX[i]) < 1e-3f);
+            CHECK (std::abs (value (p, tripan::params::speakerId (i, 'y')) - spkY[i]) < 1e-3f);
+        }
+
+        // A file of the other kind, a missing file and garbage are rejected without changing anything.
+        setParam (p, tripan::params::speakerId (0, 'x'), 3.0f);
+        const auto wrongKind = editor->importPositionsFrom (Kind::Speakers, srcFile);
+        CHECK (wrongKind.failed() && wrongKind.getErrorMessage().containsIgnoreCase ("source"));
+        CHECK (editor->importPositionsFrom (Kind::Sources, spkFile).failed());
+        CHECK (editor->importPositionsFrom (Kind::Sources, dir.getChildFile ("missing.xml")).failed());
+        const auto garbage = dir.getChildFile ("garbage.xml");
+        garbage.replaceWithText ("<TriPanSources><Source index=");
+        CHECK (editor->importPositionsFrom (Kind::Sources, garbage).failed());
+        const auto empty = dir.getChildFile ("empty.xml");
+        empty.replaceWithText ("<TriPanSpeakers version=\"1\"><Speaker index=\"1\" x=\"1\"/></TriPanSpeakers>");
+        CHECK (editor->importPositionsFrom (Kind::Speakers, empty).failed());
+        CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - 3.0f) < 1e-3f);
+
+        // Partial files: valid, out-of-range (clamped), malformed (skipped), and more entries than the
+        // 7 speakers in use (applied, but not counted as in use). The count setting is untouched.
+        const auto mixed = dir.getChildFile ("mixed.xml");
+        juce::String text = "<TriPanSpeakers version=\"1\"><Speaker index=\"2\" x=\"1.5\" y=\"-2.5\"/>"
+                            "<Speaker index=\"3\" x=\"99\" y=\"0\"/><Speaker index=\"4\" x=\"1\"/>"
+                            "<Speaker index=\"12\" x=\"4\" y=\"4\"/></TriPanSpeakers>";
+        mixed.replaceWithText (text);
+        tripan::io::ImportReport report;
+        CHECK (tripan::io::load (p, Kind::Speakers, mixed, report).wasOk());
+        CHECK (report.applied == 3 && report.inUse == 2 && report.clamped == 1 && report.skipped == 1);
+        CHECK (std::abs (value (p, tripan::params::speakerId (1, 'x')) - 1.5f) < 1e-3f);
+        CHECK (std::abs (value (p, tripan::params::speakerId (2, 'x')) - 10.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tripan::params::speakerId (11, 'y')) - 4.0f) < 1e-3f);
+        CHECK (p.getActiveSpeakers() == 7);
+
+        // Restore the picture.
+        for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), spkX[i]); setParam (p, tripan::params::speakerId (i, 'y'), spkY[i]); }
+        setParam (p, tripan::params::speakerId (11, 'y'), 0.0f);
+        setParam (p, tripan::params::speakerId (11, 'x'), 0.0f);
+
+        // Import follows the edit-mode locks; export is always available.
+        auto& box = editor->getModeBox();
+        for (int id = 1; id <= 4; ++id)
+        {
+            box.setSelectedId (id, juce::sendNotificationSync);
+            const auto mode = (EditMode) id;
+            CHECK (editor->getImportSourcesButton().isEnabled() == canEditSources (mode));
+            CHECK (editor->getImportSpeakersButton().isEnabled() == canEditSpeakers (mode));
+            CHECK (editor->getExportSourcesButton().isEnabled() && editor->getExportSpeakersButton().isEnabled());
+        }
+        box.setSelectedId (3, juce::sendNotificationSync);
+
+        dir.deleteRecursively();
+    }
+
     // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.
     {
         const auto s0 = field.toView (0.5, 1.0);

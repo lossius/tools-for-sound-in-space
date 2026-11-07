@@ -17,6 +17,21 @@ cmake --build build --config Release
 On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each build. Use
 `-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
 
+## Saving and loading positions
+Four buttons under the toolbar export and import source and speaker positions as XML files, with a
+file dialog each time. Sources and speakers are separate files:
+```xml
+<TriPanSpeakers version="1" count="3">
+  <Speaker index="1" x="0.0" y="5.0"/>
+  <Speaker index="2" x="4.33" y="-2.5"/>
+  <Speaker index="3" x="-4.33" y="-2.5"/>
+</TriPanSpeakers>
+```
+(`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-10.
+Export writes the channels currently in use. Import checks the whole file first, applies every valid
+entry by index and leaves the "Number of Sources/Speakers" settings alone. Import is disabled while
+the edit mode locks that kind of position.
+
 ## Build (Windows)
 ```
 git clone --recursive <repo-url>

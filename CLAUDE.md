@@ -51,6 +51,12 @@ not redistributable: keep it outside this repo. Check its current licence before
   parameter): 1 move sources (default), 2 move speakers, 3 move both, 4 view only. Locked handles can't be
   grabbed or moved, and "Reset layout" only resets unlocked kinds (disabled in mode 4). Host automation
   of the position parameters is unaffected by the mode.
+- Export/import (`Source/PositionIO.*`, four buttons in the editor): separate XML files for sources
+  (`<TriPanSources version="1" count="n"><Source index="1" x=".." y=".."/>`) and speakers
+  (`<TriPanSpeakers>/<Speaker>`). Export writes the channels in use; import validates the whole file
+  first, writes every valid entry (index 1..64, clamped to +-10 m) and never changes the counts.
+  Import buttons follow the edit-mode locks; export is always enabled. The file dialogs
+  (async `juce::FileChooser`) are not exercised by tests, only `exportPositionsTo/importPositionsFrom`.
 - `numSources` / `numSpeakers` (int, 1..64, default 64): how many of the track's channels are used.
   The host range is fixed; the effective count is clamped to the track's channel count
   (`getActiveSources/Speakers`). Unused sources are silent, unused speakers are left out of the

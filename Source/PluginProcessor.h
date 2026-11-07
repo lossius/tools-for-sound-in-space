@@ -42,6 +42,7 @@ public:
     void setStateInformation (const void*, int) override;
 
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
+    const juce::AudioProcessorValueTreeState& getValueTreeState() const noexcept { return apvts; }
 
     /** Number of sources / speakers in use: the "Number of ..." parameter clamped to 1..channels of
         the track (0 if the track has no such channels). Safe to call from any thread. */

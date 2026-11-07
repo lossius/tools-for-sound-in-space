@@ -47,9 +47,27 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     };
     addAndMakeVisible (resetButton);
 
+    const auto setUpFileButton = [this] (juce::TextButton& b, tripan::io::Kind kind, bool isExport, const juce::String& tip)
+    {
+        b.setTooltip (tip);
+        b.onClick = [this, kind, isExport]
+        {
+            if (isExport)
+                chooseFileAndExport (kind);
+            else
+                chooseFileAndImport (kind);
+        };
+        addAndMakeVisible (b);
+    };
+    using tripan::io::Kind;
+    setUpFileButton (exportSourcesButton,  Kind::Sources,  true,  "Save the source positions in use to an XML file");
+    setUpFileButton (importSourcesButton,  Kind::Sources,  false, "Load source positions from an XML file (needs a mode that unlocks sources)");
+    setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the speaker positions in use to an XML file");
+    setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file (needs a mode that unlocks speakers)");
+
     setResizable (true, true);
-    setResizeLimits (580, 520, 1200, 1300);
-    setSize (700, 780);
+    setResizeLimits (580, 560, 1200, 1300);
+    setSize (700, 810);
 
     syncControls();
     startTimerHz (10);
@@ -122,9 +140,106 @@ void TriPanAudioProcessorEditor::syncControls()
     if (modeBox.getSelectedId() != (int) mode)
         modeBox.setSelectedId ((int) mode, juce::dontSendNotification);
     resetButton.setEnabled (mode != EditMode::View);
+    // Importing changes positions, so it follows the same locks as dragging.
+    importSourcesButton.setEnabled (canEditSources (mode));
+    importSpeakersButton.setEnabled (canEditSpeakers (mode));
 
-    infoLabel.setText ("track: " + juce::String (channelsIn) + " in, " + juce::String (channelsOut) + " out",
+    const bool showingStatus = statusText.isNotEmpty() && juce::Time::getMillisecondCounter() < statusUntil;
+    infoLabel.setText (showingStatus ? statusText
+                                     : "track: " + juce::String (channelsIn) + " in, " + juce::String (channelsOut) + " out",
                        juce::dontSendNotification);
+}
+
+void TriPanAudioProcessorEditor::showStatus (const juce::String& text)
+{
+    statusText = text;
+    statusUntil = juce::Time::getMillisecondCounter() + 5000;
+    syncControls();
+}
+
+juce::Result TriPanAudioProcessorEditor::exportPositionsTo (tripan::io::Kind kind, const juce::File& file)
+{
+    const auto result = tripan::io::save (owner, kind, file);
+    if (result.wasOk())
+    {
+        const int n = kind == tripan::io::Kind::Sources ? owner.getActiveSources() : owner.getActiveSpeakers();
+        showStatus ("Exported " + juce::String (n) + " " + tripan::io::describe (kind) + (n == 1 ? " position" : " positions"));
+    }
+    return result;
+}
+
+juce::Result TriPanAudioProcessorEditor::importPositionsFrom (tripan::io::Kind kind, const juce::File& file)
+{
+    tripan::io::ImportReport report;
+    const auto result = tripan::io::load (owner, kind, file, report);
+    if (result.wasOk())
+    {
+        auto text = "Imported " + juce::String (report.applied) + " " + tripan::io::describe (kind)
+                  + (report.applied == 1 ? " position" : " positions");
+        if (report.inUse < report.applied)
+            text << " (" << report.inUse << " in use)";
+        if (report.clamped > 0)
+            text << ", " << report.clamped << " clamped";
+        if (report.skipped > 0)
+            text << ", " << report.skipped << " skipped";
+        showStatus (text);
+    }
+    return result;
+}
+
+namespace
+{
+juce::File& lastDirectory()
+{
+    static juce::File dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+    return dir;
+}
+}
+
+void TriPanAudioProcessorEditor::chooseFileAndExport (tripan::io::Kind kind)
+{
+    const auto name = tripan::io::describe (kind);
+    fileChooser = std::make_unique<juce::FileChooser> ("Export " + name + " positions",
+                                                       lastDirectory().getChildFile ("TriPan-" + name + "s.xml"),
+                                                       "*.xml", true, false, this);
+
+    const auto flags = juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                     | juce::FileBrowserComponent::warnAboutOverwriting;
+
+    fileChooser->launchAsync (flags, [safe = juce::Component::SafePointer<TriPanAudioProcessorEditor> (this), kind] (const juce::FileChooser& chooser)
+    {
+        auto file = chooser.getResult();
+        if (safe == nullptr || file == juce::File())
+            return;
+
+        if (! file.hasFileExtension ("xml"))
+            file = file.withFileExtension ("xml");
+
+        lastDirectory() = file.getParentDirectory();
+        const auto result = safe->exportPositionsTo (kind, file);
+        if (result.failed())
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Export failed", result.getErrorMessage());
+    });
+}
+
+void TriPanAudioProcessorEditor::chooseFileAndImport (tripan::io::Kind kind)
+{
+    const auto name = tripan::io::describe (kind);
+    fileChooser = std::make_unique<juce::FileChooser> ("Import " + name + " positions", lastDirectory(), "*.xml", true, false, this);
+
+    const auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles;
+
+    fileChooser->launchAsync (flags, [safe = juce::Component::SafePointer<TriPanAudioProcessorEditor> (this), kind] (const juce::FileChooser& chooser)
+    {
+        const auto file = chooser.getResult();
+        if (safe == nullptr || file == juce::File())
+            return;
+
+        lastDirectory() = file.getParentDirectory();
+        const auto result = safe->importPositionsFrom (kind, file);
+        if (result.failed())
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Import failed", result.getErrorMessage());
+    });
 }
 
 void TriPanAudioProcessorEditor::paint (juce::Graphics& g)
@@ -152,6 +267,17 @@ void TriPanAudioProcessorEditor::resized()
     bar.removeFromLeft (12);
     showTriangulationButton.setBounds (bar.removeFromLeft (150));
     resetButton.setBounds (bar.removeFromLeft (100));
+
+    // Third row: export / import of positions.
+    auto files = area.removeFromTop (34).reduced (10, 4);
+    const int w = (files.getWidth() - 3 * 8) / 4;
+    exportSourcesButton.setBounds (files.removeFromLeft (w));
+    files.removeFromLeft (8);
+    importSourcesButton.setBounds (files.removeFromLeft (w));
+    files.removeFromLeft (8);
+    exportSpeakersButton.setBounds (files.removeFromLeft (w));
+    files.removeFromLeft (8);
+    importSpeakersButton.setBounds (files);
 
     field.setBounds (area);
 }

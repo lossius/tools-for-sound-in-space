@@ -55,7 +55,8 @@ juce_add_plugin(TriPan
 target_sources(TriPan PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/FieldComponent.cpp)
+    Source/FieldComponent.cpp
+    Source/PositionIO.cpp)
 
 target_compile_definitions(TriPan PUBLIC
     JUCE_WEB_BROWSER=0
