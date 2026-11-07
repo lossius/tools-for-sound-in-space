@@ -42,6 +42,10 @@ not redistributable: keep it outside this repo. Check its current licence before
   publishes an immutable Triangulation through `TriangulationExchange` (hazard-pointer handover).
   processBlock computes per-source gains each block and ramps linearly from the previous block's gains.
 - First run only (flag `layoutInitialised` in saved state): active channels get default rings.
+- Editor: `Source/FieldComponent.*` draws the plane (±10 m), triangulation, source-to-speaker links
+  and drags handles through the parameters (with change gestures). `tests/EditorTests.cpp` tests
+  hit-testing/dragging and, given a path argument, writes a PNG snapshot Claude can look at:
+  `build/Debug/TriPanEditorTests /path/out.png`.
 - `tests/ProcessorTests.cpp` drives the processor offline (energy conservation, locality, state, 64x64).
 - Edge cases handled and tested in M2: source outside the convex hull (project to nearest hull edge),
   fewer than 3 speakers, collinear speakers, coincident points.

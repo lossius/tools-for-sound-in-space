@@ -1,0 +1,123 @@
+// Editor tests: hit-testing, dragging through the parameters, and an optional PNG snapshot
+// (pass an output path as argv[1]).
+#include "../Source/Parameters.h"
+#include "../Source/PluginEditor.h"
+#include "../Source/PluginProcessor.h"
+
+#include <cmath>
+#include <cstdio>
+
+static int failures = 0;
+
+#define CHECK(cond)                                                          \
+    do {                                                                     \
+        if (! (cond)) {                                                      \
+            std::printf ("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);     \
+            ++failures;                                                      \
+        }                                                                    \
+    } while (false)
+
+static float value (TriPanAudioProcessor& p, const juce::String& id)
+{
+    return p.getValueTreeState().getRawParameterValue (id)->load();
+}
+
+static void setParam (TriPanAudioProcessor& p, const juce::String& id, float v)
+{
+    auto* prm = p.getValueTreeState().getParameter (id);
+    prm->setValueNotifyingHost (prm->convertTo0to1 (v));
+}
+
+int main (int argc, char** argv)
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    TriPanAudioProcessor p;
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (3));
+    layout.outputBuses.add (juce::AudioChannelSet::discreteChannels (7));
+    CHECK (p.setBusesLayout (layout));
+    p.setPlayConfigDetails (3, 7, 48000.0, 512);
+    p.prepareToPlay (48000.0, 512);
+
+    // Make the layout a little irregular so the picture is more interesting.
+    setParam (p, tripan::params::speakerId (2, 'x'), 6.5f);
+    setParam (p, tripan::params::speakerId (2, 'y'), -1.0f);
+    setParam (p, tripan::params::speakerId (5, 'x'), -3.0f);
+    setParam (p, tripan::params::speakerId (5, 'y'), -2.0f);
+    setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
+    setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+    setParam (p, tripan::params::sourceId (1, 'x'), -6.5f);
+    setParam (p, tripan::params::sourceId (1, 'y'), 8.5f); // outside the hull
+    setParam (p, tripan::params::sourceId (2, 'x'), 3.0f);
+    setParam (p, tripan::params::sourceId (2, 'y'), -3.5f);
+    p.refreshTriangulation();
+
+    std::unique_ptr<juce::AudioProcessorEditor> base (p.createEditor());
+    auto* editor = dynamic_cast<TriPanAudioProcessorEditor*> (base.get());
+    CHECK (editor != nullptr);
+    editor->setSize (680, 740);
+    auto& field = editor->getField();
+
+    // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.
+    {
+        const auto s0 = field.toView (0.5, 1.0);
+        const auto h = field.findHandleAt (s0);
+        CHECK (h && h->isSource && h->index == 0);
+
+        const auto sp2 = field.toView (6.5, -1.0);
+        const auto h2 = field.findHandleAt (sp2 + juce::Point<float> (3.0f, -2.0f));
+        CHECK (h2 && ! h2->isSource && h2->index == 2);
+
+        CHECK (! field.findHandleAt (field.toView (9.0, 9.0)).has_value());
+        // Inactive channels (source 4 and above) are not hit-testable even though their parameters exist.
+        setParam (p, tripan::params::sourceId (3, 'x'), -9.0f);
+        setParam (p, tripan::params::sourceId (3, 'y'), -9.0f);
+        CHECK (! field.findHandleAt (field.toView (-9.0, -9.0)).has_value());
+    }
+
+    // Drag speaker 2 to a new place via the component's own mapping; parameters follow.
+    {
+        const auto target = field.toView (-2.0, 7.0);
+        field.moveHandle ({ false, 2 }, target);
+        CHECK (std::abs (value (p, tripan::params::speakerId (2, 'x')) + 2.0f) < 0.02f);
+        CHECK (std::abs (value (p, tripan::params::speakerId (2, 'y')) - 7.0f) < 0.02f);
+
+        // Dragging far outside the plane clamps to the parameter range (screen y grows downwards).
+        field.moveHandle ({ true, 0 }, juce::Point<float> (-5000.0f, 5000.0f));
+        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) + 10.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'y')) + 10.0f) < 1e-3f);
+
+        // Round trip of the coordinate mapping.
+        const auto v = field.toView (3.25, -4.5);
+        field.moveHandle ({ true, 1 }, v);
+        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 3.25f) < 0.02f);
+        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'y')) + 4.5f) < 0.02f);
+    }
+
+    // Restore a pleasant picture for the snapshot.
+    setParam (p, tripan::params::speakerId (2, 'x'), 6.5f);
+    setParam (p, tripan::params::speakerId (2, 'y'), -1.0f);
+    setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
+    setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+    setParam (p, tripan::params::sourceId (1, 'x'), -6.5f);
+    setParam (p, tripan::params::sourceId (1, 'y'), 8.5f);
+
+    if (argc > 1)
+    {
+        field.refresh();
+        auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+        juce::File out (argv[1]);
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        CHECK (stream.openedOk() && png.writeImageToStream (image, stream));
+        std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+    }
+
+    base.reset();
+
+    if (failures == 0)
+        std::printf ("All editor tests passed\n");
+    return failures == 0 ? 0 : 1;
+}

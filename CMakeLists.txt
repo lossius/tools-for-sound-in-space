@@ -47,7 +47,8 @@ juce_add_plugin(TriPan
 
 target_sources(TriPan PRIVATE
     Source/PluginProcessor.cpp
-    Source/PluginEditor.cpp)
+    Source/PluginEditor.cpp
+    Source/FieldComponent.cpp)
 
 target_compile_definitions(TriPan PUBLIC
     JUCE_WEB_BROWSER=0
@@ -74,3 +75,15 @@ target_link_libraries(TriPanProcessorTests
         juce::juce_recommended_config_flags
         juce::juce_recommended_warning_flags)
 add_test(NAME TriPanProcessorTests COMMAND TriPanProcessorTests)
+
+# Editor interaction test; with a path argument it also writes a PNG snapshot of the editor.
+add_executable(TriPanEditorTests tests/EditorTests.cpp)
+target_include_directories(TriPanEditorTests PRIVATE Source)
+target_link_libraries(TriPanEditorTests
+    PRIVATE
+        TriPan
+        TriPanCore
+        juce::juce_audio_utils
+        juce::juce_recommended_config_flags
+        juce::juce_recommended_warning_flags)
+add_test(NAME TriPanEditorTests COMMAND TriPanEditorTests)
