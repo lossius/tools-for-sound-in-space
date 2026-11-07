@@ -482,7 +482,9 @@ static void testSpeakerPresets (const juce::File& dir)
         CHECK (result.wasOk());
         CHECK (report.applied == e.count && report.skipped == 0 && report.clamped == 0);
 
-        setParam (p, tripan::params::kNumSpeakersId, (float) e.count);
+        // Importing a speaker setup adjusts Number of Speakers (the track has 16 outputs).
+        CHECK (report.fileCount == e.count && report.speakersSetTo == e.count && report.inUse == e.count);
+        CHECK (p.getActiveSpeakers() == e.count);
 
         std::vector<tripan::Vec2> pts;
         for (int i = 0; i < e.count; ++i)
@@ -511,6 +513,34 @@ static void testSpeakerPresets (const juce::File& dir)
                 for (int k = 0; k < g.count; ++k) sum += (double) g.gain[(size_t) k] * g.gain[(size_t) k];
                 CHECK (std::abs (sum - 1.0) < 1e-5);
             }
+    }
+
+    // The number of speakers follows the file, in both directions, as long as the track supports it.
+    {
+        TriPanAudioProcessor p;
+        CHECK (configure (p, 2, 8, 256));
+        tripan::io::ImportReport r;
+
+        CHECK (p.getActiveSpeakers() == 8);
+        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile ("Quad.xml"), r).wasOk());
+        CHECK (p.getActiveSpeakers() == 4 && r.speakersSetTo == 4 && r.trackOutputs == 8);
+        CHECK (std::abs (p.getValueTreeState().getRawParameterValue (tripan::params::kNumSpeakersId)->load() - 4.0f) < 1e-3f);
+
+        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile ("Octagon-symmetric.xml"), r).wasOk());
+        CHECK (p.getActiveSpeakers() == 8 && r.speakersSetTo == 8);
+
+        // A file with more speakers than the track has outputs: positions are stored, the count is left alone.
+        setParam (p, tripan::params::kNumSpeakersId, 5.0f);
+        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile ("Grid-4x4.xml"), r).wasOk());
+        CHECK (r.fileCount == 16 && r.speakersSetTo == 0 && r.trackOutputs == 8 && r.applied == 16 && r.inUse == 5);
+        CHECK (p.getActiveSpeakers() == 5);
+
+        // Importing sources never changes Number of Sources.
+        const auto sourceFile = dir.getChildFile ("..").getChildFile ("tripan_one_source.xml");
+        sourceFile.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"1\" y=\"2\"/></TriPanSources>");
+        CHECK (tripan::io::load (p, tripan::io::Kind::Sources, sourceFile, r).wasOk());
+        CHECK (p.getActiveSources() == 2 && r.speakersSetTo == 0);
+        sourceFile.deleteFile();
     }
 
     // Spot checks of the geometry (+y front, +x right, radius 5 m).

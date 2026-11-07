@@ -1,6 +1,7 @@
 #include "PositionIO.h"
 #include "Parameters.h"
 
+#include <algorithm>
 #include <cmath>
 #include <map>
 
@@ -140,15 +141,31 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
     if (entries.empty())
         return juce::Result::fail ("The file contains no valid " + describe (kind) + " positions.");
 
-    const int inUseLimit = kind == Kind::Sources ? p.getActiveSources() : p.getActiveSpeakers();
     for (const auto& [index, pos] : entries)
     {
         writeParam (p, idFor (kind, index - 1, 'x'), pos.x);
         writeParam (p, idFor (kind, index - 1, 'y'), pos.y);
         ++report.applied;
-        if (index <= inUseLimit)
-            ++report.inUse;
     }
+
+    if (kind == Kind::Speakers)
+    {
+        // A speaker setup defines how many speakers there are: adjust "Number of Speakers" to match,
+        // provided the track has that many outputs.
+        report.fileCount = entries.rbegin()->first;
+        report.trackOutputs = std::min (p.getTotalNumOutputChannels(), kMaxChannels);
+
+        if (report.fileCount <= report.trackOutputs)
+        {
+            writeParam (p, params::kNumSpeakersId, (float) report.fileCount);
+            report.speakersSetTo = report.fileCount;
+        }
+    }
+
+    const int inUseLimit = kind == Kind::Sources ? p.getActiveSources() : p.getActiveSpeakers();
+    for (const auto& entry : entries)
+        if (entry.first <= inUseLimit)
+            ++report.inUse;
 
     p.refreshTriangulation();
     return juce::Result::ok();

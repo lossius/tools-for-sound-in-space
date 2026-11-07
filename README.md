@@ -29,13 +29,15 @@ file dialog each time. Sources and speakers are separate files:
 ```
 (`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-10.
 Export writes the channels currently in use, with coordinates rounded to 3 decimal places and padded with spaces so that positive and negative values line up (import ignores the padding). Import checks the whole file first, applies every valid
-entry by index and leaves the "Number of Sources/Speakers" settings alone. Import is disabled while
+entry by index. Importing speakers also sets "Number of Speakers" to the number of speakers in the
+file, provided the track has that many outputs (otherwise the setting is left alone and the status
+line says so). Importing sources never changes "Number of Sources". Import is disabled while
 the edit mode locks that kind of position.
 
 ## Speaker presets
 The `Preset/` folder has ready-made speaker layouts in the same XML format. Load one with
-"Import speakers..." (set the mode to one that unlocks speakers, and set Number of Speakers to
-match). Angles are azimuths clockwise from the front, speakers are on a 5 m circle, and the LFE
+"Import speakers..." (set the mode to one that unlocks speakers). Number of Speakers is adjusted to
+the preset automatically when the track has enough outputs. Angles are azimuths clockwise from the front, speakers are on a 5 m circle, and the LFE
 channel is left out.
 
 | File | Speakers | Layout |

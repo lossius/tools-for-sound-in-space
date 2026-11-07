@@ -253,6 +253,18 @@ int main (int argc, char** argv)
         CHECK (std::abs (value (p, tripan::params::speakerId (11, 'y')) - 4.0f) < 1e-3f);
         CHECK (p.getActiveSpeakers() == 7);
 
+        // Importing a speaker file with 3 speakers sets Number of Speakers to 3 (the track has 7 outputs)
+        // and the control follows.
+        const auto three = dir.getChildFile ("three.xml");
+        three.replaceWithText ("<TriPanSpeakers version=\"1\"><Speaker index=\"1\" x=\"-3\" y=\"3\"/>"
+                               "<Speaker index=\"2\" x=\"3\" y=\"3\"/><Speaker index=\"3\" x=\"0\" y=\"-4\"/></TriPanSpeakers>");
+        CHECK (editor->importPositionsFrom (Kind::Speakers, three).wasOk());
+        CHECK (p.getActiveSpeakers() == 3);
+        CHECK (editor->getSpeakerCountSlider().getValue() == 3.0);
+        setParam (p, tripan::params::kNumSpeakersId, 7.0f); // back to all 7
+        editor->syncControls();
+        CHECK (editor->getSpeakerCountSlider().getValue() == 7.0);
+
         // Restore the picture.
         for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), spkX[i]); setParam (p, tripan::params::speakerId (i, 'y'), spkY[i]); }
         setParam (p, tripan::params::speakerId (11, 'y'), 0.0f);

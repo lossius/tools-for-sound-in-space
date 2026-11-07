@@ -182,7 +182,12 @@ juce::Result TriPanAudioProcessorEditor::importPositionsFrom (tripan::io::Kind k
     {
         auto text = "Imported " + juce::String (report.applied) + " " + tripan::io::describe (kind)
                   + (report.applied == 1 ? " position" : " positions");
-        if (report.inUse < report.applied)
+        if (report.speakersSetTo > 0)
+            text << ", Number of Speakers set to " << report.speakersSetTo;
+        else if (kind == tripan::io::Kind::Speakers)
+            text << " (track has " << report.trackOutputs << (report.trackOutputs == 1 ? " output" : " outputs")
+                 << ": Number of Speakers unchanged)";
+        else if (report.inUse < report.applied)
             text << " (" << report.inUse << " in use)";
         if (report.clamped > 0)
             text << ", " << report.clamped << " clamped";
