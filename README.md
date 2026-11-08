@@ -18,13 +18,13 @@ On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each b
 `-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
 
 ## Edit and View
-Two menus at the top of the window, one for sources and one for speakers, switch each kind of
+In the top rows of the window, one row for sources and one for speakers, a menu switches each kind of
 position between **Edit** (can be dragged and imported) and **View** (locked). By default sources
 are set to Edit and speakers to View. The choice is saved with the session. It only affects the
 window: automation from the host can still move everything.
 
 ## Saving and loading positions
-Four buttons under the toolbar export and import source and speaker positions as XML files, with a
+The export and import buttons on the sources and speakers rows save and load source and speaker positions as XML files, with a
 file dialog each time. Sources and speakers are separate files:
 ```xml
 <TriPanSpeakers version="1" count="3">

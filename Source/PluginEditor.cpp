@@ -283,35 +283,32 @@ void TriPanAudioProcessorEditor::layoutContent()
 {
     auto area = content.getLocalBounds();
 
-    // Top row: number of sources / speakers in use, and whether each kind can be edited or is view only.
-    auto top = area.removeFromTop (40).reduced (10, 6);
-    sourcesLabel.setBounds (top.removeFromLeft (64));
-    sourceCount.setBounds (top.removeFromLeft (110));
-    top.removeFromLeft (6);
-    sourcesModeBox.setBounds (top.removeFromLeft (80));
-    top.removeFromLeft (16);
-    speakersLabel.setBounds (top.removeFromLeft (70));
-    speakerCount.setBounds (top.removeFromLeft (110));
-    top.removeFromLeft (6);
-    speakersModeBox.setBounds (top.removeFromLeft (80));
+    // One row per kind of position, with everything that belongs to it: how many are in use, whether
+    // they can be edited, and export / import of their positions. Both rows share the same columns.
+    const auto layoutRow = [&] (juce::Rectangle<int> row, juce::Label& label, juce::Slider& count, juce::ComboBox& menu,
+                                juce::TextButton& exportButton, juce::TextButton& importButton)
+    {
+        row = row.reduced (10, 5);
+        label.setBounds (row.removeFromLeft (70));
+        count.setBounds (row.removeFromLeft (110));
+        row.removeFromLeft (8);
+        menu.setBounds (row.removeFromLeft (84));
+        row.removeFromLeft (16);
+        const int buttonWidth = (row.getWidth() - 8) / 2;
+        exportButton.setBounds (row.removeFromLeft (buttonWidth));
+        row.removeFromLeft (8);
+        importButton.setBounds (row);
+    };
 
-    // Second row: display options, and a line of status text (track channels, import/export results).
-    auto bar = area.removeFromTop (34).reduced (10, 4);
+    layoutRow (area.removeFromTop (36), sourcesLabel, sourceCount, sourcesModeBox, exportSourcesButton, importSourcesButton);
+    layoutRow (area.removeFromTop (36), speakersLabel, speakerCount, speakersModeBox, exportSpeakersButton, importSpeakersButton);
+
+    // Third row: display options, and a line of text (track channels in and out, import/export results).
+    auto bar = area.removeFromTop (36).reduced (10, 5);
     showTriangulationButton.setBounds (bar.removeFromLeft (150));
     resetButton.setBounds (bar.removeFromLeft (100));
     bar.removeFromLeft (12);
     infoLabel.setBounds (bar);
-
-    // Third row: export / import of positions.
-    auto files = area.removeFromTop (34).reduced (10, 4);
-    const int w = (files.getWidth() - 3 * 8) / 4;
-    exportSourcesButton.setBounds (files.removeFromLeft (w));
-    files.removeFromLeft (8);
-    importSourcesButton.setBounds (files.removeFromLeft (w));
-    files.removeFromLeft (8);
-    exportSpeakersButton.setBounds (files.removeFromLeft (w));
-    files.removeFromLeft (8);
-    importSpeakersButton.setBounds (files);
 
     field.setBounds (area);
 }

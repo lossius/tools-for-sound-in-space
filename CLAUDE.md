@@ -47,7 +47,8 @@ not redistributable: keep it outside this repo. Check its current licence before
   Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
-- Edit / View per kind of position: two menus at the top of the editor (sources, speakers), each "Edit" or
+- Top of the editor: row 1 sources, row 2 speakers (count, Edit/View menu, export, import), row 3 triangulation
+  toggle, reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
   "View". Defaults: sources Edit, speakers View. Stored in the plugin state as `editSources` / `editSpeakers`
   (not host parameters; the old single `editMode` property from earlier versions is still read) and queried with
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, its
