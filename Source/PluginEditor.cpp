@@ -22,6 +22,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     infoLabel.setJustificationType (juce::Justification::centredRight);
     infoLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
     infoLabel.setFont (juce::FontOptions (12.0f));
+    infoLabel.setMinimumHorizontalScale (0.6f); // long import/export messages are squeezed to fit
     content.addAndMakeVisible (infoLabel);
 
     // One menu per kind of position: "Edit" lets the user move them in this window, "View" locks them.
@@ -51,6 +52,14 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
         owner.resetLayoutToRings (owner.canEditSources(), owner.canEditSpeakers());
     };
     content.addAndMakeVisible (resetButton);
+
+    zoomInButton.setTooltip ("Zoom in on the area that contains the speakers");
+    zoomInButton.onClick = [this] { field.zoomIn(); syncControls(); };
+    content.addAndMakeVisible (zoomInButton);
+
+    zoomOutButton.setTooltip ("Zoom out, back to the entire area");
+    zoomOutButton.onClick = [this] { field.zoomOut(); syncControls(); };
+    content.addAndMakeVisible (zoomOutButton);
 
     const auto setUpFileButton = [this] (juce::TextButton& b, tripan::io::Kind kind, bool isExport, const juce::String& tip)
     {
@@ -152,6 +161,8 @@ void TriPanAudioProcessorEditor::syncControls()
     if (speakersModeBox.getSelectedId() != (editSpeakers ? 1 : 2))
         speakersModeBox.setSelectedId (editSpeakers ? 1 : 2, juce::dontSendNotification);
     resetButton.setEnabled (editSources || editSpeakers);
+    zoomInButton.setEnabled (field.canZoomIn());
+    zoomOutButton.setEnabled (field.canZoomOut());
 
     const bool showingStatus = statusText.isNotEmpty() && juce::Time::getMillisecondCounter() < statusUntil;
     infoLabel.setText (showingStatus ? statusText
@@ -304,7 +315,11 @@ void TriPanAudioProcessorEditor::layoutContent()
     auto bar = area.removeFromTop (36).reduced (10, 5);
     showTriangulationButton.setBounds (bar.removeFromLeft (150));
     resetButton.setBounds (bar.removeFromLeft (100));
-    bar.removeFromLeft (12);
+    bar.removeFromLeft (8);
+    zoomInButton.setBounds (bar.removeFromLeft (74));
+    bar.removeFromLeft (4);
+    zoomOutButton.setBounds (bar.removeFromLeft (74));
+    bar.removeFromLeft (10);
     infoLabel.setBounds (bar);
 
     field.setBounds (area);

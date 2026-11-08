@@ -17,6 +17,13 @@ cmake --build build --config Release
 On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each build. Use
 `-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
 
+## Zooming
+**Zoom In** and **Zoom Out** (third row) change the visible area of the pad. Each press of Zoom In
+zooms a step towards the area that contains all speakers in use and stops when they just fill the pad;
+Zoom Out zooms back in steps until the entire +-10 m area is shown again, as at start. The view stays
+where it is while you drag speakers, so press Zoom In again after moving them if you want it refitted.
+The grid labels follow the zoom. The zoom is not saved with the session.
+
 ## Edit and View
 In the top rows of the window, one row for sources and one for speakers, a menu switches each kind of
 position between **Edit** (can be dragged in the window) and **View** (locked against dragging and "Reset layout"; importing and exporting still work). By default sources

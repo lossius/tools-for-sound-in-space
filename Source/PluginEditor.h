@@ -29,6 +29,8 @@ public:
     juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }
     juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }
     juce::TextButton& getResetButton() noexcept { return resetButton; }
+    juce::TextButton& getZoomInButton() noexcept { return zoomInButton; }
+    juce::TextButton& getZoomOutButton() noexcept { return zoomOutButton; }
     juce::TextButton& getExportSourcesButton() noexcept { return exportSourcesButton; }
     juce::TextButton& getImportSourcesButton() noexcept { return importSourcesButton; }
     juce::TextButton& getExportSpeakersButton() noexcept { return exportSpeakersButton; }
@@ -72,6 +74,8 @@ private:
     juce::ComboBox sourcesModeBox, speakersModeBox; // "Edit" / "View"
     juce::ToggleButton showTriangulationButton { "Show triangulation" };
     juce::TextButton resetButton { "Reset layout" };
+    juce::TextButton zoomInButton { "Zoom In" };
+    juce::TextButton zoomOutButton { "Zoom Out" };
     juce::TextButton exportSourcesButton  { "Export sources..." };
     juce::TextButton importSourcesButton  { "Import sources..." };
     juce::TextButton exportSpeakersButton { "Export speakers..." };

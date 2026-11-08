@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "Parameters.h"
 #include "tripan/Triangulation.h"
 
 #include <array>
@@ -25,6 +26,17 @@ public:
 
     void setShowTriangulation (bool shouldShow);
 
+    /** Zoom. The full view shows the whole +-10 m plane. Zoom in moves a step towards the area that
+        contains all speakers in use (and stops there); zoom out moves a step back towards the full
+        view. The view is fixed once set, so it does not shift while speakers are dragged. */
+    void zoomIn();
+    void zoomOut();
+    bool canZoomIn() const;
+    bool canZoomOut() const;
+    /** Half the width of the visible area in metres (10 = the entire plane) and its centre. */
+    double getViewHalfExtent() const noexcept { return viewHalf; }
+    juce::Point<double> getViewCentre() const noexcept { return viewCentre; }
+
     /** Re-reads the parameters and repaints if anything changed (also called by a 30 Hz timer). */
     void refresh() { timerCallback(); }
 
@@ -46,6 +58,13 @@ private:
     juce::Point<double> fromView (juce::Point<float> p) const;
     juce::Point<double> position (const Handle&) const;
     juce::RangedAudioParameter* parameter (const Handle&, char axis) const;
+    struct View
+    {
+        juce::Point<double> centre;
+        double half;
+    };
+    /** The view that just shows all speakers in use, if there are any. */
+    std::optional<View> fittedView() const;
     int activeSources() const;
     int activeSpeakers() const;
     void timerCallback() override;
@@ -58,6 +77,8 @@ private:
     std::unique_ptr<tripan::Triangulation> triangulation;
     size_t lastStateHash = 0;
     bool showTriangulation = true;
+    double viewHalf = (double) tripan::params::kCoordRange; // see zoomIn()
+    juce::Point<double> viewCentre;
 
     std::optional<Handle> dragging;
     std::optional<Handle> hovered;

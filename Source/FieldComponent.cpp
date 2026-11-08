@@ -9,7 +9,9 @@
 
 namespace
 {
-constexpr float kViewRange = tripan::params::kCoordRange; // metres shown on each side of the origin
+constexpr double kFullHalf = tripan::params::kCoordRange; // the full view shows +-kFullHalf metres
+constexpr double kZoomStep = 1.5;                         // view size ratio between two zoom levels
+constexpr double kMinHalf = 2.0;                          // never zoom in closer than +-2 m
 constexpr float kGrabRadius = 13.0f;
 constexpr float kMargin = 22.0f;
 
@@ -73,15 +75,15 @@ juce::Rectangle<float> FieldComponent::planeBounds() const
 juce::Point<float> FieldComponent::toView (double x, double y) const
 {
     const auto r = planeBounds();
-    return { r.getX() + r.getWidth() * (float) ((x + kViewRange) / (2.0 * kViewRange)),
-             r.getBottom() - r.getHeight() * (float) ((y + kViewRange) / (2.0 * kViewRange)) };
+    return { r.getX() + r.getWidth() * (float) ((x - viewCentre.x) / (2.0 * viewHalf) + 0.5),
+             r.getBottom() - r.getHeight() * (float) ((y - viewCentre.y) / (2.0 * viewHalf) + 0.5) };
 }
 
 juce::Point<double> FieldComponent::fromView (juce::Point<float> p) const
 {
     const auto r = planeBounds();
-    return { ((double) (p.x - r.getX()) / r.getWidth()) * 2.0 * kViewRange - kViewRange,
-             ((double) (r.getBottom() - p.y) / r.getHeight()) * 2.0 * kViewRange - kViewRange };
+    return { viewCentre.x + (((double) (p.x - r.getX()) / r.getWidth()) - 0.5) * 2.0 * viewHalf,
+             viewCentre.y + (((double) (r.getBottom() - p.y) / r.getHeight()) - 0.5) * 2.0 * viewHalf };
 }
 
 std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<float> p) const
@@ -125,6 +127,64 @@ void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
 
     set (parameter (h, 'x'), pos.x);
     set (parameter (h, 'y'), pos.y);
+}
+
+std::optional<FieldComponent::View> FieldComponent::fittedView() const
+{
+    const int m = activeSpeakers();
+    if (m <= 0)
+        return std::nullopt;
+
+    double minX = 1e300, maxX = -1e300, minY = 1e300, maxY = -1e300;
+    for (int i = 0; i < m; ++i)
+    {
+        const auto pos = position ({ false, i });
+        minX = std::min (minX, pos.x);  maxX = std::max (maxX, pos.x);
+        minY = std::min (minY, pos.y);  maxY = std::max (maxY, pos.y);
+    }
+
+    View v;
+    v.centre = { 0.5 * (minX + maxX), 0.5 * (minY + maxY) };
+    v.half = std::clamp (std::max (maxX - minX, maxY - minY) * 0.5 * 1.1 + 0.5, kMinHalf, kFullHalf);
+    return v;
+}
+
+bool FieldComponent::canZoomIn() const
+{
+    const auto fit = fittedView();
+    return fit && fit->half < viewHalf - 1e-6;
+}
+
+bool FieldComponent::canZoomOut() const
+{
+    return viewHalf < kFullHalf - 1e-6;
+}
+
+void FieldComponent::zoomIn()
+{
+    if (! canZoomIn())
+        return;
+
+    const auto fit = *fittedView();
+    const double newHalf = std::max (fit.half, viewHalf / kZoomStep);
+    const double fraction = (viewHalf - newHalf) / (viewHalf - fit.half); // how far to the fitted view
+    viewCentre += (fit.centre - viewCentre) * fraction;
+    viewHalf = newHalf;
+    repaint();
+}
+
+void FieldComponent::zoomOut()
+{
+    if (! canZoomOut())
+        return;
+
+    const double newHalf = std::min (kFullHalf, viewHalf * kZoomStep);
+    const double fraction = (newHalf - viewHalf) / (kFullHalf - viewHalf); // how far to the full view
+    viewCentre = viewCentre * (1.0 - fraction);
+    viewHalf = newHalf;
+    if (viewHalf >= kFullHalf - 1e-9)
+        viewCentre = {};
+    repaint();
 }
 
 void FieldComponent::timerCallback()
@@ -172,17 +232,48 @@ void FieldComponent::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff15181d));
     g.fillRoundedRectangle (plane, 6.0f);
 
-    // Grid: every metre faint, every 5 m stronger, axes strongest.
-    for (int k = -(int) kViewRange; k <= (int) kViewRange; ++k)
+    // Grid. The spacing follows the zoom: minor lines every 1 / 0.5 / 0.25 m, stronger major lines
+    // every 5 / 2 / 1 m, and the axes (x = 0, y = 0) strongest. Major lines are labelled at the edges.
+    const double minorStep = viewHalf >= 5.0 ? 1.0 : (viewHalf >= 2.5 ? 0.5 : 0.25);
+    const double majorStep = viewHalf >= 5.0 ? 5.0 : (viewHalf >= 2.5 ? 2.0 : 1.0);
+
+    const auto formatMetres = [] (double v) { return juce::String (v, juce::approximatelyEqual (std::fmod (std::abs (v), 1.0), 0.0) ? 0 : 1) + " m"; };
+
+    g.saveState();
+    g.reduceClipRegion (plane.toNearestInt());
+
+    const auto drawLines = [&] (bool vertical)
     {
-        const bool axis = k == 0;
-        const bool major = k % 5 == 0;
-        g.setColour (juce::Colours::white.withAlpha (axis ? 0.35f : major ? 0.16f : 0.06f));
-        const auto a = toView (k, -kViewRange), b = toView (k, kViewRange);
-        const auto c = toView (-kViewRange, k), d = toView (kViewRange, k);
-        g.drawLine (a.x, a.y, b.x, b.y, axis ? 1.5f : 1.0f);
-        g.drawLine (c.x, c.y, d.x, d.y, axis ? 1.5f : 1.0f);
-    }
+        const double centre = vertical ? viewCentre.x : viewCentre.y;
+        const long first = (long) std::ceil ((centre - viewHalf) / minorStep - 1e-9);
+        const long last  = (long) std::floor ((centre + viewHalf) / minorStep + 1e-9);
+
+        for (long n = first; n <= last; ++n)
+        {
+            const double v = (double) n * minorStep;
+            const bool axis = n == 0;
+            const bool major = std::abs (std::remainder (v, majorStep)) < 1e-9;
+
+            g.setColour (juce::Colours::white.withAlpha (axis ? 0.35f : major ? 0.16f : 0.06f));
+            const auto a = vertical ? toView (v, viewCentre.y - viewHalf) : toView (viewCentre.x - viewHalf, v);
+            const auto b = vertical ? toView (v, viewCentre.y + viewHalf) : toView (viewCentre.x + viewHalf, v);
+            g.drawLine (a.x, a.y, b.x, b.y, axis ? 1.5f : 1.0f);
+
+            if (major)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.45f));
+                g.setFont (juce::FontOptions (11.0f));
+                if (vertical)
+                    g.drawText (formatMetres (v), juce::Rectangle<float> (a.x - 25.0f, plane.getBottom() - 15.0f, 50.0f, 13.0f), juce::Justification::centred);
+                else
+                    g.drawText (formatMetres (v), juce::Rectangle<float> (plane.getX() + 4.0f, a.y - 14.0f, 50.0f, 13.0f), juce::Justification::left);
+            }
+        }
+    };
+    drawLines (true);
+    drawLines (false);
+
+    g.restoreState();
 
     g.setColour (juce::Colours::white.withAlpha (0.45f));
     g.setFont (juce::FontOptions (12.0f));
@@ -190,11 +281,6 @@ void FieldComponent::paint (juce::Graphics& g)
                 juce::Justification::centred);
     g.drawText ("back", juce::Rectangle<float> (plane.getCentreX() - 30.0f, plane.getBottom() + 2.0f, 60.0f, 16.0f),
                 juce::Justification::centred);
-    for (int k : { -5, 5 })
-    {
-        const auto p = toView (k, 0);
-        g.drawText (juce::String (k) + " m", juce::Rectangle<float> (p.x - 20.0f, p.y + 2.0f, 40.0f, 14.0f), juce::Justification::centred);
-    }
 
     g.saveState();
     g.reduceClipRegion (plane.toNearestInt());

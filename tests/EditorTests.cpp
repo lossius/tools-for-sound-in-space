@@ -349,6 +349,88 @@ int main (int argc, char** argv)
         editor->setSize (baseW, baseH);
     }
 
+    // Zoom In / Zoom Out on the XY pad.
+    {
+        auto& zin = editor->getZoomInButton();
+        auto& zout = editor->getZoomOutButton();
+        editor->syncControls();
+
+        // Start: the whole area, as before.
+        CHECK (field.getViewHalfExtent() == 10.0 && field.getViewCentre().x == 0.0 && field.getViewCentre().y == 0.0);
+        CHECK (zin.isEnabled() && ! zout.isEnabled());
+        CHECK (zin.getButtonText() == "Zoom In" && zout.getButtonText() == "Zoom Out");
+
+        // The area with the speakers that are in use.
+        double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+        for (int i = 0; i < p.getActiveSpeakers(); ++i)
+        {
+            const double x = value (p, tripan::params::speakerId (i, 'x')), y = value (p, tripan::params::speakerId (i, 'y'));
+            minX = std::min (minX, x); maxX = std::max (maxX, x); minY = std::min (minY, y); maxY = std::max (maxY, y);
+        }
+        const double centreX = 0.5 * (minX + maxX), centreY = 0.5 * (minY + maxY);
+
+        const auto speakersVisible = [&]
+        {
+            const auto plane = field.getLocalBounds().toFloat();
+            for (int i = 0; i < p.getActiveSpeakers(); ++i)
+                if (! plane.contains (field.toView (value (p, tripan::params::speakerId (i, 'x')), value (p, tripan::params::speakerId (i, 'y')))))
+                    return false;
+            return true;
+        };
+
+        double previousHalf = field.getViewHalfExtent();
+        int steps = 0;
+        while (zin.isEnabled() && steps < 20)
+        {
+            zin.onClick();
+            ++steps;
+            CHECK (field.getViewHalfExtent() < previousHalf); // every press zooms in
+            previousHalf = field.getViewHalfExtent();
+            CHECK (speakersVisible());                        // never cuts off a speaker
+            CHECK (zout.isEnabled());
+        }
+        CHECK (steps >= 1 && steps < 20);
+        CHECK (! zin.isEnabled());                            // fully zoomed in: the speakers fill the view
+        CHECK (field.getViewHalfExtent() < 10.0 && field.getViewHalfExtent() >= 2.0);
+        CHECK (std::abs (field.getViewCentre().x - centreX) < 1e-6 && std::abs (field.getViewCentre().y - centreY) < 1e-6);
+
+        // Dragging works through the zoomed mapping, and hit testing too.
+        CHECK (field.toView (field.getViewCentre().x, field.getViewCentre().y).getDistanceFrom (field.getLocalBounds().toFloat().getCentre()) < 1.0f);
+        field.moveHandle ({ true, 0 }, field.toView (1.25, 0.75));
+        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 1.25f) < 0.02f && std::abs (value (p, tripan::params::sourceId (0, 'y')) - 0.75f) < 0.02f);
+        const auto grabbed = field.findHandleAt (field.toView (1.25, 0.75));
+        CHECK (grabbed && grabbed->isSource && grabbed->index == 0);
+        setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
+        setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+
+        // Zoom out again, step by step, back to the entire area.
+        previousHalf = field.getViewHalfExtent();
+        steps = 0;
+        while (zout.isEnabled() && steps < 20)
+        {
+            zout.onClick();
+            ++steps;
+            CHECK (field.getViewHalfExtent() > previousHalf);
+            previousHalf = field.getViewHalfExtent();
+        }
+        CHECK (field.getViewHalfExtent() == 10.0 && field.getViewCentre().x == 0.0 && field.getViewCentre().y == 0.0);
+        CHECK (zin.isEnabled() && ! zout.isEnabled());
+
+        // The view is not recomputed while speakers move: dragging a speaker does not shift the view.
+        zin.onClick();
+        const auto viewBefore = field.getViewCentre();
+        const double halfBefore = field.getViewHalfExtent();
+        const float speakerX = value (p, tripan::params::speakerId (0, 'x'));
+        setParam (p, tripan::params::speakerId (0, 'x'), -9.0f);
+        field.refresh();
+        CHECK (std::abs (field.getViewCentre().x - viewBefore.x) < 1e-12 && std::abs (field.getViewCentre().y - viewBefore.y) < 1e-12);
+        CHECK (std::abs (field.getViewHalfExtent() - halfBefore) < 1e-12);
+        setParam (p, tripan::params::speakerId (0, 'x'), speakerX);
+        while (zout.isEnabled())
+            zout.onClick();
+        field.refresh();
+    }
+
     // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.
     {
         const auto s0 = field.toView (0.5, 1.0);
@@ -403,6 +485,7 @@ int main (int argc, char** argv)
 
     if (argc > 1)
     {
+        while (editor->getZoomInButton().isEnabled()) editor->getZoomInButton().onClick(); // snapshot shows the zoomed view
         field.refresh();
         auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
         juce::File out (argv[1]);
