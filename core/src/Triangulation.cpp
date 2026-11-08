@@ -42,8 +42,70 @@ bool hasReverse (const std::vector<Edge>& list, int a, int b)
 }
 }
 
-Triangulation::Triangulation (std::span<const Vec2> speakers)
+Triangulation::Triangulation (std::span<const Vec2> speakers, std::span<const Vec2> virtualSpeakers)
     : points (speakers.begin(), speakers.end())
+{
+    realCount = (int) speakers.size();
+    virtualCount = (int) virtualSpeakers.size();
+    points.insert (points.end(), virtualSpeakers.begin(), virtualSpeakers.end());
+
+    build();
+    buildRedistribution();
+}
+
+std::span<const Triangulation::Weight> Triangulation::redistribution (int index) const noexcept
+{
+    const int v = index - realCount;
+    if (v < 0 || v >= virtualCount)
+        return {};
+
+    const auto first = (size_t) weightStart[(size_t) v], last = (size_t) weightStart[(size_t) v + 1];
+    return { weights.data() + first, last - first };
+}
+
+void Triangulation::buildRedistribution()
+{
+    weights.clear();
+    weightStart.assign ((size_t) virtualCount + 1, 0);
+
+    for (int v = 0; v < virtualCount; ++v)
+    {
+        const int index = realCount + v;
+        std::vector<int> neighbours;
+        const auto addIfReal = [&] (int w)
+        {
+            if (w < realCount && std::find (neighbours.begin(), neighbours.end(), w) == neighbours.end())
+                neighbours.push_back (w);
+        };
+
+        for (const auto& t : tris)
+            if (t.a == index || t.b == index || t.c == index)
+            {
+                addIfReal (t.a);
+                addIfReal (t.b);
+                addIfReal (t.c);
+            }
+
+        for (const auto& e : edges) // the collinear case has edges but no triangles
+        {
+            if (e.a == index) addIfReal (e.b);
+            if (e.b == index) addIfReal (e.a);
+        }
+
+        if (neighbours.empty()) // not connected to any real speaker: spread over all of them
+            for (int i = 0; i < realCount; ++i)
+                if (std::isfinite (points[(size_t) i].x) && std::isfinite (points[(size_t) i].y))
+                    neighbours.push_back (i);
+
+        const float weight = neighbours.empty() ? 0.0f : 1.0f / std::sqrt ((float) neighbours.size());
+        for (int i : neighbours)
+            weights.push_back ({ i, weight });
+
+        weightStart[(size_t) v + 1] = (int) weights.size();
+    }
+}
+
+void Triangulation::build()
 {
     // 1. Collect usable (finite, distinct) speakers.
     double minX = 1e300, maxX = -1e300, minY = 1e300, maxY = -1e300;

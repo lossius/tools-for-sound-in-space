@@ -80,6 +80,7 @@ static void testStationaryEnergyAndLocality()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 4, 8, 512));
+    p.setVirtualMode (VirtualMode::Off); // plain triangulation: three speakers at most per source
 
     juce::AudioBuffer<float> buf (8, 512);
     juce::MidiBuffer midi;
@@ -602,6 +603,153 @@ static void testSpeakerPresets (const juce::File& dir)
     CHECK (std::abs (v[0].x + 5.0) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3 && std::abs (v[15].x - 5.0) < 1e-3 && std::abs (v[15].y + 5.0) < 1e-3);
 }
 
+// The virtual speakers of an 8-speaker ring fill in the centre, and the modes behave as described.
+static void testVirtualSpeakerModes()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 2, 8, 256));
+    juce::AudioBuffer<float> buf (8, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (11);
+
+    const auto outputEnergies = [&] (int source, double& inputEnergy)
+    {
+        std::vector<double> e (8, 0.0);
+        for (int block = 0; block < 3; ++block)
+        {
+            inputEnergy = fillNoise (buf, 2, source, rng);
+            p.processBlock (buf, midi);
+        }
+        for (int ch = 0; ch < 8; ++ch) e[(size_t) ch] = channelEnergy (buf, ch);
+        return e;
+    };
+    const auto activeOutputs = [] (const std::vector<double>& e) { int n = 0; for (double v : e) if (v > 1e-9) ++n; return n; };
+
+    // Default: Auto. The 8-ring gets a centre speaker.
+    CHECK (p.getVirtualMode() == VirtualMode::Auto);
+    CHECK (p.getVirtualSpeakers().size() == 1);
+
+    setParam (p, tripan::params::sourceId (0, 'x'), 0.0f);
+    setParam (p, tripan::params::sourceId (0, 'y'), 0.0f);
+    double inE = 0.0;
+    auto e = outputEnergies (0, inE);
+    CHECK (activeOutputs (e) == 8);                 // a source at the centre feeds every speaker...
+    double total = 0.0;
+    for (double v : e) total += v;
+    CHECK (std::abs (total - inE) < 1e-3 * inE);    // ...with unchanged total power
+    for (double v : e) CHECK (std::abs (v - inE / 8.0) < 0.02 * inE); // ...equally
+
+    // Off: plain triangulation, at most three speakers.
+    p.setVirtualMode (VirtualMode::Off);
+    CHECK (p.getVirtualSpeakers().empty());
+    setParam (p, tripan::params::sourceId (0, 'x'), 1.0f);
+    setParam (p, tripan::params::sourceId (0, 'y'), 3.0f);
+    e = outputEnergies (0, inE);
+    CHECK (activeOutputs (e) <= 3);
+
+    // Manual: switching from Off with an empty list gives an empty list; the user's own points are used.
+    p.setVirtualMode (VirtualMode::Manual);
+    CHECK (p.getManualVirtualSpeakers().empty());
+    p.setManualVirtualSpeakers ({ { 0.0, 0.0 } });
+    CHECK (p.getVirtualSpeakers().size() == 1);
+    setParam (p, tripan::params::sourceId (0, 'x'), 0.0f);
+    setParam (p, tripan::params::sourceId (0, 'y'), 0.0f);
+    e = outputEnergies (0, inE);
+    CHECK (activeOutputs (e) == 8);
+
+    // Auto -> Manual copies the automatic result when the manual list is empty.
+    TriPanAudioProcessor q;
+    CHECK (configure (q, 2, 8, 256));
+    q.setVirtualMode (VirtualMode::Manual);
+    CHECK (q.getManualVirtualSpeakers().size() == 1);
+
+    // Mode and manual list are saved with the state; limits are enforced.
+    q.setManualVirtualSpeakers ({ { 1.5, -2.25 }, { 99.0, 0.0 } });
+    juce::MemoryBlock state;
+    q.getStateInformation (state);
+    TriPanAudioProcessor r;
+    r.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (configure (r, 2, 8, 256));
+    CHECK (r.getVirtualMode() == VirtualMode::Manual);
+    const auto manual = r.getManualVirtualSpeakers();
+    CHECK (manual.size() == 2 && std::abs (manual[0].x - 1.5) < 1e-3 && std::abs (manual[0].y + 2.25) < 1e-3 && std::abs (manual[1].x - 10.0) < 1e-3);
+    std::vector<tripan::Vec2> tooMany (40, tripan::Vec2 { 1.0, 1.0 });
+    r.setManualVirtualSpeakers (tooMany);
+    CHECK ((int) r.getManualVirtualSpeakers().size() == TriPanAudioProcessor::kMaxVirtualSpeakers);
+}
+
+// The reported 5.1 problem: a source at the origin must be treated symmetrically (L = R, Ls = Rs),
+// and so must every mirrored position, for every symmetric ring layout in the presets.
+static void testMirrorSymmetryWithVirtualSpeakers (const juce::File& dir)
+{
+    if (! dir.isDirectory())
+        return;
+
+    for (const char* file : { "Quad.xml", "5.1.xml", "7.1.xml", "Hexagon-front-centre.xml", "Hexagon-symmetric.xml",
+                              "Octagon-front-centre.xml", "Octagon-symmetric.xml" })
+    {
+        TriPanAudioProcessor p;
+        CHECK (configure (p, 2, 16, 256));
+        tripan::io::ImportReport r;
+        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
+
+        std::vector<tripan::Vec2> speakers;
+        for (int i = 0; i < r.applied; ++i)
+            speakers.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'x'))->load(),
+                                  (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'y'))->load() });
+
+        const auto virtualSpeakers = p.getVirtualSpeakers();
+        CHECK (! virtualSpeakers.empty());
+        const tripan::Triangulation tri (speakers, virtualSpeakers);
+
+        // mirror[i] = the speaker at the mirrored position (-x, y)
+        std::vector<int> mirror (speakers.size(), -1);
+        for (size_t i = 0; i < speakers.size(); ++i)
+            for (size_t j = 0; j < speakers.size(); ++j)
+                if (std::hypot (speakers[i].x + speakers[j].x, speakers[i].y - speakers[j].y) < 2e-3)
+                    mirror[i] = (int) j;
+        for (int m : mirror) CHECK (m >= 0);
+
+        const auto gainOf = [] (const tripan::SourceGains& g, int speaker)
+        {
+            for (int i = 0; i < g.count; ++i)
+                if (g.speaker[(size_t) i] == speaker) return (double) g.gain[(size_t) i];
+            return 0.0;
+        };
+
+        double worst = 0.0;
+        for (double x = -9.0; x <= 9.01; x += 0.75)
+            for (double y = -9.0; y <= 9.01; y += 0.75)
+            {
+                const auto a = tripan::computeGains (tri, { x, y });
+                const auto b = tripan::computeGains (tri, { -x, y });
+
+                double sumSq = 0.0;
+                for (int k = 0; k < a.count; ++k) sumSq += (double) a.gain[(size_t) k] * a.gain[(size_t) k];
+                CHECK (std::abs (sumSq - 1.0) < 1e-5);
+
+                for (size_t i = 0; i < speakers.size(); ++i)
+                    worst = std::max (worst, std::abs (gainOf (a, (int) i) - gainOf (b, mirror[i])));
+            }
+        if (worst >= 2e-3)
+            std::printf ("preset %s: worst mirror asymmetry %g\n", file, worst);
+        CHECK (worst < 2e-3);
+
+        // Without virtual speakers some of these layouts are NOT symmetric (cocircular ties).
+        const tripan::Triangulation plain (speakers);
+        double plainWorst = 0.0;
+        for (double x = -9.0; x <= 9.01; x += 0.75)
+            for (double y = -9.0; y <= 9.01; y += 0.75)
+            {
+                const auto a = tripan::computeGains (plain, { x, y });
+                const auto b = tripan::computeGains (plain, { -x, y });
+                for (size_t i = 0; i < speakers.size(); ++i)
+                    plainWorst = std::max (plainWorst, std::abs (gainOf (a, (int) i) - gainOf (b, mirror[i])));
+            }
+        std::printf ("  %-26s mirror asymmetry: plain %.3f  with virtual speakers %.5f\n", file, plainWorst, worst);
+    }
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -615,12 +763,16 @@ int main (int argc, char** argv)
     testStateRoundTrip();
     testFullSizeEnergyConservation();
     testParameterAutomationWhileProcessing();
+    testVirtualSpeakerModes();
     testFullSize64x64();
 
     if (argc > 1)
+    {
         testSpeakerPresets (juce::File (argv[1]));
+        testMirrorSymmetryWithVirtualSpeakers (juce::File (argv[1]));
+    }
     else
-        std::printf ("(speaker preset test skipped: pass the speaker layouts folder as argument)\n");
+        std::printf ("(speaker preset tests skipped: pass the speaker layouts folder as argument)\n");
 
     if (failures == 0)
         std::printf ("All processor tests passed\n");

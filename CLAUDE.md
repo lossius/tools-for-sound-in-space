@@ -53,11 +53,20 @@ not redistributable: keep it outside this repo. Check its current licence before
   (not host parameters; the old single `editMode` property from earlier versions is still read) and queried with
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, and "Reset layout" only resets kinds set to Edit (disabled if both are View).
   Host automation of the position parameters is unaffected.
+- Virtual (imaginary) speakers: `Triangulation(real, virtual)` triangulates real + virtual points (real first);
+  `computeGains` splits the gain of a virtual point equally (weights 1/sqrt(k)) over its real neighbours
+  (`redistribution()`) and renormalises, so `SourceGains` can have up to 64 entries. `findVirtualSpeakers`
+  (core/VirtualSpeakers) places them: gap fillers for angular gaps > 90 deg, a centre speaker for rings; nothing
+  unless the listener (origin) is enclosed. Processor mode Auto/Manual/Off (`virtualMode`, `manualVirtual` in the
+  state, max 16, not host parameters); `refreshTriangulation` publishes real+virtual. Manual ones are edited on
+  the pad (double-click add/delete, drag) when mode is Manual and speakers are set to Edit. Known limit: cocircular
+  grid cells (3x3, 4x4) still have arbitrary diagonals; virtual speakers appear/disappear discontinuously when a
+  speaker is dragged across a threshold (gains ramp per block, so no clicks).
 - Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-10 m
   centred on 0. Zoom In steps by 1.5x towards `fittedView()` (bounding box of the speakers in use, min +-2 m) and
   stops there; Zoom Out steps back to the full view. The view is fixed once set (it doesn't follow dragged
   speakers) and not saved. `toView/fromView` and the grid use it, so hit-testing and dragging work zoomed.
-- Scalable GUI: all controls sit in `content`, laid out at the base size 700x810 (`kBaseWidth/Height`, also
+- Scalable GUI: all controls sit in `content`, laid out at the base size 700x830 (`kBaseWidth/Height`, also
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.

@@ -3,12 +3,23 @@
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"
 #include "tripan/TriangulationExchange.h"
+#include "tripan/VirtualSpeakers.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include <array>
 #include <atomic>
 #include <vector>
+
+/** Where the virtual (imaginary) speakers come from.
+    Auto: found from the speaker layout by tripan::findVirtualSpeakers. Manual: the user's own list.
+    Off: none, plain triangulation of the real speakers. */
+enum class VirtualMode
+{
+    Auto = 1,
+    Manual = 2,
+    Off = 3
+};
 
 class TriPanAudioProcessor final : public juce::AudioProcessor,
                                    private juce::Timer
@@ -60,6 +71,17 @@ public:
     void setSourcesEditable (bool);
     void setSpeakersEditable (bool);
 
+    /** Message thread. Virtual speakers. They are not host parameters; the mode and the manual list
+        are saved with the state. Switching from Auto to Manual with an empty manual list starts
+        the manual list from the automatic result. */
+    static constexpr int kMaxVirtualSpeakers = 16;
+    VirtualMode getVirtualMode() const;
+    void setVirtualMode (VirtualMode);
+    std::vector<tripan::Vec2> getManualVirtualSpeakers() const;
+    void setManualVirtualSpeakers (const std::vector<tripan::Vec2>&);
+    /** The virtual speakers in effect (according to the mode), for the speakers currently in use. */
+    std::vector<tripan::Vec2> getVirtualSpeakers() const;
+
     /** Message thread. Width of the editor window in pixels (0 if never set); saved with the state
         so that the chosen GUI size is restored. */
     int getEditorWidth() const;
@@ -83,6 +105,7 @@ private:
     // Message thread -> audio thread
     tripan::TriangulationExchange exchange;
     std::vector<tripan::Vec2> publishedSpeakers; // message thread only
+    std::vector<tripan::Vec2> publishedVirtual;  // message thread only
     bool havePublished = false;                  // message thread only
 
     // Audio thread only

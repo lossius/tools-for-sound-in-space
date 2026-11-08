@@ -431,6 +431,63 @@ int main (int argc, char** argv)
         field.refresh();
     }
 
+    // Virtual speakers: Auto / Manual / Off menu, and adding, moving and deleting manual ones on the pad.
+    {
+        auto& box = editor->getVirtualModeBox();
+        auto& spkBox = editor->getSpeakersModeBox();
+        CHECK (box.getNumItems() == 3 && box.getItemText (0) == "Auto" && box.getItemText (1) == "Manual" && box.getItemText (2) == "Off");
+        CHECK (box.getSelectedId() == 1 && p.getVirtualMode() == VirtualMode::Auto); // default
+
+        // Auto: the user cannot add or move anything, even with speakers set to Edit.
+        spkBox.setSelectedId (1, juce::sendNotificationSync);
+        CHECK (! field.canEditVirtualSpeakers() && ! field.addVirtualSpeakerAt (field.toView (1.0, 1.0)));
+
+        box.setSelectedId (3, juce::sendNotificationSync); // Off
+        CHECK (p.getVirtualMode() == VirtualMode::Off && p.getVirtualSpeakers().empty() && ! field.addVirtualSpeakerAt (field.toView (1.0, 1.0)));
+
+        // Manual with speakers set to View: locked like the speakers.
+        box.setSelectedId (2, juce::sendNotificationSync);
+        CHECK (p.getVirtualMode() == VirtualMode::Manual && p.getManualVirtualSpeakers().empty());
+        spkBox.setSelectedId (2, juce::sendNotificationSync);
+        CHECK (! field.canEditVirtualSpeakers() && ! field.addVirtualSpeakerAt (field.toView (1.0, 1.0)));
+
+        // Manual with speakers set to Edit: add, grab, move, delete.
+        spkBox.setSelectedId (1, juce::sendNotificationSync);
+        CHECK (field.canEditVirtualSpeakers());
+        CHECK (field.addVirtualSpeakerAt (field.toView (-3.0, 6.0)));
+        CHECK (field.addVirtualSpeakerAt (field.toView (4.5, -5.5)));
+        auto list = p.getManualVirtualSpeakers();
+        CHECK (list.size() == 2 && std::abs (list[0].x + 3.0) < 0.02 && std::abs (list[0].y - 6.0) < 0.02 && std::abs (list[1].x - 4.5) < 0.02);
+
+        const auto grabbed = field.findHandleAt (field.toView (4.5, -5.5));
+        CHECK (grabbed && grabbed->isVirtual && ! grabbed->isSource && grabbed->index == 1);
+
+        field.moveHandle ({ false, 1, true }, field.toView (0.0, -2.0));
+        list = p.getManualVirtualSpeakers();
+        CHECK (std::abs (list[1].x) < 0.02 && std::abs (list[1].y + 2.0) < 0.02);
+        field.moveHandle ({ false, 0, true }, juce::Point<float> (-5000.0f, -5000.0f)); // far away: clamped to the range
+        list = p.getManualVirtualSpeakers();
+        CHECK (std::abs (list[0].x + 10.0) < 1e-3 && std::abs (list[0].y - 10.0) < 1e-3);
+
+        // The virtual speakers take part in the panning: a source on a virtual speaker feeds the real speakers around it.
+        field.refresh();
+        CHECK (p.getVirtualSpeakers().size() == 2);
+
+        CHECK (field.removeVirtualSpeaker (0));
+        CHECK (p.getManualVirtualSpeakers().size() == 1 && ! field.removeVirtualSpeaker (5) && ! field.removeVirtualSpeaker (-1));
+
+        // At most 16.
+        for (int i = 0; i < 30; ++i)
+            field.addVirtualSpeakerAt (field.toView (-5.0 + 0.3 * i, 7.0));
+        CHECK ((int) p.getManualVirtualSpeakers().size() == TriPanAudioProcessor::kMaxVirtualSpeakers);
+        CHECK (! field.addVirtualSpeakerAt (field.toView (0.0, 0.0)));
+
+        // Back to the defaults for the rest of the test (speakers: Edit stays on, as the later checks expect).
+        p.setManualVirtualSpeakers ({});
+        box.setSelectedId (3, juce::sendNotificationSync); // Off: the later checks assume plain triangulation
+        field.refresh();
+    }
+
     // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.
     {
         const auto s0 = field.toView (0.5, 1.0);
@@ -481,11 +538,24 @@ int main (int argc, char** argv)
     editor->syncControls();
 
     editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync); // defaults for the picture: speakers View
-    editor->setSize (700, 810);
+    editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
+
+    if (argc > 2) // optional: a speaker file for the snapshot
+    {
+        editor->getVirtualModeBox().setSelectedId (1, juce::sendNotificationSync);
+        CHECK (editor->importPositionsFrom (tripan::io::Kind::Speakers, juce::File (argv[2])).wasOk());
+        setParam (p, tripan::params::sourceId (0, 'x'), 0.0f);
+        setParam (p, tripan::params::sourceId (0, 'y'), 0.0f);
+        editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
+        editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
+        editor->getZoomOutButton().onClick();
+        while (editor->getZoomOutButton().isEnabled()) editor->getZoomOutButton().onClick();
+    }
 
     if (argc > 1)
     {
-        while (editor->getZoomInButton().isEnabled()) editor->getZoomInButton().onClick(); // snapshot shows the zoomed view
+        if (argc <= 2)
+            while (editor->getZoomInButton().isEnabled()) editor->getZoomInButton().onClick(); // snapshot shows the zoomed view
         field.refresh();
         auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
         juce::File out (argv[1]);

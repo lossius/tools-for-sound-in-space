@@ -7,7 +7,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     addAndMakeVisible (content);
     content.addAndMakeVisible (field);
 
-    for (auto* label : { &sourcesLabel, &speakersLabel })
+    for (auto* label : { &sourcesLabel, &speakersLabel, &virtualLabel })
     {
         label->setJustificationType (juce::Justification::centredRight);
         label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -41,6 +41,23 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     };
     setUpModeBox (sourcesModeBox,  "source",  owner.canEditSources(),  [this] (bool e) { owner.setSourcesEditable (e); });
     setUpModeBox (speakersModeBox, "speaker", owner.canEditSpeakers(), [this] (bool e) { owner.setSpeakersEditable (e); });
+
+    // Virtual (imaginary) speakers: Auto finds them from the speaker layout, Manual lets the user place
+    // them (double-click the pad to add or delete, drag to move; speakers must be set to Edit), Off uses
+    // the real speakers only.
+    virtualModeBox.addItem ("Auto", (int) VirtualMode::Auto);
+    virtualModeBox.addItem ("Manual", (int) VirtualMode::Manual);
+    virtualModeBox.addItem ("Off", (int) VirtualMode::Off);
+    virtualModeBox.setSelectedId ((int) owner.getVirtualMode(), juce::dontSendNotification);
+    virtualModeBox.setTooltip ("Auto: imaginary speakers are added where the layout needs them (open gaps, ring centre). "
+                               "Manual: you place them (double-click the pad to add or delete, drag to move; speakers must be set to Edit). "
+                               "Off: real speakers only.");
+    virtualModeBox.onChange = [this]
+    {
+        owner.setVirtualMode ((VirtualMode) virtualModeBox.getSelectedId());
+        syncControls();
+    };
+    content.addAndMakeVisible (virtualModeBox);
 
     showTriangulationButton.setToggleState (true, juce::dontSendNotification);
     showTriangulationButton.onClick = [this] { field.setShowTriangulation (showTriangulationButton.getToggleState()); };
@@ -161,6 +178,8 @@ void TriPanAudioProcessorEditor::syncControls()
     if (speakersModeBox.getSelectedId() != (editSpeakers ? 1 : 2))
         speakersModeBox.setSelectedId (editSpeakers ? 1 : 2, juce::dontSendNotification);
     resetButton.setEnabled (editSources || editSpeakers);
+    if (virtualModeBox.getSelectedId() != (int) owner.getVirtualMode())
+        virtualModeBox.setSelectedId ((int) owner.getVirtualMode(), juce::dontSendNotification);
     zoomInButton.setEnabled (field.canZoomIn());
     zoomOutButton.setEnabled (field.canZoomOut());
 
@@ -308,19 +327,24 @@ void TriPanAudioProcessorEditor::layoutContent()
         importButton.setBounds (row);
     };
 
-    layoutRow (area.removeFromTop (36), sourcesLabel, sourceCount, sourcesModeBox, exportSourcesButton, importSourcesButton);
-    layoutRow (area.removeFromTop (36), speakersLabel, speakerCount, speakersModeBox, exportSpeakersButton, importSpeakersButton);
+    layoutRow (area.removeFromTop (32), sourcesLabel, sourceCount, sourcesModeBox, exportSourcesButton, importSourcesButton);
+    layoutRow (area.removeFromTop (32), speakersLabel, speakerCount, speakersModeBox, exportSpeakersButton, importSpeakersButton);
 
-    // Third row: display options, and a line of text (track channels in and out, import/export results).
-    auto bar = area.removeFromTop (36).reduced (10, 5);
+    // Third row: display options and zoom.
+    auto bar = area.removeFromTop (32).reduced (10, 5);
     showTriangulationButton.setBounds (bar.removeFromLeft (150));
     resetButton.setBounds (bar.removeFromLeft (100));
     bar.removeFromLeft (8);
     zoomInButton.setBounds (bar.removeFromLeft (74));
     bar.removeFromLeft (4);
     zoomOutButton.setBounds (bar.removeFromLeft (74));
-    bar.removeFromLeft (10);
-    infoLabel.setBounds (bar);
+
+    // Fourth row: virtual speakers, and the line of text (track channels, import/export results).
+    auto last = area.removeFromTop (32).reduced (10, 5);
+    virtualLabel.setBounds (last.removeFromLeft (110));
+    virtualModeBox.setBounds (last.removeFromLeft (90));
+    last.removeFromLeft (12);
+    infoLabel.setBounds (last);
 
     field.setBounds (area);
 }

@@ -61,6 +61,12 @@ juce::RangedAudioParameter* FieldComponent::parameter (const Handle& h, char axi
 
 juce::Point<double> FieldComponent::position (const Handle& h) const
 {
+    if (h.isVirtual)
+    {
+        const auto i = (size_t) h.index;
+        return i < virtualSpeakers.size() ? juce::Point<double> (virtualSpeakers[i].x, virtualSpeakers[i].y) : juce::Point<double>();
+    }
+
     const auto read = [] (juce::RangedAudioParameter* prm) { return (double) prm->convertFrom0to1 (prm->getValue()); };
     return { read (parameter (h, 'x')), read (parameter (h, 'y')) };
 }
@@ -91,11 +97,11 @@ std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<
     std::optional<Handle> best;
     float bestDistance = kGrabRadius;
 
-    const auto consider = [&] (bool isSource, int count)
+    const auto consider = [&] (bool isSource, int count, bool isVirtual = false)
     {
         for (int i = 0; i < count; ++i) // later indices are drawn on top, so they win ties
         {
-            const Handle h { isSource, i };
+            const Handle h { isSource, i, isVirtual };
             const auto pos = position (h);
             const float d = toView (pos.x, pos.y).getDistanceFrom (p);
             if (d <= bestDistance)
@@ -109,12 +115,58 @@ std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<
     // Speakers first, then sources with <=, so that on a tie the source (drawn on top) wins.
     // Handles that the current edit mode locks are not grabbable.
     if (processor.canEditSpeakers()) consider (false, activeSpeakers());
+    if (canEditVirtualSpeakers())    consider (false, (int) virtualSpeakers.size(), true);
     if (processor.canEditSources())  consider (true, activeSources());
     return best;
 }
 
+bool FieldComponent::canEditVirtualSpeakers() const
+{
+    return processor.getVirtualMode() == VirtualMode::Manual && processor.canEditSpeakers();
+}
+
+bool FieldComponent::addVirtualSpeakerAt (juce::Point<float> p)
+{
+    auto list = processor.getManualVirtualSpeakers();
+    if (! canEditVirtualSpeakers() || (int) list.size() >= TriPanAudioProcessor::kMaxVirtualSpeakers)
+        return false;
+
+    const auto pos = fromView (p);
+    const float limit = tripan::params::kCoordRange;
+    list.push_back ({ (double) juce::jlimit (-limit, limit, (float) pos.x), (double) juce::jlimit (-limit, limit, (float) pos.y) });
+    processor.setManualVirtualSpeakers (list);
+    refresh();
+    return true;
+}
+
+bool FieldComponent::removeVirtualSpeaker (int index)
+{
+    auto list = processor.getManualVirtualSpeakers();
+    if (! canEditVirtualSpeakers() || index < 0 || index >= (int) list.size())
+        return false;
+
+    list.erase (list.begin() + index);
+    processor.setManualVirtualSpeakers (list);
+    refresh();
+    return true;
+}
+
 void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
 {
+    if (h.isVirtual)
+    {
+        auto list = processor.getManualVirtualSpeakers();
+        if (! canEditVirtualSpeakers() || h.index < 0 || h.index >= (int) list.size())
+            return;
+
+        const auto pos = fromView (p);
+        const float limit = tripan::params::kCoordRange;
+        list[(size_t) h.index] = { (double) juce::jlimit (-limit, limit, (float) pos.x), (double) juce::jlimit (-limit, limit, (float) pos.y) };
+        processor.setManualVirtualSpeakers (list);
+        refresh();
+        return;
+    }
+
     if (h.isSource ? ! processor.canEditSources() : ! processor.canEditSpeakers())
         return;
 
@@ -210,12 +262,25 @@ void FieldComponent::timerCallback()
         mix (pos.y);
     }
 
-    if (triangulation == nullptr || speakers.size() != triangulatedSpeakers.size()
-        || ! std::equal (speakers.begin(), speakers.end(), triangulatedSpeakers.begin(),
-                         [] (const tripan::Vec2& a, const tripan::Vec2& b) { return juce::exactlyEqual (a.x, b.x) && juce::exactlyEqual (a.y, b.y); }))
+    virtualSpeakers = processor.getVirtualSpeakers();
+    mix ((double) processor.getVirtualMode());
+    for (const auto& v : virtualSpeakers)
     {
-        triangulation = std::make_unique<tripan::Triangulation> (speakers);
+        mix (v.x);
+        mix (v.y);
+    }
+
+    const auto same = [] (const std::vector<tripan::Vec2>& a, const std::vector<tripan::Vec2>& b)
+    {
+        return a.size() == b.size() && std::equal (a.begin(), a.end(), b.begin(),
+                                                   [] (const tripan::Vec2& p, const tripan::Vec2& q) { return juce::exactlyEqual (p.x, q.x) && juce::exactlyEqual (p.y, q.y); });
+    };
+
+    if (triangulation == nullptr || ! same (speakers, triangulatedSpeakers) || ! same (virtualSpeakers, triangulatedVirtual))
+    {
+        triangulation = std::make_unique<tripan::Triangulation> (speakers, virtualSpeakers);
         triangulatedSpeakers = std::move (speakers);
+        triangulatedVirtual = virtualSpeakers;
     }
 
     if (hash != lastStateHash)
@@ -259,7 +324,10 @@ void FieldComponent::paint (juce::Graphics& g)
             const auto b = vertical ? toView (v, viewCentre.y + viewHalf) : toView (viewCentre.x + viewHalf, v);
             g.drawLine (a.x, a.y, b.x, b.y, axis ? 1.5f : 1.0f);
 
-            if (major)
+            // Labels sit at the edges; skip lines right at an edge so that labels never collide in the corners.
+            const bool nearEdge = vertical ? (a.x < plane.getX() + 26.0f || a.x > plane.getRight() - 26.0f)
+                                           : (a.y < plane.getY() + 16.0f || a.y > plane.getBottom() - 20.0f);
+            if (major && ! nearEdge)
             {
                 g.setColour (juce::Colours::white.withAlpha (0.45f));
                 g.setFont (juce::FontOptions (11.0f));
@@ -339,6 +407,20 @@ void FieldComponent::paint (juce::Graphics& g)
         g.drawText (juce::String (i + 1), r, juce::Justification::centred);
     }
 
+    // Virtual speakers: hollow squares. They are not outputs; their gain goes to the real speakers around them.
+    for (int i = 0; i < (int) virtualSpeakers.size(); ++i)
+    {
+        const auto c = toView (virtualSpeakers[(size_t) i].x, virtualSpeakers[(size_t) i].y);
+        const bool hot = (hovered && hovered->isVirtual && hovered->index == i) || (dragging && dragging->isVirtual && dragging->index == i);
+        const auto r = juce::Rectangle<float> (14.0f, 14.0f).withCentre (c);
+        g.setColour (juce::Colour (0xff15181d).withAlpha (0.85f));
+        g.fillRoundedRectangle (r, 2.0f);
+        g.setColour (hot ? juce::Colours::white : juce::Colour (0xffe6b450));
+        g.drawRoundedRectangle (r, 2.0f, hot ? 2.0f : 1.5f);
+        g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+        g.drawText ("v" + juce::String (i + 1), r, juce::Justification::centred);
+    }
+
     // Sources
     for (int s = 0; s < n; ++s)
     {
@@ -366,8 +448,11 @@ void FieldComponent::mouseDown (const juce::MouseEvent& e)
     dragging = findHandleAt (e.position);
     if (dragging)
     {
-        parameter (*dragging, 'x')->beginChangeGesture();
-        parameter (*dragging, 'y')->beginChangeGesture();
+        if (! dragging->isVirtual)
+        {
+            parameter (*dragging, 'x')->beginChangeGesture();
+            parameter (*dragging, 'y')->beginChangeGesture();
+        }
         moveHandle (*dragging, e.position);
         repaint();
     }
@@ -383,18 +468,34 @@ void FieldComponent::mouseUp (const juce::MouseEvent&)
 {
     if (dragging)
     {
-        parameter (*dragging, 'x')->endChangeGesture();
-        parameter (*dragging, 'y')->endChangeGesture();
+        if (! dragging->isVirtual)
+        {
+            parameter (*dragging, 'x')->endChangeGesture();
+            parameter (*dragging, 'y')->endChangeGesture();
+        }
         dragging.reset();
         repaint();
     }
+}
+
+void FieldComponent::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    // Manual virtual speakers: double-click one to delete it, or empty space to add one there.
+    if (! canEditVirtualSpeakers())
+        return;
+
+    const auto h = findHandleAt (e.position);
+    if (h && h->isVirtual)
+        removeVirtualSpeaker (h->index);
+    else if (! h && planeBounds().contains (e.position))
+        addVirtualSpeakerAt (e.position);
 }
 
 void FieldComponent::mouseMove (const juce::MouseEvent& e)
 {
     const auto h = findHandleAt (e.position);
     const bool changed = h.has_value() != hovered.has_value()
-                      || (h && hovered && (h->isSource != hovered->isSource || h->index != hovered->index));
+                      || (h && hovered && (h->isSource != hovered->isSource || h->isVirtual != hovered->isVirtual || h->index != hovered->index));
     hovered = h;
     setMouseCursor (h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     if (changed)

@@ -18,10 +18,12 @@ public:
     explicit FieldComponent (TriPanAudioProcessor&);
     ~FieldComponent() override;
 
+    /** A source, a speaker, or (isVirtual, with isSource false) a virtual speaker from the manual list. */
     struct Handle
     {
         bool isSource;
         int index;
+        bool isVirtual = false;
     };
 
     void setShowTriangulation (bool shouldShow);
@@ -47,10 +49,18 @@ public:
     /** Sets the handle's parameters from a component-coordinate position (clamped to the range). */
     void moveHandle (const Handle& handle, juce::Point<float> p);
 
+    /** Manual virtual speakers can be added, moved and deleted when the virtual speakers are set to
+        Manual and the speakers are set to Edit. Positions are component coordinates. Returns false
+        if not possible (wrong mode, locked, list full, or nothing to delete there). */
+    bool canEditVirtualSpeakers() const;
+    bool addVirtualSpeakerAt (juce::Point<float> p);
+    bool removeVirtualSpeaker (int index);
+
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
 
 private:
@@ -74,6 +84,8 @@ private:
     std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> srcXp {}, srcYp {}, spkXp {}, spkYp {};
 
     std::vector<tripan::Vec2> triangulatedSpeakers;
+    std::vector<tripan::Vec2> triangulatedVirtual;
+    std::vector<tripan::Vec2> virtualSpeakers; // as in effect, refreshed by the timer
     std::unique_ptr<tripan::Triangulation> triangulation;
     size_t lastStateHash = 0;
     bool showTriangulation = true;

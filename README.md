@@ -17,6 +17,28 @@ cmake --build build --config Release
 On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each build. Use
 `-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
 
+## Virtual (imaginary) speakers
+Speakers that lie on a circle around the listener (5.1, quad, hexagon, octagon, ...) have no unique
+Delaunay triangulation. Triangulation then picks an arbitrary, asymmetric set of triangles: in a 5.1
+layout a source at the origin used to favour the right front speaker and the surrounds. Virtual
+speakers fix this. They take part in the triangulation but are not outputs: the gain a source sends
+to a virtual speaker is shared equally (at constant power) between the real speakers around it. The
+menu on the fourth row selects where they come from:
+
+* **Auto** (default): found from the speaker layout. A virtual speaker is added at the listener
+  (the origin) when the speakers form a ring around it, and in angular gaps wider than 90 degrees
+  (for example the open back of 5.1). Nothing is added when the speakers do not surround the origin.
+  With Auto, a source at the origin in 5.1 feeds all five speakers equally, and mirrored positions
+  give mirrored gains.
+* **Manual**: you place them. Set the speakers menu to Edit, then double-click empty space on the pad
+  to add one, drag to move, double-click one to delete it (at most 16). Switching from Auto to
+  Manual starts from the current automatic set. Positions are saved with the session.
+* **Off**: real speakers only, as in the plain triangulation.
+
+Virtual speakers are drawn as hollow amber squares ("v1", "v2", ...). The price is that sources
+inside a ring are spread more widely than the strict three speakers of plain triangulation; switch to
+Off if you prefer that. They are not saved in the XML speaker files and are not host parameters.
+
 ## Zooming
 **Zoom In** and **Zoom Out** (third row) change the visible area of the pad. Each press of Zoom In
 zooms a step towards the area that contains all speakers in use and stops when they just fill the pad;

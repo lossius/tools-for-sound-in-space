@@ -3,6 +3,7 @@ add_library(TriPanCore STATIC
     src/Limits.cpp
     src/Triangulation.cpp
     src/Gains.cpp
+    src/VirtualSpeakers.cpp
     src/TriangulationExchange.cpp)
 
 find_package(Threads REQUIRED)

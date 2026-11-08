@@ -2,6 +2,7 @@
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"
 #include "tripan/Triangulation.h"
+#include "tripan/VirtualSpeakers.h"
 
 #include <algorithm>
 #include <cmath>
@@ -273,6 +274,144 @@ static void testDuplicatesAndNonFinite()
         }
 }
 
+static std::vector<Vec2> ring (std::initializer_list<double> azimuthsDegrees, double radius = 5.0)
+{
+    std::vector<Vec2> pts;
+    for (double a : azimuthsDegrees)
+        pts.push_back ({ radius * std::sin (a * 3.14159265358979 / 180.0), radius * std::cos (a * 3.14159265358979 / 180.0) });
+    return pts;
+}
+
+static void testFindVirtualSpeakers()
+{
+    // 5.1: ring (centre speaker) plus the open back (a 140 degree gap between the surrounds).
+    {
+        const auto fivePointOne = ring ({ -30, 30, 0, -110, 110 });
+        const auto v = findVirtualSpeakers (fivePointOne);
+        CHECK (v.size() == 2);
+        bool centre = false, back = false;
+        for (const auto& p : v)
+        {
+            if (std::hypot (p.x, p.y) < 1e-9) centre = true;
+            if (std::abs (p.x) < 1e-9 && std::abs (p.y + 5.0) < 1e-9) back = true; // directly behind, same radius
+        }
+        CHECK (centre && back);
+    }
+
+    // Closed rings only get the centre.
+    CHECK (findVirtualSpeakers (ring ({ -45, 45, -135, 135 })).size() == 1);                          // quad
+    CHECK (findVirtualSpeakers (ring ({ 0, 60, 120, 180, 240, 300 })).size() == 1);                   // hexagon
+    CHECK (findVirtualSpeakers (ring ({ 0, 45, 90, 135, 180, 225, 270, 315 })).size() == 1);          // octagon
+    CHECK (findVirtualSpeakers (ring ({ -30, 30, 0, -90, 90, -150, 150 })).size() == 1);              // 7.1
+
+    // Wide gaps are filled with evenly spaced speakers: a triangle of speakers has 120 degree gaps.
+    CHECK (findVirtualSpeakers (ring ({ 0, 120, 240 })).size() == 4); // 3 gap fillers + the centre
+
+    // Nothing to do: stereo pair, a front arc, a line, one speaker, nothing, irregular layouts.
+    CHECK (findVirtualSpeakers (ring ({ -30, 30 })).empty());
+    CHECK (findVirtualSpeakers (ring ({ -60, -30, 0, 30, 60 })).empty());     // listener not enclosed
+    CHECK (findVirtualSpeakers (std::vector<Vec2> { { -2, 1 }, { 0, 1 }, { 2, 1 }, { 4, 1 } }).empty());
+    CHECK (findVirtualSpeakers (std::vector<Vec2> { { 1, 1 } }).empty());
+    CHECK (findVirtualSpeakers (std::vector<Vec2> {}).empty());
+
+    std::mt19937 rng (3);
+    std::uniform_real_distribution<double> u (-6.0, 6.0);
+    std::vector<Vec2> scatter;
+    for (int i = 0; i < 40; ++i) scatter.push_back ({ u (rng), u (rng) });
+    CHECK (findVirtualSpeakers (scatter).empty());                            // many points, no gap, no ring
+
+    // A speaker at the listener position: no centre speaker (it already exists).
+    auto withCentre = ring ({ 0, 90, 180, 270 });
+    withCentre.push_back ({ 0.0, 0.0 });
+    CHECK (findVirtualSpeakers (withCentre).empty());
+
+    // Non-finite and duplicate positions are ignored; the listener can be elsewhere.
+    auto messy = ring ({ 0, 90, 180, 270 });
+    messy.push_back ({ std::nan (""), 1.0 });
+    messy.push_back (messy[0]);
+    CHECK (findVirtualSpeakers (messy).size() == 1);
+    auto shifted = ring ({ 0, 90, 180, 270 });
+    for (auto& p : shifted) { p.x += 2.0; p.y -= 1.0; }
+    const auto c = findVirtualSpeakers (shifted, { 2.0, -1.0 });
+    CHECK (c.size() == 1 && std::hypot (c[0].x - 2.0, c[0].y + 1.0) < 1e-9);
+
+    // The count is capped.
+    VirtualSpeakerOptions o;
+    o.maxCount = 2;
+    CHECK (findVirtualSpeakers (ring ({ 0, 120, 240 }), {}, o).size() == 2);
+}
+
+static void testVirtualSpeakerGains()
+{
+    const auto fivePointOne = ring ({ -30, 30, 0, -110, 110 });         // L, R, C, Ls, Rs
+    const auto v = findVirtualSpeakers (fivePointOne);
+    const Triangulation tri (fivePointOne, v);
+
+    CHECK (tri.numReal() == 5 && tri.numVirtual() == 2);
+    CHECK ((int) tri.speakers().size() == 7);
+
+    // Each virtual speaker is connected to some real speakers with unit-norm weights.
+    for (int i = 5; i < 7; ++i)
+    {
+        const auto w = tri.redistribution (i);
+        CHECK (! w.empty());
+        double sumSq = 0.0;
+        for (const auto& e : w) { CHECK (e.speaker >= 0 && e.speaker < 5); sumSq += (double) e.weight * e.weight; }
+        CHECK (isNear (sumSq, 1.0, 1e-6));
+    }
+    CHECK (tri.redistribution (0).empty() && tri.redistribution (99).empty()); // real or invalid index
+
+    // A source at the origin goes equally to all five speakers (it used to favour R and the surrounds).
+    const auto g = computeGains (tri, { 0.0, 0.0 });
+    CHECK (g.count == 5);
+    for (int i = 0; i < g.count; ++i)
+        CHECK (isNear (g.gain[(size_t) i], 1.0 / std::sqrt (5.0), 1e-5));
+
+    // Mirrored sources give mirrored gains: L<->R and Ls<->Rs.
+    const int mirror[] = { 1, 0, 2, 4, 3 };
+    std::mt19937 rng (5);
+    std::uniform_real_distribution<double> u (-8.0, 8.0);
+    for (int k = 0; k < 500; ++k)
+    {
+        const Vec2 s { u (rng), u (rng) };
+        const auto a = computeGains (tri, s);
+        const auto b = computeGains (tri, { -s.x, s.y });
+        CHECK (isNear (sumSq (a), 1.0, 1e-5));
+        for (int i = 0; i < 5; ++i)
+            CHECK (isNear (gainFor (a, i), gainFor (b, mirror[i]), 1e-4));
+    }
+
+    // Continuity: no jumps when a source moves across and beyond the speakers.
+    double worst = 0.0;
+    for (int line = 0; line < 12; ++line)
+    {
+        const double angle = line * 0.5236 + 0.1;
+        SourceGains prev;
+        bool have = false;
+        for (double r = -9.0; r <= 9.0; r += 1e-3)
+        {
+            const auto cur = computeGains (tri, { r * std::cos (angle), r * std::sin (angle) });
+            if (have)
+                for (int i = 0; i < 5; ++i)
+                    worst = std::max (worst, (double) std::abs (gainFor (cur, i) - gainFor (prev, i)));
+            prev = cur;
+            have = true;
+        }
+    }
+    CHECK (worst < 0.05);
+
+    // Without virtual speakers the old behaviour is unchanged: at most three speakers.
+    const Triangulation plain (fivePointOne);
+    CHECK (plain.numVirtual() == 0 && computeGains (plain, { 0.0, 0.0 }).count <= 3);
+
+    // Odd inputs: a virtual speaker on top of a real one is ignored, and virtual speakers with no real
+    // speakers around them do not crash.
+    const Triangulation dup (fivePointOne, std::vector<Vec2> { fivePointOne[0] });
+    CHECK (isNear (sumSq (computeGains (dup, { 1.0, 1.0 })), 1.0, 1e-5));
+    const Triangulation onlyVirtual (std::vector<Vec2> {}, std::vector<Vec2> { { 0, 0 }, { 1, 1 }, { 2, 0 } });
+    CHECK (computeGains (onlyVirtual, { 0.5, 0.2 }).count == 0);
+}
+
 int main()
 {
     testLimits();
@@ -283,6 +422,8 @@ int main()
     testConstantPowerAndLocality();
     testContinuity();
     testDuplicatesAndNonFinite();
+    testFindVirtualSpeakers();
+    testVirtualSpeakerGains();
 
     if (failures == 0)
         std::printf ("All tests passed\n");

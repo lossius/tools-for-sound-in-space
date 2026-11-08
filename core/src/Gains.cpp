@@ -14,10 +14,18 @@ double cross (Vec2 o, Vec2 a, Vec2 b) noexcept
     return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
 }
 
-/** Normalises non-negative weights to unit L2 norm (constant power). */
-SourceGains makeGains (int count, const int* speakers, const double* w) noexcept
+/** Up to three entries (indices into the triangulation's points, real or virtual) with unit L2 norm. */
+struct Raw
 {
-    SourceGains out;
+    int count = 0;
+    int index[3] { -1, -1, -1 };
+    double gain[3] { 0.0, 0.0, 0.0 };
+};
+
+/** Normalises non-negative weights to unit L2 norm (constant power). */
+Raw makeRaw (int count, const int* indices, const double* w) noexcept
+{
+    Raw out;
     double sumSq = 0.0;
     for (int i = 0; i < count; ++i)
         sumSq += w[i] * w[i];
@@ -28,15 +36,64 @@ SourceGains makeGains (int count, const int* speakers, const double* w) noexcept
     const double inv = 1.0 / std::sqrt (sumSq);
     for (int i = 0; i < count; ++i)
     {
-        out.speaker[(size_t) i] = speakers[i];
-        out.gain[(size_t) i] = (float) (w[i] * inv);
+        out.index[i] = indices[i];
+        out.gain[i] = w[i] * inv;
     }
     out.count = count;
     return out;
 }
+
+/** The gains of the triangulation's points (real and virtual) for a source at s. */
+Raw computeRaw (const Triangulation& tri, Vec2 s) noexcept;
+
+/** Turns raw gains into gains for real speakers: the share of a virtual speaker is split over its
+    real neighbours, then everything is renormalised. */
+SourceGains expand (const Triangulation& tri, const Raw& raw) noexcept
+{
+    SourceGains out;
+    double acc[kMaxGainEntries] {};
+
+    const auto add = [&] (int speaker, double g)
+    {
+        for (int i = 0; i < out.count; ++i)
+            if (out.speaker[(size_t) i] == speaker)
+            {
+                acc[i] += g;
+                return;
+            }
+
+        if (out.count < kMaxGainEntries)
+        {
+            out.speaker[(size_t) out.count] = speaker;
+            acc[out.count] = g;
+            ++out.count;
+        }
+    };
+
+    for (int i = 0; i < raw.count; ++i)
+    {
+        if (raw.index[i] < tri.numReal())
+            add (raw.index[i], raw.gain[i]);
+        else
+            for (const auto& w : tri.redistribution (raw.index[i]))
+                add (w.speaker, raw.gain[i] * (double) w.weight);
+    }
+
+    double sumSq = 0.0;
+    for (int i = 0; i < out.count; ++i)
+        sumSq += acc[i] * acc[i];
+
+    if (sumSq <= 0.0)
+        return SourceGains {};
+
+    const double inv = 1.0 / std::sqrt (sumSq);
+    for (int i = 0; i < out.count; ++i)
+        out.gain[(size_t) i] = (float) (acc[i] * inv);
+
+    return out;
 }
 
-SourceGains computeGains (const Triangulation& tri, Vec2 s) noexcept
+Raw computeRaw (const Triangulation& tri, Vec2 s) noexcept
 {
     if (! (std::isfinite (s.x) && std::isfinite (s.y)))
         return {};
@@ -44,7 +101,7 @@ SourceGains computeGains (const Triangulation& tri, Vec2 s) noexcept
     if (const int lone = tri.loneSpeaker(); lone >= 0)
     {
         const double w = 1.0;
-        return makeGains (1, &lone, &w);
+        return makeRaw (1, &lone, &w);
     }
 
     const auto pts = tri.speakers();
@@ -78,7 +135,7 @@ SourceGains computeGains (const Triangulation& tri, Vec2 s) noexcept
     {
         for (double& w : bestW)
             w = std::max (w, 0.0);
-        return makeGains (3, bestIdx, bestW);
+        return makeRaw (3, bestIdx, bestW);
     }
 
     // Outside the hull (or no triangles, i.e. collinear speakers): nearest boundary edge.
@@ -112,8 +169,14 @@ SourceGains computeGains (const Triangulation& tri, Vec2 s) noexcept
         return {};
 
     // Drop a zero-weight endpoint so exactly the used speakers are reported.
-    if (edgeW[1] <= 0.0) { const double w = 1.0; return makeGains (1, &edgeIdx[0], &w); }
-    if (edgeW[0] <= 0.0) { const double w = 1.0; return makeGains (1, &edgeIdx[1], &w); }
-    return makeGains (2, edgeIdx, edgeW);
+    if (edgeW[1] <= 0.0) { const double w = 1.0; return makeRaw (1, &edgeIdx[0], &w); }
+    if (edgeW[0] <= 0.0) { const double w = 1.0; return makeRaw (1, &edgeIdx[1], &w); }
+    return makeRaw (2, edgeIdx, edgeW);
+}
+}
+
+SourceGains computeGains (const Triangulation& tri, Vec2 s) noexcept
+{
+    return expand (tri, computeRaw (tri, s));
 }
 }

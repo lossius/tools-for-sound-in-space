@@ -14,7 +14,7 @@ public:
     /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
         window is resized. The base size is also the smallest allowed size. */
     static constexpr int kBaseWidth = 700;
-    static constexpr int kBaseHeight = 810;
+    static constexpr int kBaseHeight = 830;
     static constexpr int kMaxScale = 3;
 
     void paint (juce::Graphics&) override;
@@ -28,6 +28,7 @@ public:
     juce::Slider& getSpeakerCountSlider() noexcept { return speakerCount; }
     juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }
     juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }
+    juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }
     juce::TextButton& getResetButton() noexcept { return resetButton; }
     juce::TextButton& getZoomInButton() noexcept { return zoomInButton; }
     juce::TextButton& getZoomOutButton() noexcept { return zoomOutButton; }
@@ -72,6 +73,8 @@ private:
     juce::Slider sourceCount, speakerCount;
     juce::Label infoLabel;
     juce::ComboBox sourcesModeBox, speakersModeBox; // "Edit" / "View"
+    juce::Label virtualLabel { {}, "Virtual speakers" };
+    juce::ComboBox virtualModeBox;                  // Auto / Manual / Off
     juce::ToggleButton showTriangulationButton { "Show triangulation" };
     juce::TextButton resetButton { "Reset layout" };
     juce::TextButton zoomInButton { "Zoom In" };

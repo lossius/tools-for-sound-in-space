@@ -12,6 +12,8 @@ const juce::Identifier kEditSources { "editSources" };
 const juce::Identifier kEditSpeakers { "editSpeakers" };
 const juce::Identifier kLegacyEditMode { "editMode" }; // 1 sources, 2 speakers, 3 both, 4 view only
 const juce::Identifier kEditorWidth { "editorWidth" };
+const juce::Identifier kVirtualMode { "virtualMode" };
+const juce::Identifier kManualVirtual { "manualVirtual" }; // "x1 y1 x2 y2 ..."
 
 /** k-th of `count` positions on a ring; k = 0 at the front (+y), going clockwise. */
 juce::Point<float> ringPosition (int k, int count, float radius)
@@ -178,15 +180,89 @@ void TriPanAudioProcessor::refreshTriangulation()
     for (int i = 0; i < m; ++i)
         speakers.push_back ({ (double) spkX[(size_t) i]->load(), (double) spkY[(size_t) i]->load() });
 
-    const auto same = [] (const tripan::Vec2& a, const tripan::Vec2& b) { return juce::exactlyEqual (a.x, b.x) && juce::exactlyEqual (a.y, b.y); };
+    auto virtualSpeakers = getVirtualSpeakers();
 
-    if (havePublished && speakers.size() == publishedSpeakers.size()
-        && std::equal (speakers.begin(), speakers.end(), publishedSpeakers.begin(), same))
+    const auto same = [] (const tripan::Vec2& a, const tripan::Vec2& b) { return juce::exactlyEqual (a.x, b.x) && juce::exactlyEqual (a.y, b.y); };
+    const auto equal = [&] (const std::vector<tripan::Vec2>& a, const std::vector<tripan::Vec2>& b)
+    {
+        return a.size() == b.size() && std::equal (a.begin(), a.end(), b.begin(), same);
+    };
+
+    if (havePublished && equal (speakers, publishedSpeakers) && equal (virtualSpeakers, publishedVirtual))
         return;
 
-    exchange.publish (std::make_unique<const tripan::Triangulation> (speakers));
+    exchange.publish (std::make_unique<const tripan::Triangulation> (speakers, virtualSpeakers));
     publishedSpeakers = std::move (speakers);
+    publishedVirtual = std::move (virtualSpeakers);
     havePublished = true;
+}
+
+VirtualMode TriPanAudioProcessor::getVirtualMode() const
+{
+    const int value = (int) apvts.state.getProperty (kVirtualMode, (int) VirtualMode::Auto);
+    return value >= (int) VirtualMode::Auto && value <= (int) VirtualMode::Off ? (VirtualMode) value : VirtualMode::Auto;
+}
+
+void TriPanAudioProcessor::setVirtualMode (VirtualMode mode)
+{
+    if (mode == VirtualMode::Manual && getVirtualMode() != VirtualMode::Manual && getManualVirtualSpeakers().empty())
+        setManualVirtualSpeakers (getVirtualSpeakers()); // start from what is in effect now
+
+    apvts.state.setProperty (kVirtualMode, (int) mode, nullptr);
+    refreshTriangulation();
+}
+
+std::vector<tripan::Vec2> TriPanAudioProcessor::getManualVirtualSpeakers() const
+{
+    std::vector<tripan::Vec2> out;
+    const auto tokens = juce::StringArray::fromTokens (apvts.state.getProperty (kManualVirtual).toString(), " ", "");
+
+    for (int i = 0; i + 1 < tokens.size() && (int) out.size() < kMaxVirtualSpeakers; i += 2)
+    {
+        const double x = tokens[i].getDoubleValue(), y = tokens[i + 1].getDoubleValue();
+        if (std::isfinite (x) && std::isfinite (y))
+            out.push_back ({ x, y });
+    }
+
+    return out;
+}
+
+void TriPanAudioProcessor::setManualVirtualSpeakers (const std::vector<tripan::Vec2>& list)
+{
+    juce::StringArray tokens;
+    const double limit = tripan::params::kCoordRange;
+
+    for (size_t i = 0; i < list.size() && (int) i < kMaxVirtualSpeakers; ++i)
+    {
+        tokens.add (juce::String (juce::jlimit (-limit, limit, list[i].x), 4));
+        tokens.add (juce::String (juce::jlimit (-limit, limit, list[i].y), 4));
+    }
+
+    apvts.state.setProperty (kManualVirtual, tokens.joinIntoString (" "), nullptr);
+    refreshTriangulation();
+}
+
+std::vector<tripan::Vec2> TriPanAudioProcessor::getVirtualSpeakers() const
+{
+    switch (getVirtualMode())
+    {
+        case VirtualMode::Off:
+            return {};
+
+        case VirtualMode::Manual:
+            return getManualVirtualSpeakers();
+
+        case VirtualMode::Auto:
+            break;
+    }
+
+    const int m = getActiveSpeakers();
+    std::vector<tripan::Vec2> speakers;
+    speakers.reserve ((size_t) m);
+    for (int i = 0; i < m; ++i)
+        speakers.push_back ({ (double) spkX[(size_t) i]->load(), (double) spkY[(size_t) i]->load() });
+
+    return tripan::findVirtualSpeakers (speakers);
 }
 
 void TriPanAudioProcessor::prepareToPlay (double, int samplesPerBlock)
