@@ -106,16 +106,14 @@ std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<
 
     // Speakers first, then sources with <=, so that on a tie the source (drawn on top) wins.
     // Handles that the current edit mode locks are not grabbable.
-    const auto mode = processor.getEditMode();
-    if (canEditSpeakers (mode)) consider (false, activeSpeakers());
-    if (canEditSources (mode))  consider (true, activeSources());
+    if (processor.canEditSpeakers()) consider (false, activeSpeakers());
+    if (processor.canEditSources())  consider (true, activeSources());
     return best;
 }
 
 void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
 {
-    const auto mode = processor.getEditMode();
-    if (h.isSource ? ! canEditSources (mode) : ! canEditSpeakers (mode))
+    if (h.isSource ? ! processor.canEditSources() : ! processor.canEditSpeakers())
         return;
 
     const auto pos = fromView (p);

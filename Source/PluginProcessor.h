@@ -1,6 +1,5 @@
 #pragma once
 
-#include "EditMode.h"
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"
 #include "tripan/TriangulationExchange.h"
@@ -53,9 +52,13 @@ public:
         sources on radius 2.5 m, first speaker at front). */
     void resetLayoutToRings (bool resetSources = true, bool resetSpeakers = true);
 
-    /** Message thread. Which positions the editor lets the user change (saved with the state). */
-    EditMode getEditMode() const;
-    void setEditMode (EditMode);
+    /** Message thread. Whether the editor lets the user change the source / speaker positions
+        (otherwise they are in view mode). Saved with the state. Defaults: sources can be edited,
+        speakers are view only. */
+    bool canEditSources() const;
+    bool canEditSpeakers() const;
+    void setSourcesEditable (bool);
+    void setSpeakersEditable (bool);
 
     /** Message thread. Width of the editor window in pixels (0 if never set); saved with the state
         so that the chosen GUI size is restored. */

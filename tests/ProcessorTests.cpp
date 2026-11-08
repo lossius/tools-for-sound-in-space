@@ -185,8 +185,9 @@ static void testStateRoundTrip()
     CHECK (configure (a, 4, 6, 256));
     setParam (a, tripan::params::speakerId (3, 'x'), 1.25f);
     setParam (a, tripan::params::sourceId (2, 'y'), -2.5f);
-    CHECK (a.getEditMode() == EditMode::Sources); // default
-    a.setEditMode (EditMode::Both);
+    CHECK (a.canEditSources() && ! a.canEditSpeakers()); // defaults
+    a.setSpeakersEditable (true);
+    a.setSourcesEditable (false);
 
     juce::MemoryBlock state;
     a.getStateInformation (state);
@@ -198,7 +199,21 @@ static void testStateRoundTrip()
     const auto get = [] (TriPanAudioProcessor& p, const juce::String& id) { return p.getValueTreeState().getRawParameterValue (id)->load(); };
     CHECK (std::abs (get (b, tripan::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
     CHECK (std::abs (get (b, tripan::params::sourceId (2, 'y')) + 2.5f) < 1e-4f);
-    CHECK (b.getEditMode() == EditMode::Both);
+    CHECK (! b.canEditSources() && b.canEditSpeakers());
+
+    // State written by an earlier version (single "editMode" property) is still understood.
+    {
+        const std::pair<int, std::pair<bool, bool>> legacy[] = { { 1, { true, false } }, { 2, { false, true } }, { 3, { true, true } }, { 4, { false, false } } };
+        for (const auto& [mode, expected] : legacy)
+        {
+            TriPanAudioProcessor old;
+            old.getValueTreeState().state.setProperty ("editMode", mode, nullptr);
+            CHECK (old.canEditSources() == expected.first && old.canEditSpeakers() == expected.second);
+
+            old.setSourcesEditable (! expected.first); // changing one keeps the other
+            CHECK (old.canEditSources() == ! expected.first && old.canEditSpeakers() == expected.second);
+        }
+    }
 }
 
 static void testFullSize64x64()
@@ -458,7 +473,7 @@ static void testUnusedSpeakersAreSilentImmediately()
     CHECK (energy > 1.0);
 }
 
-// The speaker layouts in Preset/ must import cleanly and give a usable triangulation.
+// The speaker layouts in "speaker layouts/" must import cleanly and give a usable triangulation.
 static void testSpeakerPresets (const juce::File& dir)
 {
     struct Expected { const char* file; int count; };
@@ -543,6 +558,9 @@ static void testSpeakerPresets (const juce::File& dir)
         sourceFile.deleteFile();
     }
 
+    if (! dir.isDirectory())
+        return; // already reported above; avoids indexing empty layouts
+
     // Spot checks of the geometry (+y front, +x right, radius 5 m).
     const auto load = [&] (const char* file, std::vector<tripan::Vec2>& out)
     {
@@ -602,7 +620,7 @@ int main (int argc, char** argv)
     if (argc > 1)
         testSpeakerPresets (juce::File (argv[1]));
     else
-        std::printf ("(speaker preset test skipped: pass the Preset folder as argument)\n");
+        std::printf ("(speaker preset test skipped: pass the speaker layouts folder as argument)\n");
 
     if (failures == 0)
         std::printf ("All processor tests passed\n");

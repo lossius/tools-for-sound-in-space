@@ -7,7 +7,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     addAndMakeVisible (content);
     content.addAndMakeVisible (field);
 
-    for (auto* label : { &sourcesLabel, &speakersLabel, &modeLabel })
+    for (auto* label : { &sourcesLabel, &speakersLabel })
     {
         label->setJustificationType (juce::Justification::centredRight);
         label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -21,20 +21,25 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
 
     infoLabel.setJustificationType (juce::Justification::centredRight);
     infoLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
+    infoLabel.setFont (juce::FontOptions (12.0f));
     content.addAndMakeVisible (infoLabel);
 
-    modeBox.addItem ("1: Move sources", (int) EditMode::Sources);
-    modeBox.addItem ("2: Move speakers", (int) EditMode::Speakers);
-    modeBox.addItem ("3: Move sources and speakers", (int) EditMode::Both);
-    modeBox.addItem ("4: View only (positions locked)", (int) EditMode::View);
-    modeBox.setSelectedId ((int) owner.getEditMode(), juce::dontSendNotification);
-    modeBox.setTooltip ("Which positions can be changed in this window");
-    modeBox.onChange = [this]
+    // One menu per kind of position: "Edit" lets the user move them in this window, "View" locks them.
+    const auto setUpModeBox = [this] (juce::ComboBox& box, const juce::String& what, bool editable, std::function<void (bool)> apply)
     {
-        owner.setEditMode ((EditMode) modeBox.getSelectedId());
-        syncControls();
+        box.addItem ("Edit", 1);
+        box.addItem ("View", 2);
+        box.setSelectedId (editable ? 1 : 2, juce::dontSendNotification);
+        box.setTooltip ("Edit: the " + what + " positions can be moved in this window. View: they are locked.");
+        box.onChange = [this, &box, apply]
+        {
+            apply (box.getSelectedId() == 1);
+            syncControls();
+        };
+        content.addAndMakeVisible (box);
     };
-    content.addAndMakeVisible (modeBox);
+    setUpModeBox (sourcesModeBox,  "source",  owner.canEditSources(),  [this] (bool e) { owner.setSourcesEditable (e); });
+    setUpModeBox (speakersModeBox, "speaker", owner.canEditSpeakers(), [this] (bool e) { owner.setSpeakersEditable (e); });
 
     showTriangulationButton.setToggleState (true, juce::dontSendNotification);
     showTriangulationButton.onClick = [this] { field.setShowTriangulation (showTriangulationButton.getToggleState()); };
@@ -43,8 +48,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     resetButton.setTooltip ("Place the unlocked sources and speakers in use on rings");
     resetButton.onClick = [this]
     {
-        const auto mode = owner.getEditMode();
-        owner.resetLayoutToRings (canEditSources (mode), canEditSpeakers (mode));
+        owner.resetLayoutToRings (owner.canEditSources(), owner.canEditSpeakers());
     };
     content.addAndMakeVisible (resetButton);
 
@@ -62,9 +66,9 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     };
     using tripan::io::Kind;
     setUpFileButton (exportSourcesButton,  Kind::Sources,  true,  "Save the source positions in use to an XML file");
-    setUpFileButton (importSourcesButton,  Kind::Sources,  false, "Load source positions from an XML file (needs a mode that unlocks sources)");
+    setUpFileButton (importSourcesButton,  Kind::Sources,  false, "Load source positions from an XML file (needs the sources menu set to Edit)");
     setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the speaker positions in use to an XML file");
-    setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file (needs a mode that unlocks speakers)");
+    setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file (needs the speakers menu set to Edit)");
 
     // Scalable GUI: the base size is the minimum, the aspect ratio is fixed.
     setResizable (true, true);
@@ -142,13 +146,15 @@ void TriPanAudioProcessorEditor::syncControls()
     syncCountSlider (sourceCount,  owner.getActiveSources(),  channelsIn);
     syncCountSlider (speakerCount, owner.getActiveSpeakers(), channelsOut);
 
-    const auto mode = owner.getEditMode();
-    if (modeBox.getSelectedId() != (int) mode)
-        modeBox.setSelectedId ((int) mode, juce::dontSendNotification);
-    resetButton.setEnabled (mode != EditMode::View);
+    const bool editSources = owner.canEditSources(), editSpeakers = owner.canEditSpeakers();
+    if (sourcesModeBox.getSelectedId() != (editSources ? 1 : 2))
+        sourcesModeBox.setSelectedId (editSources ? 1 : 2, juce::dontSendNotification);
+    if (speakersModeBox.getSelectedId() != (editSpeakers ? 1 : 2))
+        speakersModeBox.setSelectedId (editSpeakers ? 1 : 2, juce::dontSendNotification);
+    resetButton.setEnabled (editSources || editSpeakers);
     // Importing changes positions, so it follows the same locks as dragging.
-    importSourcesButton.setEnabled (canEditSources (mode));
-    importSpeakersButton.setEnabled (canEditSpeakers (mode));
+    importSourcesButton.setEnabled (editSources);
+    importSpeakersButton.setEnabled (editSpeakers);
 
     const bool showingStatus = statusText.isNotEmpty() && juce::Time::getMillisecondCounter() < statusUntil;
     infoLabel.setText (showingStatus ? statusText
@@ -186,7 +192,7 @@ juce::Result TriPanAudioProcessorEditor::importPositionsFrom (tripan::io::Kind k
             text << ", Number of Speakers set to " << report.speakersSetTo;
         else if (kind == tripan::io::Kind::Speakers)
             text << " (track has " << report.trackOutputs << (report.trackOutputs == 1 ? " output" : " outputs")
-                 << ": Number of Speakers unchanged)";
+                 << "; count unchanged)";
         else if (report.inUse < report.applied)
             text << " (" << report.inUse << " in use)";
         if (report.clamped > 0)
@@ -277,22 +283,24 @@ void TriPanAudioProcessorEditor::layoutContent()
 {
     auto area = content.getLocalBounds();
 
-    // Top row: the number of sources and speakers in use.
+    // Top row: number of sources / speakers in use, and whether each kind can be edited or is view only.
     auto top = area.removeFromTop (40).reduced (10, 6);
     sourcesLabel.setBounds (top.removeFromLeft (64));
     sourceCount.setBounds (top.removeFromLeft (110));
-    top.removeFromLeft (14);
+    top.removeFromLeft (6);
+    sourcesModeBox.setBounds (top.removeFromLeft (80));
+    top.removeFromLeft (16);
     speakersLabel.setBounds (top.removeFromLeft (70));
     speakerCount.setBounds (top.removeFromLeft (110));
-    infoLabel.setBounds (top);
+    top.removeFromLeft (6);
+    speakersModeBox.setBounds (top.removeFromLeft (80));
 
-    // Second row: edit mode and display options.
+    // Second row: display options, and a line of status text (track channels, import/export results).
     auto bar = area.removeFromTop (34).reduced (10, 4);
-    modeLabel.setBounds (bar.removeFromLeft (40));
-    modeBox.setBounds (bar.removeFromLeft (230));
-    bar.removeFromLeft (12);
     showTriangulationButton.setBounds (bar.removeFromLeft (150));
     resetButton.setBounds (bar.removeFromLeft (100));
+    bar.removeFromLeft (12);
+    infoLabel.setBounds (bar);
 
     // Third row: export / import of positions.
     auto files = area.removeFromTop (34).reduced (10, 4);

@@ -8,7 +8,9 @@
 namespace
 {
 const juce::Identifier kLayoutInitialised { "layoutInitialised" };
-const juce::Identifier kEditMode { "editMode" };
+const juce::Identifier kEditSources { "editSources" };
+const juce::Identifier kEditSpeakers { "editSpeakers" };
+const juce::Identifier kLegacyEditMode { "editMode" }; // 1 sources, 2 speakers, 3 both, 4 view only
 const juce::Identifier kEditorWidth { "editorWidth" };
 
 /** k-th of `count` positions on a ring; k = 0 at the front (+y), going clockwise. */
@@ -113,10 +115,48 @@ void TriPanAudioProcessor::resetLayoutToRings (bool resetSources, bool resetSpea
     refreshTriangulation();
 }
 
-EditMode TriPanAudioProcessor::getEditMode() const
+bool TriPanAudioProcessor::canEditSources() const
 {
-    const int value = (int) apvts.state.getProperty (kEditMode, (int) EditMode::Sources);
-    return value >= (int) EditMode::Sources && value <= (int) EditMode::View ? (EditMode) value : EditMode::Sources;
+    if (apvts.state.hasProperty (kEditSources))
+        return (bool) apvts.state.getProperty (kEditSources);
+
+    if (apvts.state.hasProperty (kLegacyEditMode)) // state saved by an earlier version
+    {
+        const int mode = (int) apvts.state.getProperty (kLegacyEditMode);
+        return mode == 1 || mode == 3;
+    }
+
+    return true;
+}
+
+bool TriPanAudioProcessor::canEditSpeakers() const
+{
+    if (apvts.state.hasProperty (kEditSpeakers))
+        return (bool) apvts.state.getProperty (kEditSpeakers);
+
+    if (apvts.state.hasProperty (kLegacyEditMode))
+    {
+        const int mode = (int) apvts.state.getProperty (kLegacyEditMode);
+        return mode == 2 || mode == 3;
+    }
+
+    return false;
+}
+
+void TriPanAudioProcessor::setSourcesEditable (bool editable)
+{
+    const bool speakers = canEditSpeakers(); // read before the legacy property is dropped
+    apvts.state.setProperty (kEditSources, editable, nullptr);
+    apvts.state.setProperty (kEditSpeakers, speakers, nullptr);
+    apvts.state.removeProperty (kLegacyEditMode, nullptr);
+}
+
+void TriPanAudioProcessor::setSpeakersEditable (bool editable)
+{
+    const bool sources = canEditSources();
+    apvts.state.setProperty (kEditSources, sources, nullptr);
+    apvts.state.setProperty (kEditSpeakers, editable, nullptr);
+    apvts.state.removeProperty (kLegacyEditMode, nullptr);
 }
 
 int TriPanAudioProcessor::getEditorWidth() const
@@ -127,11 +167,6 @@ int TriPanAudioProcessor::getEditorWidth() const
 void TriPanAudioProcessor::setEditorWidth (int width)
 {
     apvts.state.setProperty (kEditorWidth, width, nullptr);
-}
-
-void TriPanAudioProcessor::setEditMode (EditMode mode)
-{
-    apvts.state.setProperty (kEditMode, (int) mode, nullptr);
 }
 
 void TriPanAudioProcessor::refreshTriangulation()

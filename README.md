@@ -17,6 +17,12 @@ cmake --build build --config Release
 On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each build. Use
 `-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
 
+## Edit and View
+Two menus at the top of the window, one for sources and one for speakers, switch each kind of
+position between **Edit** (can be dragged and imported) and **View** (locked). By default sources
+are set to Edit and speakers to View. The choice is saved with the session. It only affects the
+window: automation from the host can still move everything.
+
 ## Saving and loading positions
 Four buttons under the toolbar export and import source and speaker positions as XML files, with a
 file dialog each time. Sources and speakers are separate files:
@@ -32,11 +38,11 @@ Export writes the channels currently in use, with coordinates rounded to 3 decim
 entry by index. Importing speakers also sets "Number of Speakers" to the number of speakers in the
 file, provided the track has that many outputs (otherwise the setting is left alone and the status
 line says so). Importing sources never changes "Number of Sources". Import is disabled while
-the edit mode locks that kind of position.
+that kind of position is set to View.
 
 ## Speaker presets
-The `Preset/` folder has ready-made speaker layouts in the same XML format. Load one with
-"Import speakers..." (set the mode to one that unlocks speakers). Number of Speakers is adjusted to
+The `speaker layouts/` folder has ready-made speaker layouts in the same XML format. Load one with
+"Import speakers..." (set the speakers menu to Edit first). Number of Speakers is adjusted to
 the preset automatically when the track has enough outputs. Angles are azimuths clockwise from the front, speakers are on a 5 m circle, and the LFE
 channel is left out.
 

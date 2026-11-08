@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generates the speaker layout presets in Preset/ (TriPan speaker XML files).
+"""Generates the speaker layout presets in "speaker layouts/" (TriPan speaker XML files).
 
 Run from anywhere:  python3 scripts/make_speaker_presets.py
 
@@ -13,7 +13,7 @@ import random
 from pathlib import Path
 
 RADIUS = 5.0
-OUT = Path(__file__).resolve().parent.parent / "Preset"
+OUT = Path(__file__).resolve().parent.parent / "speaker layouts"
 
 
 def polar(azimuth_deg, radius=RADIUS):

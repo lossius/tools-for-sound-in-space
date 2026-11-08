@@ -26,7 +26,8 @@ public:
     FieldComponent& getField() noexcept { return field; }
     juce::Slider& getSourceCountSlider() noexcept { return sourceCount; }
     juce::Slider& getSpeakerCountSlider() noexcept { return speakerCount; }
-    juce::ComboBox& getModeBox() noexcept { return modeBox; }
+    juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }
+    juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }
     juce::TextButton& getResetButton() noexcept { return resetButton; }
     juce::TextButton& getExportSourcesButton() noexcept { return exportSourcesButton; }
     juce::TextButton& getImportSourcesButton() noexcept { return importSourcesButton; }
@@ -68,8 +69,7 @@ private:
     juce::Label speakersLabel { {}, "Speakers" };
     juce::Slider sourceCount, speakerCount;
     juce::Label infoLabel;
-    juce::Label modeLabel { {}, "Mode" };
-    juce::ComboBox modeBox;
+    juce::ComboBox sourcesModeBox, speakersModeBox; // "Edit" / "View"
     juce::ToggleButton showTriangulationButton { "Show triangulation" };
     juce::TextButton resetButton { "Reset layout" };
     juce::TextButton exportSourcesButton  { "Export sources..." };
