@@ -9,8 +9,11 @@
     Sources and speakers use separate files:
 
         <TriPanSources version="1" count="3">
-          <Source index="1" x="0.5" y="1.0"/> ...
+          <Source index="1" x="0.5" y="1.0" spread="0.0"/> ...
         </TriPanSources>
+
+    The optional attribute spread (metres, 0 to 10) is the source's spread radius. An entry without it
+    leaves that source's spread unchanged.
 
         <TriPanSpeakers version="1" count="7" virtual="manual">
           <Speaker index="1" x="0.0" y="5.0"/> ...
@@ -40,6 +43,7 @@ struct ImportReport
     int trackOutputs = 0;     // outputs available on the track; speaker imports only
     int clamped = 0;  // entries whose coordinates were limited to the allowed range
     int skipped = 0;  // malformed entries that were ignored
+    int spreadApplied = 0; // source imports: entries that also set the spread
 
     std::optional<VirtualMode> virtualMode; // speaker imports: set if the file specified the virtual speakers
     int virtualCount = 0;                   // manual virtual speakers applied from the file

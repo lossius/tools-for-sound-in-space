@@ -45,9 +45,25 @@ juce::String formatCoordinate (float value)
     return text.paddedLeft (' ', 7);
 }
 
+/** Reads a numeric attribute. Returns false if it is missing or is not a number (JUCE's own conversion
+    would turn text such as "abc" into 0). */
+bool readNumber (const juce::XmlElement& e, const char* name, double& out)
+{
+    if (! e.hasAttribute (name))
+        return false;
+
+    const auto text = e.getStringAttribute (name).trim();
+    if (text.isEmpty() || ! text.containsAnyOf ("0123456789") || ! text.containsOnly ("+-.0123456789eE"))
+        return false;
+
+    out = text.getDoubleValue();
+    return std::isfinite (out);
+}
+
 struct Entry
 {
     float x, y;
+    float spread = -1.0f; // negative: the file has none
 };
 }
 
@@ -80,6 +96,8 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
         e->setAttribute ("index", juce::String (i + 1).paddedLeft (' ', 2)); // padded like the coordinates
         e->setAttribute ("x", formatCoordinate (readParam (p, idFor (kind, i, 'x'))));
         e->setAttribute ("y", formatCoordinate (readParam (p, idFor (kind, i, 'y'))));
+        if (kind == Kind::Sources)
+            e->setAttribute ("spread", formatCoordinate (readParam (p, params::spreadId (i))));
     }
 
     // The user's own virtual speakers belong to the layout. (Automatic ones are recomputed on import.)
@@ -143,11 +161,9 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
     {
         ++ordinal;
         const int index = e->getIntAttribute ("index", ordinal);
-        const double x = e->getDoubleAttribute ("x", std::nan (""));
-        const double y = e->getDoubleAttribute ("y", std::nan (""));
+        double x = 0.0, y = 0.0;
 
-        if (index < 1 || index > kMaxChannels || ! e->hasAttribute ("x") || ! e->hasAttribute ("y")
-            || ! std::isfinite (x) || ! std::isfinite (y))
+        if (index < 1 || index > kMaxChannels || ! readNumber (*e, "x", x) || ! readNumber (*e, "y", y))
         {
             ++report.skipped;
             continue;
@@ -158,7 +174,16 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
         if (! juce::approximatelyEqual (cx, (float) x) || ! juce::approximatelyEqual (cy, (float) y))
             ++report.clamped;
 
-        entries[index] = { cx, cy };
+        Entry entry { cx, cy };
+        double spread = 0.0;
+        if (kind == Kind::Sources && readNumber (*e, "spread", spread)) // not a number: ignored
+        {
+            entry.spread = juce::jlimit (0.0f, params::kMaxSpread, (float) spread);
+            if (! juce::approximatelyEqual (entry.spread, (float) spread))
+                ++report.clamped;
+        }
+
+        entries[index] = entry;
     }
 
     if (entries.empty())
@@ -180,10 +205,9 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
         if (*newVirtualMode == VirtualMode::Manual)
             for (auto* e : xml->getChildWithTagNameIterator ("VirtualSpeaker"))
             {
-                const double x = e->getDoubleAttribute ("x", std::nan (""));
-                const double y = e->getDoubleAttribute ("y", std::nan (""));
+                double x = 0.0, y = 0.0;
 
-                if (! e->hasAttribute ("x") || ! e->hasAttribute ("y") || ! std::isfinite (x) || ! std::isfinite (y)
+                if (! readNumber (*e, "x", x) || ! readNumber (*e, "y", y)
                     || (int) newManual.size() >= TriPanAudioProcessor::kMaxVirtualSpeakers)
                 {
                     ++report.skipped;
@@ -203,6 +227,11 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
     {
         writeParam (p, idFor (kind, index - 1, 'x'), pos.x);
         writeParam (p, idFor (kind, index - 1, 'y'), pos.y);
+        if (pos.spread >= 0.0f)
+        {
+            writeParam (p, params::spreadId (index - 1), pos.spread);
+            ++report.spreadApplied;
+        }
         ++report.applied;
     }
 

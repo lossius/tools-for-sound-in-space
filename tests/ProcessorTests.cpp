@@ -802,6 +802,78 @@ static void testUnchangedSourcesFollowLayoutChanges()
     CHECK (std::abs (outE - inE) < 1e-3 * inE);
 }
 
+// Per-source spread: a stationary source on a speaker feeds more speakers as its spread grows, with unchanged power.
+static void testSourceSpread()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 2, 6, 256));
+    p.setVirtualMode (VirtualMode::Off);
+
+    juce::AudioBuffer<float> buf (6, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (51);
+
+    CHECK (p.getValueTreeState().getRawParameterValue (tripan::params::spreadId (0))->load() == 0.0f); // default: no spread
+
+    // Source 1 exactly on speaker 1 (the default ring starts at the front).
+    setParam (p, tripan::params::sourceId (0, 'x'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'x'))->load());
+    setParam (p, tripan::params::sourceId (0, 'y'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'y'))->load());
+
+    const auto measure = [&] (double& inputEnergy)
+    {
+        std::vector<double> e (6, 0.0);
+        for (int block = 0; block < 4; ++block)
+        {
+            inputEnergy = fillNoise (buf, 2, 0, rng);
+            p.processBlock (buf, midi);
+        }
+        for (int ch = 0; ch < 6; ++ch) e[(size_t) ch] = channelEnergy (buf, ch);
+        return e;
+    };
+
+    double inE = 0.0;
+    auto e = measure (inE);
+    CHECK (std::abs (e[0] - inE) < 1e-3 * inE);                       // all of it on speaker 1
+
+    double previousShare = 1.0;
+    for (float spread : { 1.0f, 3.0f, 6.0f })
+    {
+        setParam (p, tripan::params::spreadId (0), spread);           // changing only the spread must be noticed
+        e = measure (inE);
+
+        double total = 0.0;
+        int active = 0;
+        for (double v : e) { total += v; if (v > 1e-3 * inE) ++active; }
+        CHECK (std::abs (total - inE) < 1e-3 * inE);                  // power is unchanged
+        CHECK (e[0] / inE < previousShare);                           // the speaker under the source gets less
+        CHECK (active >= 3);                                          // and others take part
+        previousShare = e[0] / inE;
+    }
+
+    // Source 2 has its own spread: it is unaffected by source 1.
+    setParam (p, tripan::params::spreadId (0), 0.0f);
+    setParam (p, tripan::params::sourceId (1, 'x'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (2, 'x'))->load());
+    setParam (p, tripan::params::sourceId (1, 'y'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (2, 'y'))->load());
+    double inE2 = 0.0;
+    std::vector<double> e2 (6, 0.0);
+    for (int block = 0; block < 4; ++block)
+    {
+        inE2 = fillNoise (buf, 2, 1, rng);
+        p.processBlock (buf, midi);
+    }
+    for (int ch = 0; ch < 6; ++ch) e2[(size_t) ch] = channelEnergy (buf, ch);
+    CHECK (std::abs (e2[2] - inE2) < 1e-3 * inE2);
+
+    // The spread is a normal automatable parameter, saved with the state.
+    setParam (p, tripan::params::spreadId (1), 2.5f);
+    juce::MemoryBlock state;
+    p.getStateInformation (state);
+    TriPanAudioProcessor q;
+    q.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (std::abs (q.getValueTreeState().getRawParameterValue (tripan::params::spreadId (1))->load() - 2.5f) < 1e-3f);
+    CHECK (q.getValueTreeState().getParameter (tripan::params::spreadId (63)) != nullptr);
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -817,6 +889,7 @@ int main (int argc, char** argv)
     testParameterAutomationWhileProcessing();
     testVirtualSpeakerModes();
     testUnchangedSourcesFollowLayoutChanges();
+    testSourceSpread();
     testFullSize64x64();
 
     if (argc > 1)

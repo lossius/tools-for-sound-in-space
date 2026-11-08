@@ -50,6 +50,7 @@ TriPanAudioProcessor::TriPanAudioProcessor()
     {
         srcX[(size_t) i] = apvts.getRawParameterValue (tripan::params::sourceId (i, 'x'));
         srcY[(size_t) i] = apvts.getRawParameterValue (tripan::params::sourceId (i, 'y'));
+        srcSpread[(size_t) i] = apvts.getRawParameterValue (tripan::params::spreadId (i));
         spkX[(size_t) i] = apvts.getRawParameterValue (tripan::params::speakerId (i, 'x'));
         spkY[(size_t) i] = apvts.getRawParameterValue (tripan::params::speakerId (i, 'y'));
     }
@@ -365,15 +366,16 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         }
 
         // A source that has not moved, with an unchanged layout, keeps last block's gains.
-        const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load();
-        if (key.valid && key.layoutId == tri->id() && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y))
+        const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load(), spread = srcSpread[(size_t) s]->load();
+        if (key.valid && key.layoutId == tri->id() && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y)
+            && juce::exactlyEqual (key.spread, spread))
         {
             target[(size_t) s] = prevGains[(size_t) s];
             continue;
         }
 
-        target[(size_t) s] = tripan::computeGains (*tri, { (double) x, (double) y });
-        key = { x, y, tri->id(), true };
+        target[(size_t) s] = tripan::computeGains (*tri, { (double) x, (double) y }, (double) spread);
+        key = { x, y, spread, tri->id(), true };
     }
 
     if (restartRamp.exchange (false))

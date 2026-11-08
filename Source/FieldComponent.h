@@ -12,6 +12,7 @@
 /** Top-down view of the plane: speakers (squares), sources (circles), the Delaunay triangulation,
     and the links from each source to the speakers it feeds. Handles can be dragged. */
 class FieldComponent final : public juce::Component,
+                             public juce::SettableTooltipClient,
                              private juce::Timer
 {
 public:
@@ -27,6 +28,24 @@ public:
     };
 
     void setShowTriangulation (bool shouldShow);
+
+    /** Radius in pixels of a source's inner circle. This is also its mouse target: the (semi-transparent)
+        spread circle around it is only a display and never takes part in mouse interaction. */
+    static constexpr float kSourceRadius = 9.0f;
+
+    /** Spread: Option (Alt) or Cmd (Ctrl on Windows) with the mouse changes the spread of the source
+        under the mouse. The spread is the distance from the source to the mouse, in metres, so the outer
+        circle follows the mouse. The modifier together with a double-click resets the spread to 0. */
+    static bool isSpreadModifier (const juce::ModifierKeys&) noexcept;
+    double getSpread (int source) const;
+    /** Sets the spread of a source from a component-coordinate position (distance to the source). */
+    void setSpreadFromPoint (int source, juce::Point<float> p);
+
+    // The mouse handlers call these, so that they can be tested without real mouse events.
+    void pressAt (juce::Point<float> p, const juce::ModifierKeys& mods);
+    void dragTo (juce::Point<float> p);
+    void release();
+    void doubleClickAt (juce::Point<float> p, const juce::ModifierKeys& mods);
 
     /** Zoom. The full view shows the whole +-10 m plane. Zoom in moves a step towards the area that
         contains all speakers in use (and stops there); zoom out moves a step back towards the full
@@ -81,7 +100,7 @@ private:
 
     TriPanAudioProcessor& processor;
 
-    std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> srcXp {}, srcYp {}, spkXp {}, spkYp {};
+    std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> srcXp {}, srcYp {}, srcSpreadP {}, spkXp {}, spkYp {};
 
     std::vector<tripan::Vec2> triangulatedSpeakers;
     std::vector<tripan::VirtualSpeaker> triangulatedVirtual;
@@ -93,6 +112,7 @@ private:
     juce::Point<double> viewCentre;
 
     std::optional<Handle> dragging;
+    bool draggingSpread = false; // the drag changes the spread of the source instead of moving it
     std::optional<Handle> hovered;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FieldComponent)

@@ -56,4 +56,18 @@ private:
 
 /** Gains of a source for the real speakers of the layout (constant power). Real-time safe. */
 SourceGains computeGains (const SpeakerLayout& layout, Vec2 source) noexcept;
+
+/** Largest spread radius in metres that is used (larger values are limited to this). */
+inline constexpr double kMaxSpreadRadius = 100.0;
+
+/** As above, with spread (in the manner of MDAP, multiple-direction amplitude panning).
+
+    The source is panned not from a single point but from the point plus 8 points evenly spaced on a
+    circle of radius `spread` metres around it. The gains are the root of the mean of the squared
+    gains of these 9 positions, so the power stays constant. Spread 0 (or less, or not finite) is the
+    plain gain. A larger spread feeds more speakers more evenly and makes the panning smoother:
+    - continuous in the position and in the spread,
+    - symmetric: mirroring the layout and the source mirrors the gains.
+    Costs up to 9 times the plain computation; real-time safe. */
+SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double spread) noexcept;
 }

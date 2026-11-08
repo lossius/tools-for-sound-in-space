@@ -275,6 +275,48 @@ int main (int argc, char** argv)
         editor->syncControls();
         CHECK (editor->getSpeakerCountSlider().getValue() == 7.0);
 
+        // The spread of a source is saved with it (optional attribute; entries without it leave the spread alone).
+        {
+            setParam (p, tripan::params::spreadId (0), 1.25f);
+            setParam (p, tripan::params::spreadId (2), 4.0f);
+            const auto spreadFile = dir.getChildFile ("spread.xml");
+            CHECK (editor->exportPositionsTo (Kind::Sources, spreadFile).wasOk());
+            {
+                const auto doc = juce::XmlDocument::parse (spreadFile);
+                const auto* first = doc != nullptr ? doc->getChildElement (0) : nullptr;
+                CHECK (first != nullptr && first->getStringAttribute ("spread").trim() == "1.250" && first->getStringAttribute ("spread").length() == 7);
+            }
+
+            setParam (p, tripan::params::spreadId (0), 0.0f);
+            setParam (p, tripan::params::spreadId (2), 0.0f);
+            tripan::io::ImportReport spreadReport;
+            CHECK (tripan::io::load (p, Kind::Sources, spreadFile, spreadReport).wasOk() && spreadReport.spreadApplied == 3);
+            CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 1.25f) < 1e-3f && std::abs (value (p, tripan::params::spreadId (2)) - 4.0f) < 1e-3f);
+
+            // No attribute: unchanged. Out of range: limited. Not a number: ignored.
+            setParam (p, tripan::params::spreadId (0), 7.0f);
+            const auto plain = dir.getChildFile ("no-spread.xml");
+            plain.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"1\"/></TriPanSources>");
+            CHECK (tripan::io::load (p, Kind::Sources, plain, spreadReport).wasOk() && spreadReport.spreadApplied == 0);
+            CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 7.0f) < 1e-3f);
+
+            const auto odd = dir.getChildFile ("odd-spread.xml");
+            odd.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"1\" spread=\"99\"/><Source index=\"2\" x=\"1\" y=\"1\" spread=\"-3\"/>"
+                                 "<Source index=\"3\" x=\"2\" y=\"1\" spread=\"abc\"/></TriPanSources>");
+            setParam (p, tripan::params::spreadId (2), 5.0f);
+            CHECK (tripan::io::load (p, Kind::Sources, odd, spreadReport).wasOk());
+            CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 10.0f) < 1e-3f && std::abs (value (p, tripan::params::spreadId (1))) < 1e-3f);
+            CHECK (std::abs (value (p, tripan::params::spreadId (2)) - 5.0f) < 1e-3f && spreadReport.clamped == 2 && spreadReport.spreadApplied == 2);
+
+            for (int i = 0; i < 3; ++i) setParam (p, tripan::params::spreadId (i), 0.0f);
+            setParam (p, tripan::params::sourceId (0, 'x'), srcX[0]);   // the import moved sources 1-3
+            setParam (p, tripan::params::sourceId (0, 'y'), srcY[0]);
+            setParam (p, tripan::params::sourceId (1, 'x'), srcX[1]);
+            setParam (p, tripan::params::sourceId (1, 'y'), srcY[1]);
+            setParam (p, tripan::params::sourceId (2, 'x'), srcX[2]);
+            setParam (p, tripan::params::sourceId (2, 'y'), srcY[2]);
+        }
+
         // Virtual speakers are part of a speaker layout file.
         {
             CHECK (p.getVirtualMode() == VirtualMode::Auto && p.getManualVirtualSpeakers().empty());
@@ -580,6 +622,92 @@ int main (int argc, char** argv)
         field.refresh();
     }
 
+    // Spread: an outer circle per source. Only the inner circle is a mouse target; Option or Cmd + drag sets the spread.
+    {
+        editor->getSourcesModeBox().setSelectedId (1, juce::sendNotificationSync);
+        const float ppm = field.toView (1.0, 0.0).x - field.toView (0.0, 0.0).x; // pixels per metre
+        const auto p0 = field.toView (0.5, 1.0);                                  // source 1
+        const auto spread = [&] (int i) { return value (p, tripan::params::spreadId (i)); };
+        const juce::ModifierKeys none, alt (juce::ModifierKeys::altModifier), cmd (juce::ModifierKeys::commandModifier);
+
+        CHECK (FieldComponent::isSpreadModifier (alt) && FieldComponent::isSpreadModifier (cmd) && ! FieldComponent::isSpreadModifier (none));
+        CHECK (std::abs (spread (0)) < 1e-6f && field.getSpread (0) == 0.0);       // default: no spread
+
+        // A big spread circle on source 1 covers source 3, but only inner circles take the mouse.
+        const double x3 = value (p, tripan::params::sourceId (2, 'x')), y3 = value (p, tripan::params::sourceId (2, 'y'));
+        const float bigSpread = std::min (10.0f, (float) std::hypot (x3 - 0.5, y3 - 1.0) + 1.0f);
+        setParam (p, tripan::params::spreadId (0), bigSpread);
+        field.refresh();
+        CHECK (std::abs (field.getSpread (0) - bigSpread) < 1e-3);
+        const auto h3 = field.findHandleAt (field.toView (x3, y3));               // source 3 lies inside the spread circle
+        CHECK (h3 && h3->isSource && h3->index == 2);
+        CHECK (! field.findHandleAt (field.toView (3.5, 1.0)).has_value());        // inside the circle, not on any source
+        CHECK (field.findHandleAt (p0 + juce::Point<float> (FieldComponent::kSourceRadius - 1.0f, 0.0f)).has_value());
+        CHECK (! field.findHandleAt (p0 + juce::Point<float> (FieldComponent::kSourceRadius + 2.0f, 0.0f)).has_value());
+        setParam (p, tripan::params::spreadId (0), 0.0f);
+
+        // Option + drag: the spread is the distance from the source to the mouse, in metres. The source stays.
+        field.pressAt (p0, alt);
+        field.dragTo (p0 + juce::Point<float> (2.0f * ppm, 0.0f));
+        CHECK (std::abs (spread (0) - 2.0f) < 0.03f);
+        field.dragTo (p0 + juce::Point<float> (0.0f, 3.5f * ppm));
+        CHECK (std::abs (spread (0) - 3.5f) < 0.03f);
+        field.dragTo (p0 + juce::Point<float> (5000.0f, 0.0f));
+        CHECK (std::abs (spread (0) - 10.0f) < 1e-3f);                             // limited to the maximum
+        field.dragTo (p0);
+        CHECK (spread (0) < 0.03f);                                                // back at the centre: no spread
+        field.dragTo (p0 + juce::Point<float> (1.0f * ppm, 0.0f));
+        field.release();
+        CHECK (std::abs (spread (0) - 1.0f) < 0.03f);
+        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 0.5f) < 0.02f && std::abs (value (p, tripan::params::sourceId (0, 'y')) - 1.0f) < 0.02f);
+
+        // Cmd works the same way.
+        field.pressAt (p0, cmd);
+        field.dragTo (p0 + juce::Point<float> (0.0f, -2.5f * ppm));
+        field.release();
+        CHECK (std::abs (spread (0) - 2.5f) < 0.03f);
+
+        // Without a modifier the drag moves the source and leaves the spread alone.
+        field.pressAt (p0, none);
+        field.dragTo (field.toView (1.5, 1.5));
+        field.release();
+        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 1.5f) < 0.02f && std::abs (spread (0) - 2.5f) < 0.03f);
+        setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
+        setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+
+        // Option + double-click on the source resets its spread; without the modifier nothing happens.
+        field.doubleClickAt (p0, none);
+        CHECK (std::abs (spread (0) - 2.5f) < 0.03f);
+        field.doubleClickAt (p0, alt);
+        CHECK (spread (0) < 1e-6f);
+
+        // A source whose position is set to View cannot get a new spread.
+        editor->getSourcesModeBox().setSelectedId (2, juce::sendNotificationSync);
+        field.pressAt (p0, alt);
+        field.dragTo (p0 + juce::Point<float> (3.0f * ppm, 0.0f));
+        field.release();
+        CHECK (spread (0) < 1e-6f);
+        field.setSpreadFromPoint (0, p0 + juce::Point<float> (3.0f * ppm, 0.0f));
+        CHECK (spread (0) < 1e-6f);
+        editor->getSourcesModeBox().setSelectedId (1, juce::sendNotificationSync);
+
+        // The pad has a tooltip that explains the gesture.
+        CHECK (field.getTooltip().containsIgnoreCase ("spread"));
+
+        // Zoomed in: the circle and the gesture follow the view (metres, not pixels).
+        field.zoomIn();
+        const auto zoomedP0 = field.toView (0.5, 1.0);
+        const float zoomedPpm = field.toView (1.0, 0.0).x - field.toView (0.0, 0.0).x;
+        CHECK (zoomedPpm > ppm);
+        field.pressAt (zoomedP0, alt);
+        field.dragTo (zoomedP0 + juce::Point<float> (2.0f * zoomedPpm, 0.0f));
+        field.release();
+        CHECK (std::abs (spread (0) - 2.0f) < 0.03f);
+        while (editor->getZoomOutButton().isEnabled()) editor->getZoomOutButton().onClick();
+        setParam (p, tripan::params::spreadId (0), 0.0f);
+        field.refresh();
+    }
+
     // Hit test: a source and a speaker are found at their own positions; empty space finds nothing.
     {
         const auto s0 = field.toView (0.5, 1.0);
@@ -646,6 +774,8 @@ int main (int argc, char** argv)
 
     if (argc > 1)
     {
+        setParam (p, tripan::params::spreadId (0), 3.0f); // the snapshot shows some spread
+        setParam (p, tripan::params::spreadId (2), 1.4f);
         if (argc <= 2)
             while (editor->getZoomInButton().isEnabled()) editor->getZoomInButton().onClick(); // snapshot shows the zoomed view
         field.refresh();

@@ -17,6 +17,34 @@ cmake --build build --config Release
 On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each build. Use
 `-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
 
+## Source spread
+Each source has a **spread**: the radius, in metres, of a circle around it over which its sound is
+spread (0 to 10 m, default 0 = a point source). It is a host parameter per source ("Source N Spread"), so it can
+be automated and is saved with the session.
+
+On the pad the spread is drawn as a semi-transparent circle around the source, in the source's colour,
+and the source itself keeps its solid inner circle.
+
+* **Set the spread:** hold **Option** (or **Cmd**; **Alt** or **Ctrl** on Windows) and drag from the
+  source. The spread is the distance from the source to the mouse, so the outer circle follows the mouse, and a
+  readout shows the value while you drag. The source does not move.
+* **Reset it:** Option/Cmd + double-click the source.
+* **Moving** works as before: drag the inner circle without a modifier.
+* **Only the inner circle takes the mouse.** The spread circle is display only, so a source with a large spread
+  never gets in the way of other sources inside it. Sources must be set to Edit.
+* Hover over the pad for a tooltip that reminds you of the gesture.
+
+How it sounds: the source is panned not from one point but from its position plus 8 points evenly spaced on
+the circle (the idea of MDAP, multiple-direction amplitude panning), and the squared gains are averaged, so the
+power stays constant. A larger spread feeds more speakers more evenly and softens the panning, which also
+smooths the jump between neighbouring triangles. Spread 0 is exactly the plain panning. The gains change
+continuously with the spread and with the position, and mirrored sources still give mirrored gains. Cost: up
+to 9 times the work of a point source, only for sources that move or change their spread (about 0.7 ms per
+block for 64 such sources in the worst case).
+
+The spread is saved in the source XML files as an optional `spread` attribute (metres); entries without
+it leave the spread unchanged.
+
 ## Virtual (imaginary) speakers
 Speakers that lie on a circle around the listener (5.1, quad, hexagon, octagon, ...) have no unique
 Delaunay triangulation. Triangulation then picks an arbitrary, asymmetric set of triangles: in a 5.1

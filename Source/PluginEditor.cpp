@@ -222,6 +222,8 @@ juce::Result TriPanAudioProcessorEditor::importPositionsFrom (tripan::io::Kind k
                  << "; count unchanged)";
         else if (report.inUse < report.applied)
             text << " (" << report.inUse << " in use)";
+        if (report.spreadApplied > 0)
+            text << ", spread for " << report.spreadApplied;
         if (report.virtualMode)
         {
             switch (*report.virtualMode)

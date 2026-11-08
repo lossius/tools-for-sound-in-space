@@ -60,6 +60,8 @@ private:
 
     TriPanAudioProcessor& owner;
 
+    juce::TooltipWindow tooltipWindow { this, 600 }; // shows the tooltips of the buttons, menus and the pad
+
     // All controls live in `content`, which is laid out at the base size and scaled by a transform.
     // (Declared before the controls so that it is destroyed after them.)
     juce::Component content;

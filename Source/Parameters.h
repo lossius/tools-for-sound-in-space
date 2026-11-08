@@ -9,6 +9,10 @@ namespace tripan::params
 /** Coordinates are in metres, in the range [-kCoordRange, kCoordRange]. +y is front, +x is right. */
 inline constexpr float kCoordRange = 10.0f;
 
+/** Per-source spread: the radius in metres of the circle around a source over which its sound is
+    spread (0 = a point source). */
+inline constexpr float kMaxSpread = 10.0f;
+
 /** How many of the host's input/output channels are used as sources/speakers. The parameter range
     is fixed at 1..kMaxChannels (hosts cannot change it per track); the effective value is clamped to
     the channel count of the track the plugin sits on. The default uses every channel. */
@@ -16,6 +20,7 @@ inline const juce::String kNumSourcesId  { "numSources" };
 inline const juce::String kNumSpeakersId { "numSpeakers" };
 
 inline juce::String sourceId  (int index, char axis) { return "src" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
+inline juce::String spreadId (int index) { return "src" + juce::String (index + 1) + "spread"; }
 inline juce::String speakerId (int index, char axis) { return "spk" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
 
 inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
@@ -37,6 +42,11 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
                                                            1, kMaxChannels, kMaxChannels));
     layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { kNumSpeakersId, 1 }, "Number of Speakers",
                                                            1, kMaxChannels, kMaxChannels));
+
+    for (int i = 0; i < kMaxChannels; ++i)
+        layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { spreadId (i), 1 }, "Source " + juce::String (i + 1) + " Spread",
+                                                           NormalisableRange<float> (0.0f, kMaxSpread), 0.0f,
+                                                           juce::AudioParameterFloatAttributes().withLabel ("m")));
 
     for (int i = 0; i < kMaxChannels; ++i)
     {

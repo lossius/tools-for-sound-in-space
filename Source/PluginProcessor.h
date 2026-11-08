@@ -105,7 +105,7 @@ private:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    std::array<std::atomic<float>*, tripan::kMaxChannels> srcX {}, srcY {}, spkX {}, spkY {};
+    std::array<std::atomic<float>*, tripan::kMaxChannels> srcX {}, srcY {}, srcSpread {}, spkX {}, spkY {};
     std::atomic<float>* numSourcesParam = nullptr;
     std::atomic<float>* numSpeakersParam = nullptr;
 
@@ -122,7 +122,7 @@ private:
     // What prevGains[s] was computed from, so unchanged sources need no new computation.
     struct GainKey
     {
-        float x = 0.0f, y = 0.0f;
+        float x = 0.0f, y = 0.0f, spread = 0.0f;
         std::uint64_t layoutId = 0;
         bool valid = false;
     };

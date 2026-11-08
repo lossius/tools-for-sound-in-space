@@ -642,6 +642,102 @@ static void testDistanceWeightedRedistribution()
     CHECK (finite && closest > 0.99f);
 }
 
+// Per-source spread (MDAP-style): the source is panned from itself plus a ring of points around it.
+static void testSpread()
+{
+    const auto fivePointOne = ring ({ -30, 30, 0, -110, 110 });
+    const SpeakerLayout layout (fivePointOne, findVirtualSpeakers (fivePointOne));
+    const std::vector<Vec2> square { { 0, 0 }, { 6, 0 }, { 6, 6 }, { 0, 6 }, { 3, 3 } };
+    const SpeakerLayout plain (square);
+
+    // No spread: identical to the plain gains. Odd values count as no spread.
+    {
+        std::mt19937 rng (41);
+        std::uniform_real_distribution<double> u (-8.0, 8.0);
+        for (int k = 0; k < 200; ++k)
+        {
+            const Vec2 s { u (rng), u (rng) };
+            const auto a = computeGains (layout, s), b = computeGains (layout, s, 0.0);
+            CHECK (a.count == b.count);
+            for (int i = 0; i < 5; ++i) CHECK (isNear (gainFor (a, i), gainFor (b, i), 1e-9));
+            CHECK (computeGains (layout, s, -1.0).count == a.count && computeGains (layout, s, std::nan ("")).count == a.count);
+        }
+    }
+
+    // Constant power for any position and spread.
+    {
+        std::mt19937 rng (42);
+        std::uniform_real_distribution<double> u (-9.0, 9.0), spreadDistribution (0.0, 12.0);
+        for (int k = 0; k < 500; ++k)
+            CHECK (isNear (sumSq (computeGains (layout, { u (rng), u (rng) }, spreadDistribution (rng))), 1.0, 1e-5));
+        CHECK (isNear (sumSq (computeGains (layout, { 1.0, 1.0 }, 1e9)), 1.0, 1e-5)); // absurd values are limited
+    }
+
+    // A source sitting on a speaker: without spread only that speaker; the more spread, the more it is shared.
+    {
+        const Vec2 onCorner { 0.0, 0.0 };
+        const auto activeSpeakers = [] (const SourceGains& g) { int n = 0; for (int i = 0; i < g.count; ++i) if (g.gain[(size_t) i] > 1e-3f) ++n; return n; };
+
+        const auto none = computeGains (plain, onCorner, 0.0);
+        CHECK (activeSpeakers (none) == 1 && isNear (gainFor (none, 0), 1.0, 1e-6));
+
+        double previous = 1.0;
+        int previousCount = 1;
+        for (double spread : { 0.5, 1.0, 2.0, 3.0 })
+        {
+            const auto g = computeGains (plain, onCorner, spread);
+            CHECK (gainFor (g, 0) < previous);                // the speaker under the source gets less and less
+            CHECK (activeSpeakers (g) >= previousCount);      // and more speakers take part
+            previous = gainFor (g, 0);
+            previousCount = activeSpeakers (g);
+        }
+        CHECK (previousCount >= 3);
+    }
+
+    // Mirror symmetry is kept (L<->R, Ls<->Rs).
+    {
+        const int mirror[] = { 1, 0, 2, 4, 3 };
+        std::mt19937 rng (43);
+        std::uniform_real_distribution<double> u (-8.0, 8.0);
+        for (int k = 0; k < 300; ++k)
+        {
+            const Vec2 s { u (rng), u (rng) };
+            const double spread = 0.5 + 3.0 * std::abs (u (rng)) / 8.0;
+            const auto a = computeGains (layout, s, spread), b = computeGains (layout, { -s.x, s.y }, spread);
+            for (int i = 0; i < 5; ++i) CHECK (isNear (gainFor (a, i), gainFor (b, mirror[i]), 1e-4));
+        }
+    }
+
+    // Continuity: no jumps when the spread or the position changes in small steps.
+    {
+        double worst = 0.0;
+        SourceGains prev;
+        bool have = false;
+        for (double spread = 0.0; spread <= 4.0; spread += 0.002)
+        {
+            const auto g = computeGains (layout, { 0.7, 1.3 }, spread);
+            if (have) for (int i = 0; i < 5; ++i) worst = std::max (worst, (double) std::abs (gainFor (g, i) - gainFor (prev, i)));
+            prev = g;
+            have = true;
+        }
+        CHECK (worst < 0.02);
+
+        worst = 0.0;
+        have = false;
+        for (double x = -9.0; x <= 9.0; x += 0.002)
+        {
+            const auto g = computeGains (layout, { x, 1.0 }, 1.5);
+            if (have) for (int i = 0; i < 5; ++i) worst = std::max (worst, (double) std::abs (gainFor (g, i) - gainFor (prev, i)));
+            prev = g;
+            have = true;
+        }
+        CHECK (worst < 0.02);
+    }
+
+    // The empty layout gives nothing (no crash).
+    CHECK (computeGains (SpeakerLayout(), { 0.0, 0.0 }, 2.0).count == 0);
+}
+
 int main()
 {
     testLimits();
@@ -655,6 +751,7 @@ int main()
     testFindVirtualSpeakers();
     testVirtualSpeakerGains();
     testDistanceWeightedRedistribution();
+    testSpread();
     testVirtualSpeakerStrengths();
     testSpeakerLayoutBlend();
     testNoJumpsWhileSpeakersMove();

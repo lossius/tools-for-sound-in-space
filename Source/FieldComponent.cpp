@@ -30,9 +30,13 @@ FieldComponent::FieldComponent (TriPanAudioProcessor& p)
     {
         srcXp[(size_t) i] = apvts.getParameter (tripan::params::sourceId (i, 'x'));
         srcYp[(size_t) i] = apvts.getParameter (tripan::params::sourceId (i, 'y'));
+        srcSpreadP[(size_t) i] = apvts.getParameter (tripan::params::spreadId (i));
         spkXp[(size_t) i] = apvts.getParameter (tripan::params::speakerId (i, 'x'));
         spkYp[(size_t) i] = apvts.getParameter (tripan::params::speakerId (i, 'y'));
     }
+
+    setTooltip ("Drag a source (its inner circle) to move it. Option- or Cmd-drag from a source to set its spread: "
+                "the outer circle follows the mouse. Option- or Cmd-double-click resets the spread.");
 
     timerCallback();
     startTimerHz (30);
@@ -95,16 +99,20 @@ juce::Point<double> FieldComponent::fromView (juce::Point<float> p) const
 std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<float> p) const
 {
     std::optional<Handle> best;
-    float bestDistance = kGrabRadius;
+    float bestDistance = 1e9f;
 
+    // Sources are grabbed only inside their drawn (inner) circle, so that the large spread circle of one
+    // source can never hide another source. Speakers have a slightly generous target.
     const auto consider = [&] (bool isSource, int count, bool isVirtual = false)
     {
+        const float reach = isSource ? kSourceRadius : kGrabRadius;
+
         for (int i = 0; i < count; ++i) // later indices are drawn on top, so they win ties
         {
             const Handle h { isSource, i, isVirtual };
             const auto pos = position (h);
             const float d = toView (pos.x, pos.y).getDistanceFrom (p);
-            if (d <= bestDistance)
+            if (d <= reach && d <= bestDistance)
             {
                 bestDistance = d;
                 best = h;
@@ -118,6 +126,33 @@ std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<
     if (canEditVirtualSpeakers())    consider (false, (int) virtualSpeakers.size(), true);
     if (processor.canEditSources())  consider (true, activeSources());
     return best;
+}
+
+bool FieldComponent::isSpreadModifier (const juce::ModifierKeys& mods) noexcept
+{
+    return mods.isAltDown() || mods.isCommandDown();
+}
+
+double FieldComponent::getSpread (int source) const
+{
+    if (source < 0 || source >= tripan::kMaxChannels)
+        return 0.0;
+
+    auto* prm = srcSpreadP[(size_t) source];
+    return (double) prm->convertFrom0to1 (prm->getValue());
+}
+
+void FieldComponent::setSpreadFromPoint (int source, juce::Point<float> p)
+{
+    if (source < 0 || source >= tripan::kMaxChannels || ! processor.canEditSources())
+        return;
+
+    const auto pos = position ({ true, source });
+    const double metresPerPixel = 2.0 * viewHalf / (double) planeBounds().getWidth();
+    const double spread = (double) toView (pos.x, pos.y).getDistanceFrom (p) * metresPerPixel;
+
+    auto* prm = srcSpreadP[(size_t) source];
+    prm->setValueNotifyingHost (prm->convertTo0to1 (juce::jlimit (0.0f, tripan::params::kMaxSpread, (float) spread)));
 }
 
 bool FieldComponent::canEditVirtualSpeakers() const
@@ -260,6 +295,7 @@ void FieldComponent::timerCallback()
         const auto pos = position ({ true, i });
         mix (pos.x);
         mix (pos.y);
+        mix (getSpread (i));
     }
 
     virtualSpeakers = processor.getVirtualSpeakers();
@@ -382,13 +418,34 @@ void FieldComponent::paint (juce::Graphics& g)
         }
     }
 
+    // Spread: a semi-transparent circle around each source whose radius is its spread (in metres).
+    // It is display only; mouse interaction happens in the inner circle of the source.
+    {
+        const float pixelsPerMetre = planeBounds().getWidth() / (float) (2.0 * viewHalf);
+        for (int s = 0; s < n; ++s)
+        {
+            const double spread = getSpread (s);
+            if (spread <= 1e-3)
+                continue;
+
+            const auto pos = position ({ true, s });
+            const auto c = toView (pos.x, pos.y);
+            const float radius = (float) spread * pixelsPerMetre;
+            const auto circle = juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (c);
+            g.setColour (sourceColour (s).withAlpha (0.16f));
+            g.fillEllipse (circle);
+            g.setColour (sourceColour (s).withAlpha (0.6f));
+            g.drawEllipse (circle, 1.2f);
+        }
+    }
+
     // Links from each source to the speakers it currently feeds, weighted by gain.
     if (triangulation != nullptr)
     {
         for (int s = 0; s < n; ++s)
         {
             const auto sp = position ({ true, s });
-            const auto gains = tripan::computeGains (*triangulation, { sp.x, sp.y });
+            const auto gains = tripan::computeGains (*triangulation, { sp.x, sp.y }, getSpread (s));
             const auto from = toView (sp.x, sp.y);
             for (int i = 0; i < gains.count; ++i)
             {
@@ -447,59 +504,114 @@ void FieldComponent::paint (juce::Graphics& g)
         g.drawText (juce::String (s + 1), r, juce::Justification::centred);
     }
 
+    // While the spread is being dragged, show its value next to the circle.
+    if (draggingSpread && dragging && dragging->isSource)
+    {
+        const auto pos = position (*dragging);
+        const auto c = toView (pos.x, pos.y);
+        const float radius = (float) getSpread (dragging->index) * planeBounds().getWidth() / (float) (2.0 * viewHalf);
+        const auto label = juce::Rectangle<float> (90.0f, 16.0f).withCentre ({ c.x, c.y + radius + 14.0f });
+        g.setColour (juce::Colour (0xff15181d).withAlpha (0.8f));
+        g.fillRoundedRectangle (label, 3.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawText ("spread " + juce::String (getSpread (dragging->index), 2) + " m", label, juce::Justification::centred);
+    }
+
     g.restoreState();
 
     g.setColour (juce::Colours::white.withAlpha (0.35f));
     g.drawRoundedRectangle (plane, 6.0f, 1.0f);
 }
 
-void FieldComponent::mouseDown (const juce::MouseEvent& e)
+void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mods)
 {
-    dragging = findHandleAt (e.position);
-    if (dragging)
+    dragging = findHandleAt (p);
+    draggingSpread = false;
+
+    if (! dragging)
+        return;
+
+    if (dragging->isSource && isSpreadModifier (mods))
     {
-        if (! dragging->isVirtual)
-        {
-            parameter (*dragging, 'x')->beginChangeGesture();
-            parameter (*dragging, 'y')->beginChangeGesture();
-        }
-        moveHandle (*dragging, e.position);
+        draggingSpread = true;
+        srcSpreadP[(size_t) dragging->index]->beginChangeGesture();
+        setSpreadFromPoint (dragging->index, p);
         repaint();
+        return;
     }
-}
 
-void FieldComponent::mouseDrag (const juce::MouseEvent& e)
-{
-    if (dragging)
-        moveHandle (*dragging, e.position);
-}
-
-void FieldComponent::mouseUp (const juce::MouseEvent&)
-{
-    if (dragging)
+    if (! dragging->isVirtual)
     {
-        if (! dragging->isVirtual)
-        {
-            parameter (*dragging, 'x')->endChangeGesture();
-            parameter (*dragging, 'y')->endChangeGesture();
-        }
-        dragging.reset();
-        repaint();
+        parameter (*dragging, 'x')->beginChangeGesture();
+        parameter (*dragging, 'y')->beginChangeGesture();
     }
+    moveHandle (*dragging, p);
+    repaint();
 }
 
-void FieldComponent::mouseDoubleClick (const juce::MouseEvent& e)
+void FieldComponent::dragTo (juce::Point<float> p)
 {
+    if (! dragging)
+        return;
+
+    if (draggingSpread)
+        setSpreadFromPoint (dragging->index, p);
+    else
+        moveHandle (*dragging, p);
+}
+
+void FieldComponent::release()
+{
+    if (! dragging)
+        return;
+
+    if (draggingSpread)
+    {
+        srcSpreadP[(size_t) dragging->index]->endChangeGesture();
+    }
+    else if (! dragging->isVirtual)
+    {
+        parameter (*dragging, 'x')->endChangeGesture();
+        parameter (*dragging, 'y')->endChangeGesture();
+    }
+
+    dragging.reset();
+    draggingSpread = false;
+    repaint();
+}
+
+void FieldComponent::doubleClickAt (juce::Point<float> p, const juce::ModifierKeys& mods)
+{
+    // Modifier + double-click on a source: reset its spread.
+    if (isSpreadModifier (mods))
+    {
+        const auto h = findHandleAt (p);
+        if (h && h->isSource)
+        {
+            auto* prm = srcSpreadP[(size_t) h->index];
+            prm->beginChangeGesture();
+            prm->setValueNotifyingHost (prm->convertTo0to1 (0.0f));
+            prm->endChangeGesture();
+        }
+        return;
+    }
+
     // Manual virtual speakers: double-click one to delete it, or empty space to add one there.
     if (! canEditVirtualSpeakers())
         return;
 
-    const auto h = findHandleAt (e.position);
+    const auto h = findHandleAt (p);
     if (h && h->isVirtual)
         removeVirtualSpeaker (h->index);
-    else if (! h && planeBounds().contains (e.position))
-        addVirtualSpeakerAt (e.position);
+    else if (! h && planeBounds().contains (p))
+        addVirtualSpeakerAt (p);
 }
+
+void FieldComponent::mouseDown (const juce::MouseEvent& e)       { pressAt (e.position, e.mods); }
+void FieldComponent::mouseDrag (const juce::MouseEvent& e)       { dragTo (e.position); }
+void FieldComponent::mouseUp (const juce::MouseEvent&)           { release(); }
+void FieldComponent::mouseDoubleClick (const juce::MouseEvent& e) { doubleClickAt (e.position, e.mods); }
 
 void FieldComponent::mouseMove (const juce::MouseEvent& e)
 {
@@ -507,7 +619,9 @@ void FieldComponent::mouseMove (const juce::MouseEvent& e)
     const bool changed = h.has_value() != hovered.has_value()
                       || (h && hovered && (h->isSource != hovered->isSource || h->isVirtual != hovered->isVirtual || h->index != hovered->index));
     hovered = h;
-    setMouseCursor (h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    const bool spreading = h && h->isSource && isSpreadModifier (e.mods);
+    setMouseCursor (spreading ? juce::MouseCursor::CrosshairCursor
+                              : h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     if (changed)
         repaint();
 }
