@@ -79,6 +79,10 @@ public:
     void setVirtualMode (VirtualMode);
     std::vector<tripan::Vec2> getManualVirtualSpeakers() const;
     void setManualVirtualSpeakers (const std::vector<tripan::Vec2>&);
+    /** Sets the mode and, if `manualList` is given, the manual list in one go (used when a speaker file
+        is imported). Unlike setVirtualMode(), it never copies the automatic speakers into the list. */
+    void setVirtualLayout (VirtualMode, const std::vector<tripan::Vec2>* manualList);
+
     /** The virtual speakers in effect (according to the mode), for the speakers currently in use. Manual
         ones have strength 1; automatic ones have a strength between 0 and 1 that follows the layout
         smoothly (see tripan::SpeakerLayout). */
@@ -97,6 +101,7 @@ public:
 private:
     void timerCallback() override { refreshTriangulation(); }
     void setParameterValue (const juce::String& id, float realValue);
+    void storeManualVirtualSpeakers (const std::vector<tripan::Vec2>&);
 
     juce::AudioProcessorValueTreeState apvts;
 

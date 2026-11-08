@@ -236,7 +236,7 @@ std::vector<tripan::Vec2> TriPanAudioProcessor::getManualVirtualSpeakers() const
     return out;
 }
 
-void TriPanAudioProcessor::setManualVirtualSpeakers (const std::vector<tripan::Vec2>& list)
+void TriPanAudioProcessor::storeManualVirtualSpeakers (const std::vector<tripan::Vec2>& list)
 {
     juce::StringArray tokens;
     const double limit = tripan::params::kCoordRange;
@@ -248,6 +248,20 @@ void TriPanAudioProcessor::setManualVirtualSpeakers (const std::vector<tripan::V
     }
 
     apvts.state.setProperty (kManualVirtual, tokens.joinIntoString (" "), nullptr);
+}
+
+void TriPanAudioProcessor::setManualVirtualSpeakers (const std::vector<tripan::Vec2>& list)
+{
+    storeManualVirtualSpeakers (list);
+    refreshTriangulation();
+}
+
+void TriPanAudioProcessor::setVirtualLayout (VirtualMode mode, const std::vector<tripan::Vec2>* manualList)
+{
+    if (manualList != nullptr)
+        storeManualVirtualSpeakers (*manualList);
+
+    apvts.state.setProperty (kVirtualMode, (int) mode, nullptr);
     refreshTriangulation();
 }
 

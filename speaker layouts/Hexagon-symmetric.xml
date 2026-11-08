@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<TriPanSpeakers version="1" count="6">
+<TriPanSpeakers version="1" count="6" virtual="auto">
   <!-- Hexagon, symmetric about the front: 6 speakers at -30, 30, 90, 150, -150, -90 degrees (clockwise from front-left) -->
   <Speaker index=" 1" x=" -2.500" y="  4.330"/>
   <Speaker index=" 2" x="  2.500" y="  4.330"/>

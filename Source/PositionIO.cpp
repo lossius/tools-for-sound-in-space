@@ -64,12 +64,35 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
     root->setAttribute ("version", kFormatVersion);
     root->setAttribute ("count", count);
 
+    if (kind == Kind::Speakers)
+    {
+        switch (p.getVirtualMode())
+        {
+            case VirtualMode::Auto:   root->setAttribute ("virtual", "auto");   break;
+            case VirtualMode::Manual: root->setAttribute ("virtual", "manual"); break;
+            case VirtualMode::Off:    root->setAttribute ("virtual", "off");    break;
+        }
+    }
+
     for (int i = 0; i < count; ++i)
     {
         auto* e = root->createNewChildElement (entryTag (kind));
         e->setAttribute ("index", juce::String (i + 1).paddedLeft (' ', 2)); // padded like the coordinates
         e->setAttribute ("x", formatCoordinate (readParam (p, idFor (kind, i, 'x'))));
         e->setAttribute ("y", formatCoordinate (readParam (p, idFor (kind, i, 'y'))));
+    }
+
+    // The user's own virtual speakers belong to the layout. (Automatic ones are recomputed on import.)
+    if (kind == Kind::Speakers && p.getVirtualMode() == VirtualMode::Manual)
+    {
+        int index = 1;
+        for (const auto& v : p.getManualVirtualSpeakers())
+        {
+            auto* e = root->createNewChildElement ("VirtualSpeaker");
+            e->setAttribute ("index", juce::String (index++).paddedLeft (' ', 2));
+            e->setAttribute ("x", formatCoordinate ((float) v.x));
+            e->setAttribute ("y", formatCoordinate ((float) v.y));
+        }
     }
 
     return root;
@@ -141,6 +164,41 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
     if (entries.empty())
         return juce::Result::fail ("The file contains no valid " + describe (kind) + " positions.");
 
+    // Speaker files may also say how the virtual speakers are set. Validated before anything is changed.
+    std::optional<VirtualMode> newVirtualMode;
+    std::vector<Vec2> newManual;
+
+    if (kind == Kind::Speakers && xml->hasAttribute ("virtual"))
+    {
+        const auto setting = xml->getStringAttribute ("virtual").trim().toLowerCase();
+
+        if (setting == "auto")        newVirtualMode = VirtualMode::Auto;
+        else if (setting == "off")    newVirtualMode = VirtualMode::Off;
+        else if (setting == "manual") newVirtualMode = VirtualMode::Manual;
+        else return juce::Result::fail ("Unknown virtual speaker setting \"" + xml->getStringAttribute ("virtual") + "\" (expected auto, manual or off).");
+
+        if (*newVirtualMode == VirtualMode::Manual)
+            for (auto* e : xml->getChildWithTagNameIterator ("VirtualSpeaker"))
+            {
+                const double x = e->getDoubleAttribute ("x", std::nan (""));
+                const double y = e->getDoubleAttribute ("y", std::nan (""));
+
+                if (! e->hasAttribute ("x") || ! e->hasAttribute ("y") || ! std::isfinite (x) || ! std::isfinite (y)
+                    || (int) newManual.size() >= TriPanAudioProcessor::kMaxVirtualSpeakers)
+                {
+                    ++report.skipped;
+                    continue;
+                }
+
+                const float cx = juce::jlimit (-range, range, (float) x);
+                const float cy = juce::jlimit (-range, range, (float) y);
+                if (! juce::approximatelyEqual (cx, (float) x) || ! juce::approximatelyEqual (cy, (float) y))
+                    ++report.clamped;
+
+                newManual.push_back ({ (double) cx, (double) cy });
+            }
+    }
+
     for (const auto& [index, pos] : entries)
     {
         writeParam (p, idFor (kind, index - 1, 'x'), pos.x);
@@ -160,6 +218,13 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
             writeParam (p, params::kNumSpeakersId, (float) report.fileCount);
             report.speakersSetTo = report.fileCount;
         }
+    }
+
+    if (newVirtualMode)
+    {
+        p.setVirtualLayout (*newVirtualMode, *newVirtualMode == VirtualMode::Manual ? &newManual : nullptr);
+        report.virtualMode = newVirtualMode;
+        report.virtualCount = (int) newManual.size();
     }
 
     const int inUseLimit = kind == Kind::Sources ? p.getActiveSources() : p.getActiveSpeakers();

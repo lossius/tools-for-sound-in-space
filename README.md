@@ -45,7 +45,8 @@ menu on the fourth row selects where they come from:
 
 Virtual speakers are drawn as hollow amber squares ("v1", "v2", ...). The price is that sources
 inside a ring are spread more widely than the strict three speakers of plain triangulation; switch to
-Off if you prefer that. They are not saved in the XML speaker files and are not host parameters.
+Off if you prefer that. They are not host parameters. They are saved with the session, and a speaker
+XML file records the setting and, for Manual, the virtual speakers (see below).
 
 ## Zooming
 **Zoom In** and **Zoom Out** (third row) change the visible area of the pad. Each press of Zoom In
@@ -64,13 +65,22 @@ window: automation from the host can still move everything.
 The export and import buttons on the sources and speakers rows save and load source and speaker positions as XML files, with a
 file dialog each time. Sources and speakers are separate files:
 ```xml
-<TriPanSpeakers version="1" count="3">
+<TriPanSpeakers version="1" count="3" virtual="manual">
   <Speaker index=" 1" x="  0.000" y="  5.000"/>
   <Speaker index=" 2" x="  4.330" y=" -2.500"/>
   <Speaker index=" 3" x=" -4.330" y=" -2.500"/>
+  <VirtualSpeaker index=" 1" x="  0.000" y="  0.000"/>
 </TriPanSpeakers>
 ```
 (`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-10.
+
+A speaker file also records the virtual speaker setting in the optional `virtual` attribute (`auto`, `manual` or `off`). With `manual`
+the file lists your own virtual speakers as `<VirtualSpeaker>` entries (at most 16); with `auto` or `off`
+there is nothing more to store, because automatic virtual speakers are recomputed from the real ones. Importing
+a speaker file restores the setting (and the manual list), replacing the current one. A file without the
+attribute, such as one written by an earlier version, leaves the virtual speaker setting alone.
+The presets in `speaker layouts/` say `virtual="auto"`, so loading one switches back to Auto.
+
 Export writes the channels currently in use, with coordinates rounded to 3 decimal places and padded with spaces so that positive and negative values line up (import ignores the padding). Import checks the whole file first, applies every valid
 entry by index. Importing speakers also sets "Number of Speakers" to the number of speakers in the
 file, provided the track has that many outputs (otherwise the setting is left alone and the status

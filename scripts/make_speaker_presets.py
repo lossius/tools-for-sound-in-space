@@ -34,7 +34,8 @@ def number(v):
 
 def write(name, title, description, points):
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', ""]
-    lines.append(f'<TriPanSpeakers version="1" count="{len(points)}">')
+    # virtual="auto": loading a preset switches the virtual speakers to Auto, which these layouts are designed for.
+    lines.append(f'<TriPanSpeakers version="1" count="{len(points)}" virtual="auto">')
     lines.append(f"  <!-- {title}: {description} -->")
     for i, (x, y) in enumerate(points, start=1):
         lines.append(f'  <Speaker index="{str(i).rjust(2)}" x="{number(x)}" y="{number(y)}"/>')

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<TriPanSpeakers version="1" count="16">
+<TriPanSpeakers version="1" count="16" virtual="auto">
   <!-- 16 random positions: 16 speakers at random positions within 6 m of the centre, at least 1.5 m apart (fixed seed) -->
   <Speaker index=" 1" x=" -3.115" y="  1.479"/>
   <Speaker index=" 2" x=" -1.419" y="  5.152"/>

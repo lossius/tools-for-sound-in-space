@@ -2,6 +2,8 @@
 
 #include "PluginProcessor.h"
 
+#include <optional>
+
 /** Export and import of source or speaker positions as XML files.
 
     Sources and speakers use separate files:
@@ -10,9 +12,15 @@
           <Source index="1" x="0.5" y="1.0"/> ...
         </TriPanSources>
 
-        <TriPanSpeakers version="1" count="7">
+        <TriPanSpeakers version="1" count="7" virtual="manual">
           <Speaker index="1" x="0.0" y="5.0"/> ...
+          <VirtualSpeaker index="1" x="0.0" y="0.0"/> ...      (only with virtual="manual")
         </TriPanSpeakers>
+
+    The optional attribute virtual ("auto", "manual" or "off") records the virtual (imaginary) speaker
+    setting of the layout. Auto and off need nothing more: the automatic speakers are recomputed from
+    the real ones. Manual lists the user's own virtual speakers. A file without the attribute (older
+    files) leaves the current virtual speaker setting alone.
 
     Export writes the sources/speakers currently in use. Import writes every valid entry (index
     1..64) to the corresponding parameters. Importing speakers also sets "Number of Speakers" to the
@@ -32,6 +40,9 @@ struct ImportReport
     int trackOutputs = 0;     // outputs available on the track; speaker imports only
     int clamped = 0;  // entries whose coordinates were limited to the allowed range
     int skipped = 0;  // malformed entries that were ignored
+
+    std::optional<VirtualMode> virtualMode; // speaker imports: set if the file specified the virtual speakers
+    int virtualCount = 0;                   // manual virtual speakers applied from the file
 };
 
 std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor&, Kind);

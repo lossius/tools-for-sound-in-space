@@ -500,6 +500,7 @@ static void testSpeakerPresets (const juce::File& dir)
 
         // Importing a speaker setup adjusts Number of Speakers (the track has 16 outputs).
         CHECK (report.fileCount == e.count && report.speakersSetTo == e.count && report.inUse == e.count);
+        CHECK (report.virtualMode && *report.virtualMode == VirtualMode::Auto); // the presets switch to automatic virtual speakers
         CHECK (p.getActiveSpeakers() == e.count);
 
         std::vector<tripan::Vec2> pts;

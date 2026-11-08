@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<TriPanSpeakers version="1" count="4">
+<TriPanSpeakers version="1" count="4" virtual="auto">
   <!-- Quad: FL, FR, BL, BR at -45, 45, -135, 135 degrees -->
   <Speaker index=" 1" x=" -3.536" y="  3.536"/>
   <Speaker index=" 2" x="  3.536" y="  3.536"/>

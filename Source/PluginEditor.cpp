@@ -222,6 +222,15 @@ juce::Result TriPanAudioProcessorEditor::importPositionsFrom (tripan::io::Kind k
                  << "; count unchanged)";
         else if (report.inUse < report.applied)
             text << " (" << report.inUse << " in use)";
+        if (report.virtualMode)
+        {
+            switch (*report.virtualMode)
+            {
+                case VirtualMode::Auto:   text << ", virtual speakers: auto"; break;
+                case VirtualMode::Off:    text << ", virtual speakers: off"; break;
+                case VirtualMode::Manual: text << ", " << report.virtualCount << " virtual " << (report.virtualCount == 1 ? "speaker" : "speakers"); break;
+            }
+        }
         if (report.clamped > 0)
             text << ", " << report.clamped << " clamped";
         if (report.skipped > 0)

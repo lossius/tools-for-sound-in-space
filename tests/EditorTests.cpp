@@ -275,6 +275,98 @@ int main (int argc, char** argv)
         editor->syncControls();
         CHECK (editor->getSpeakerCountSlider().getValue() == 7.0);
 
+        // Virtual speakers are part of a speaker layout file.
+        {
+            CHECK (p.getVirtualMode() == VirtualMode::Auto && p.getManualVirtualSpeakers().empty());
+            const auto countChildren = [] (const juce::XmlElement& xml, const char* tag) { int n = 0; for (auto* e : xml.getChildWithTagNameIterator (tag)) { (void) e; ++n; } return n; };
+
+            // Auto: only the setting is recorded (the speakers are recomputed on import).
+            const auto autoFile = dir.getChildFile ("virtual-auto.xml");
+            CHECK (editor->exportPositionsTo (Kind::Speakers, autoFile).wasOk());
+            {
+                const auto doc = juce::XmlDocument::parse (autoFile);
+                CHECK (doc != nullptr && doc->getStringAttribute ("virtual") == "auto" && countChildren (*doc, "VirtualSpeaker") == 0 && countChildren (*doc, "Speaker") == 7);
+            }
+
+            // Manual: the user's own virtual speakers are written, formatted like the others.
+            p.setVirtualMode (VirtualMode::Manual);
+            p.setManualVirtualSpeakers ({ { 1.5, -2.25 }, { -3.0, 4.0 } });
+            const auto manualFile = dir.getChildFile ("virtual-manual.xml");
+            CHECK (editor->exportPositionsTo (Kind::Speakers, manualFile).wasOk());
+            {
+                const auto doc = juce::XmlDocument::parse (manualFile);
+                CHECK (doc != nullptr && doc->getStringAttribute ("virtual") == "manual" && countChildren (*doc, "VirtualSpeaker") == 2 && countChildren (*doc, "Speaker") == 7);
+                const auto* v1 = doc->getChildByName ("VirtualSpeaker");
+                CHECK (v1 != nullptr && v1->getStringAttribute ("x") == "  1.500" && v1->getStringAttribute ("y") == " -2.250" && v1->getStringAttribute ("index") == " 1");
+            }
+
+            // Off: only the setting.
+            p.setVirtualMode (VirtualMode::Off);
+            const auto offFile = dir.getChildFile ("virtual-off.xml");
+            CHECK (editor->exportPositionsTo (Kind::Speakers, offFile).wasOk());
+            CHECK (juce::XmlDocument::parse (offFile)->getStringAttribute ("virtual") == "off");
+            CHECK (countChildren (*juce::XmlDocument::parse (offFile), "VirtualSpeaker") == 0);
+
+            // Importing restores the setting and, for manual, the list.
+            p.setManualVirtualSpeakers ({});
+            tripan::io::ImportReport r;
+            CHECK (tripan::io::load (p, Kind::Speakers, manualFile, r).wasOk());
+            CHECK (r.virtualMode && *r.virtualMode == VirtualMode::Manual && r.virtualCount == 2);
+            CHECK (p.getVirtualMode() == VirtualMode::Manual);
+            auto list = p.getManualVirtualSpeakers();
+            CHECK (list.size() == 2 && std::abs (list[0].x - 1.5) < 1e-3 && std::abs (list[0].y + 2.25) < 1e-3 && std::abs (list[1].x + 3.0) < 1e-3 && std::abs (list[1].y - 4.0) < 1e-3);
+
+            CHECK (tripan::io::load (p, Kind::Speakers, autoFile, r).wasOk() && p.getVirtualMode() == VirtualMode::Auto);
+            CHECK (p.getManualVirtualSpeakers().size() == 2); // the stored manual list is kept for later
+            CHECK (tripan::io::load (p, Kind::Speakers, offFile, r).wasOk() && p.getVirtualMode() == VirtualMode::Off);
+
+            // A file without the attribute (an older file) leaves the virtual speaker setting alone.
+            p.setVirtualLayout (VirtualMode::Manual, &list);
+            const auto oldFile = dir.getChildFile ("old.xml");
+            oldFile.replaceWithText ("<TriPanSpeakers version=\"1\"><Speaker index=\"1\" x=\"-3\" y=\"3\"/><Speaker index=\"2\" x=\"3\" y=\"3\"/>"
+                                     "<Speaker index=\"3\" x=\"0\" y=\"-4\"/></TriPanSpeakers>");
+            CHECK (tripan::io::load (p, Kind::Speakers, oldFile, r).wasOk());
+            CHECK (! r.virtualMode.has_value() && p.getVirtualMode() == VirtualMode::Manual && p.getManualVirtualSpeakers().size() == 2);
+            setParam (p, tripan::params::kNumSpeakersId, 7.0f); // the old file set the count to 3
+
+            // An unknown setting is rejected, and nothing at all is changed.
+            setParam (p, tripan::params::speakerId (0, 'x'), 2.0f);
+            const auto bad = dir.getChildFile ("bad-virtual.xml");
+            bad.replaceWithText ("<TriPanSpeakers version=\"1\" virtual=\"banana\"><Speaker index=\"1\" x=\"-9\" y=\"9\"/></TriPanSpeakers>");
+            const auto badResult = tripan::io::load (p, Kind::Speakers, bad, r);
+            CHECK (badResult.failed() && badResult.getErrorMessage().contains ("banana"));
+            CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - 2.0f) < 1e-3f && p.getVirtualMode() == VirtualMode::Manual);
+
+            // Limits: at most 16 entries (extra ones are skipped), bad entries skipped, positions clamped.
+            juce::String many = "<TriPanSpeakers version=\"1\" virtual=\"manual\"><Speaker index=\"1\" x=\"0\" y=\"5\"/>"
+                                "<Speaker index=\"2\" x=\"5\" y=\"0\"/><Speaker index=\"3\" x=\"-5\" y=\"0\"/>"
+                                "<VirtualSpeaker x=\"99\" y=\"-99\"/><VirtualSpeaker x=\"1\"/><VirtualSpeaker x=\"nan\" y=\"2\"/>";
+            for (int i = 0; i < 18; ++i)
+                many << "<VirtualSpeaker x=\"" << (i % 5) << "\" y=\"" << (i % 3) << "\"/>";
+            many << "</TriPanSpeakers>";
+            const auto manyFile = dir.getChildFile ("many.xml");
+            manyFile.replaceWithText (many);
+            CHECK (tripan::io::load (p, Kind::Speakers, manyFile, r).wasOk());
+            CHECK (r.virtualCount == TriPanAudioProcessor::kMaxVirtualSpeakers && r.skipped >= 2 + 3 && r.clamped == 1);
+            list = p.getManualVirtualSpeakers();
+            CHECK ((int) list.size() == TriPanAudioProcessor::kMaxVirtualSpeakers && std::abs (list[0].x - 10.0) < 1e-3 && std::abs (list[0].y + 10.0) < 1e-3);
+            setParam (p, tripan::params::kNumSpeakersId, 7.0f);
+
+            // "manual" with no entries means no virtual speakers (not a copy of the automatic ones).
+            const auto none = dir.getChildFile ("none.xml");
+            none.replaceWithText ("<TriPanSpeakers version=\"1\" virtual=\"manual\"><Speaker index=\"1\" x=\"0\" y=\"5\"/>"
+                                  "<Speaker index=\"2\" x=\"5\" y=\"-5\"/><Speaker index=\"3\" x=\"-5\" y=\"-5\"/></TriPanSpeakers>");
+            CHECK (tripan::io::load (p, Kind::Speakers, none, r).wasOk());
+            CHECK (p.getVirtualMode() == VirtualMode::Manual && p.getManualVirtualSpeakers().empty() && p.getVirtualSpeakers().empty());
+            setParam (p, tripan::params::kNumSpeakersId, 7.0f);
+
+            // Back to the defaults for the rest of the test.
+            const std::vector<tripan::Vec2> noManual;
+            p.setVirtualLayout (VirtualMode::Auto, &noManual);
+            for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), spkX[i]); setParam (p, tripan::params::speakerId (i, 'y'), spkY[i]); }
+            editor->syncControls();
+        }
+
         // Restore the picture.
         for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), spkX[i]); setParam (p, tripan::params::speakerId (i, 'y'), spkY[i]); }
         setParam (p, tripan::params::speakerId (11, 'y'), 0.0f);

@@ -77,7 +77,9 @@ not redistributable: keep it outside this repo. Check its current licence before
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
 - Export/import (`Source/PositionIO.*`, four buttons in the editor): separate XML files for sources
   (`<TriPanSources version="1" count="n"><Source index="1" x=".." y=".."/>`) and speakers
-  (`<TriPanSpeakers>/<Speaker>`). Export writes the channels in use, coordinates rounded to 3 decimals and left-padded to a fixed width (columns align; import ignores the spaces); import validates the whole file
+  (`<TriPanSpeakers virtual="auto|manual|off">/<Speaker>`, plus `<VirtualSpeaker>` children when manual; an import
+  without the `virtual` attribute leaves the virtual setting alone, an unknown value fails the import; manual lists are
+  capped at 16 and clamped; `setVirtualLayout` applies mode + list without copying the automatic speakers). Export writes the channels in use, coordinates rounded to 3 decimals and left-padded to a fixed width (columns align; import ignores the spaces); import validates the whole file
   first, writes every valid entry (index 1..64, clamped to +-10 m). Speaker imports set `numSpeakers` to the highest
   index in the file if the track has that many outputs (else unchanged); source imports never change `numSources`.
   Import and export are always enabled, in Edit and in View (View only locks dragging and reset). The file dialogs

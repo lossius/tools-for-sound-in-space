@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<TriPanSpeakers version="1" count="8">
+<TriPanSpeakers version="1" count="8" virtual="auto">
   <!-- Octagon, symmetric about the front: 8 speakers at -22.5, 22.5, 67.5, 112.5, 157.5, -157.5, -112.5, -67.5 degrees -->
   <Speaker index=" 1" x=" -1.913" y="  4.619"/>
   <Speaker index=" 2" x="  1.913" y="  4.619"/>

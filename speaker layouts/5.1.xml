@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<TriPanSpeakers version="1" count="5">
+<TriPanSpeakers version="1" count="5" virtual="auto">
   <!-- 5.1 (ITU-R BS.775, no LFE): L, R, C, Ls, Rs at -30, 30, 0, -110, 110 degrees -->
   <Speaker index=" 1" x=" -2.500" y="  4.330"/>
   <Speaker index=" 2" x="  2.500" y="  4.330"/>

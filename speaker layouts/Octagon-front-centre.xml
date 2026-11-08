@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<TriPanSpeakers version="1" count="8">
+<TriPanSpeakers version="1" count="8" virtual="auto">
   <!-- Octagon, speaker at front centre: 8 speakers every 45 degrees clockwise from the front -->
   <Speaker index=" 1" x="  0.000" y="  5.000"/>
   <Speaker index=" 2" x="  3.536" y="  3.536"/>
