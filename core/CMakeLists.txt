@@ -4,7 +4,8 @@ add_library(TriPanCore STATIC
     src/Triangulation.cpp
     src/Gains.cpp
     src/VirtualSpeakers.cpp
-    src/TriangulationExchange.cpp)
+    src/SpeakerLayout.cpp
+    src/LayoutExchange.cpp)
 
 find_package(Threads REQUIRED)
 target_link_libraries(TriPanCore PUBLIC Threads::Threads)

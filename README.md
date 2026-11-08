@@ -26,10 +26,18 @@ to a virtual speaker is shared equally (at constant power) between the real spea
 menu on the fourth row selects where they come from:
 
 * **Auto** (default): found from the speaker layout. A virtual speaker is added at the listener
-  (the origin) when the speakers form a ring around it, and in angular gaps wider than 90 degrees
-  (for example the open back of 5.1). Nothing is added when the speakers do not surround the origin.
-  With Auto, a source at the origin in 5.1 feeds all five speakers equally, and mirrored positions
-  give mirrored gains.
+  (the origin) when the speakers form a ring around it, and in the middle of angular gaps wider than
+  about 100 degrees (for example the open back of 5.1). Nothing is added when the speakers do not
+  surround the origin. With Auto, a source at the origin in 5.1 feeds all five speakers equally, and
+  mirrored positions give mirrored gains.
+
+  The decisions are soft. Each automatic virtual speaker has a strength between 0 and 1 that rises
+  smoothly with how much the layout calls for it (a gap fades in between 90 and 110 degrees, the centre
+  speaker fades out as the radii become uneven, everything fades out as the listener leaves the
+  speakers). The panning is a smooth blend between the layout with and without the virtual speaker, so
+  dragging or automating a speaker never makes the sound jump when a threshold is crossed. (With hard
+  thresholds, a surround speaker moving across 100 degrees changed a source's gain by up to 0.12 in one
+  step; with the blend the largest step is 0.0001.) Weak virtual speakers are drawn faded.
 * **Manual**: you place them. Set the speakers menu to Edit, then double-click empty space on the pad
   to add one, drag to move, double-click one to delete it (at most 16). Switching from Auto to
   Manual starts from the current automatic set. Positions are saved with the session.

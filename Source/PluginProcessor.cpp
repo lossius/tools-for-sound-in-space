@@ -183,15 +183,17 @@ void TriPanAudioProcessor::refreshTriangulation()
     auto virtualSpeakers = getVirtualSpeakers();
 
     const auto same = [] (const tripan::Vec2& a, const tripan::Vec2& b) { return juce::exactlyEqual (a.x, b.x) && juce::exactlyEqual (a.y, b.y); };
-    const auto equal = [&] (const std::vector<tripan::Vec2>& a, const std::vector<tripan::Vec2>& b)
+    const auto sameVirtual = [&] (const tripan::VirtualSpeaker& a, const tripan::VirtualSpeaker& b)
     {
-        return a.size() == b.size() && std::equal (a.begin(), a.end(), b.begin(), same);
+        return same (a.position, b.position) && juce::exactlyEqual (a.strength, b.strength);
     };
 
-    if (havePublished && equal (speakers, publishedSpeakers) && equal (virtualSpeakers, publishedVirtual))
+    if (havePublished
+        && speakers.size() == publishedSpeakers.size() && std::equal (speakers.begin(), speakers.end(), publishedSpeakers.begin(), same)
+        && virtualSpeakers.size() == publishedVirtual.size() && std::equal (virtualSpeakers.begin(), virtualSpeakers.end(), publishedVirtual.begin(), sameVirtual))
         return;
 
-    exchange.publish (std::make_unique<const tripan::Triangulation> (speakers, virtualSpeakers));
+    exchange.publish (std::make_unique<const tripan::SpeakerLayout> (speakers, virtualSpeakers));
     publishedSpeakers = std::move (speakers);
     publishedVirtual = std::move (virtualSpeakers);
     havePublished = true;
@@ -206,7 +208,14 @@ VirtualMode TriPanAudioProcessor::getVirtualMode() const
 void TriPanAudioProcessor::setVirtualMode (VirtualMode mode)
 {
     if (mode == VirtualMode::Manual && getVirtualMode() != VirtualMode::Manual && getManualVirtualSpeakers().empty())
-        setManualVirtualSpeakers (getVirtualSpeakers()); // start from what is in effect now
+    {
+        // Start from what is in effect now: the automatic speakers that are at least half in effect.
+        std::vector<tripan::Vec2> start;
+        for (const auto& v : getVirtualSpeakers())
+            if (v.strength >= 0.5)
+                start.push_back (v.position);
+        setManualVirtualSpeakers (start);
+    }
 
     apvts.state.setProperty (kVirtualMode, (int) mode, nullptr);
     refreshTriangulation();
@@ -242,7 +251,7 @@ void TriPanAudioProcessor::setManualVirtualSpeakers (const std::vector<tripan::V
     refreshTriangulation();
 }
 
-std::vector<tripan::Vec2> TriPanAudioProcessor::getVirtualSpeakers() const
+std::vector<tripan::VirtualSpeaker> TriPanAudioProcessor::getVirtualSpeakers() const
 {
     switch (getVirtualMode())
     {
@@ -250,7 +259,12 @@ std::vector<tripan::Vec2> TriPanAudioProcessor::getVirtualSpeakers() const
             return {};
 
         case VirtualMode::Manual:
-            return getManualVirtualSpeakers();
+        {
+            std::vector<tripan::VirtualSpeaker> out;
+            for (const auto& p : getManualVirtualSpeakers())
+                out.push_back ({ p, 1.0 });
+            return out;
+        }
 
         case VirtualMode::Auto:
             break;
@@ -316,7 +330,7 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     }
 
     // Target gains from the current source positions and the latest published triangulation.
-    const tripan::Triangulation* tri = exchange.acquire();
+    const tripan::SpeakerLayout* tri = exchange.acquire();
 
     // Sources beyond the "Number of Sources" setting get no gains, so they fade out and stay silent.
     // (The triangulation only contains the speakers in use, so unused outputs stay silent too.)
@@ -324,9 +338,29 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     const int usedSpeakers = getActiveSpeakers();
 
     std::array<tripan::SourceGains, tripan::kMaxChannels> target {};
-    for (int s = 0; s < std::min (n, usedSources); ++s)
-        if (tri != nullptr)
-            target[(size_t) s] = tripan::computeGains (*tri, { (double) srcX[(size_t) s]->load(), (double) srcY[(size_t) s]->load() });
+    const int activeSources = std::min (n, usedSources);
+
+    for (int s = 0; s < n; ++s)
+    {
+        auto& key = gainKeys[(size_t) s];
+
+        if (s >= activeSources || tri == nullptr)
+        {
+            key.valid = false;
+            continue;
+        }
+
+        // A source that has not moved, with an unchanged layout, keeps last block's gains.
+        const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load();
+        if (key.valid && key.layoutId == tri->id() && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y))
+        {
+            target[(size_t) s] = prevGains[(size_t) s];
+            continue;
+        }
+
+        target[(size_t) s] = tripan::computeGains (*tri, { (double) x, (double) y });
+        key = { x, y, tri->id(), true };
+    }
 
     if (restartRamp.exchange (false))
     {

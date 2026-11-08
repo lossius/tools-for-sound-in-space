@@ -1,6 +1,7 @@
 // Minimal dependency-free test runner for TriPanCore (no JUCE).
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"
+#include "tripan/SpeakerLayout.h"
 #include "tripan/Triangulation.h"
 #include "tripan/VirtualSpeakers.h"
 
@@ -292,8 +293,9 @@ static void testFindVirtualSpeakers()
         bool centre = false, back = false;
         for (const auto& p : v)
         {
-            if (std::hypot (p.x, p.y) < 1e-9) centre = true;
-            if (std::abs (p.x) < 1e-9 && std::abs (p.y + 5.0) < 1e-9) back = true; // directly behind, same radius
+            CHECK (std::abs (p.strength - 1.0) < 1e-9);          // 5.1 clearly needs both
+            if (std::hypot (p.position.x, p.position.y) < 1e-9) centre = true;
+            if (std::abs (p.position.x) < 1e-9 && std::abs (p.position.y + 5.0) < 1e-9) back = true; // directly behind, same radius
         }
         CHECK (centre && back);
     }
@@ -333,7 +335,7 @@ static void testFindVirtualSpeakers()
     auto shifted = ring ({ 0, 90, 180, 270 });
     for (auto& p : shifted) { p.x += 2.0; p.y -= 1.0; }
     const auto c = findVirtualSpeakers (shifted, { 2.0, -1.0 });
-    CHECK (c.size() == 1 && std::hypot (c[0].x - 2.0, c[0].y + 1.0) < 1e-9);
+    CHECK (c.size() == 1 && std::hypot (c[0].position.x - 2.0, c[0].position.y + 1.0) < 1e-9);
 
     // The count is capped.
     VirtualSpeakerOptions o;
@@ -344,7 +346,9 @@ static void testFindVirtualSpeakers()
 static void testVirtualSpeakerGains()
 {
     const auto fivePointOne = ring ({ -30, 30, 0, -110, 110 });         // L, R, C, Ls, Rs
-    const auto v = findVirtualSpeakers (fivePointOne);
+    std::vector<Vec2> v;
+    for (const auto& virtualSpeaker : findVirtualSpeakers (fivePointOne))
+        v.push_back (virtualSpeaker.position);
     const Triangulation tri (fivePointOne, v);
 
     CHECK (tri.numReal() == 5 && tri.numVirtual() == 2);
@@ -412,6 +416,173 @@ static void testVirtualSpeakerGains()
     CHECK (computeGains (onlyVirtual, { 0.5, 0.2 }).count == 0);
 }
 
+static std::vector<Vec2> positionsOf (const std::vector<VirtualSpeaker>& v)
+{
+    std::vector<Vec2> out;
+    for (const auto& s : v) out.push_back (s.position);
+    return out;
+}
+
+// The decisions are soft: strengths rise smoothly with the gap, the ring-ness and the enclosure.
+static void testVirtualSpeakerStrengths()
+{
+    const auto backGapOf = [] (double surroundAzimuth) { return findVirtualSpeakers (ring ({ -30, 30, 0, -surroundAzimuth, surroundAzimuth })); };
+
+    // Surrounds at 135 degrees -> back gap 90: nothing needed there; at 125 -> 110 degrees: fully filled.
+    const auto gapStrength = [&] (double azimuth)
+    {
+        double best = 0.0;
+        for (const auto& v : backGapOf (azimuth))
+            if (v.position.y < -3.0) best = v.strength; // the one in the back
+        return best;
+    };
+    CHECK (gapStrength (135.0) < 1e-6);                                 // gap 90 degrees
+    CHECK (gapStrength (130.0) > 0.4 && gapStrength (130.0) < 0.6);     // gap 100: half
+    CHECK (std::abs (gapStrength (125.0) - 1.0) < 1e-6);                // gap 110: full
+    CHECK (gapStrength (132.0) < gapStrength (130.0) && gapStrength (130.0) < gapStrength (128.0)); // monotonic
+
+    // Ring-ness: the centre speaker fades out as the radii become uneven, and in as speakers move away from the centre.
+    const auto centreStrength = [] (double radiusOfOne)
+    {
+        auto pts = ring ({ 0, 90, 180, 270 });
+        pts[0].y = radiusOfOne; // front speaker at a different distance
+        for (const auto& v : findVirtualSpeakers (pts))
+            if (std::hypot (v.position.x, v.position.y) < 1e-9) return v.strength;
+        return 0.0;
+    };
+    CHECK (std::abs (centreStrength (5.0) - 1.0) < 1e-9);
+    CHECK (centreStrength (5.8) > 0.999);                               // 15% spread: still a ring
+    CHECK (centreStrength (6.5) > 0.0 && centreStrength (6.5) < 1.0);   // 28% spread: partly a ring
+    CHECK (centreStrength (6.5) < centreStrength (6.0) || centreStrength (6.0) > 0.999);
+    CHECK (centreStrength (8.0) < 1e-6);                                // far from a ring
+
+    // Enclosure: as the largest gap grows from 160 to 180 degrees the strengths fade out, then nothing remains.
+    // (Speakers at -a, 0, a: the back gap is 360 - 2a.)
+    const auto totalStrength = [] (double a)
+    {
+        double sum = 0.0;
+        for (const auto& v : findVirtualSpeakers (ring ({ -a, 0, a }))) sum += v.strength;
+        return sum;
+    };
+    CHECK (totalStrength (100.0) > 2.9);                                // back gap 160: fully enclosed
+    CHECK (totalStrength (95.0) > 0.1 && totalStrength (95.0) < totalStrength (100.0)); // gap 170: partly
+    CHECK (totalStrength (90.0) < 1e-9 && totalStrength (80.0) < 1e-9); // gap 180 or more: nothing
+
+    // A layout with a very small softness behaves like hard thresholds.
+    VirtualSpeakerOptions hard;
+    hard.gapSoftnessDegrees = hard.ringSoftness = hard.centreSoftness = 0.0;
+    hard.enclosedBelowDegrees = 180.0;
+    for (const auto& v : findVirtualSpeakers (ring ({ -30, 30, 0, -110, 110 }), {}, hard))
+        CHECK (std::abs (v.strength - 1.0) < 1e-12);
+}
+
+// SpeakerLayout blends nested layers with the strengths as weights.
+static void testSpeakerLayoutBlend()
+{
+    const auto base = ring ({ -30, 30, 0, -110, 110 });
+
+    // Strength 1 reproduces a plain Triangulation with those virtual speakers.
+    {
+        const auto v = findVirtualSpeakers (base);
+        const SpeakerLayout layout (base, v);
+        const Triangulation tri (base, positionsOf (v));
+        CHECK (layout.numLayers() == 1 && std::abs (layout.layerWeight (0) - 1.0) < 1e-12);
+
+        std::mt19937 rng (21);
+        std::uniform_real_distribution<double> u (-8.0, 8.0);
+        for (int k = 0; k < 300; ++k)
+        {
+            const Vec2 s { u (rng), u (rng) };
+            const auto a = computeGains (layout, s), b = computeGains (tri, s);
+            CHECK (a.count == b.count);
+            for (int i = 0; i < 5; ++i) CHECK (isNear (gainFor (a, i), gainFor (b, i), 1e-6));
+        }
+    }
+
+    // No virtual speakers: one layer, identical to the plain triangulation.
+    {
+        const SpeakerLayout layout (base);
+        CHECK (layout.numLayers() == 1 && layout.virtualSpeakers().empty());
+        CHECK (computeGains (layout, { 0.0, 0.0 }).count == computeGains (Triangulation (base), { 0.0, 0.0 }).count);
+    }
+
+    // Partial strengths: weights add up to 1, strongest first, and the result keeps constant power.
+    {
+        const std::vector<VirtualSpeaker> v { { { 0.0, 0.0 }, 0.3 }, { { 0.0, -5.0 }, 0.8 }, { { 9.0, 9.0 }, 0.0 } };
+        const SpeakerLayout layout (base, v);
+
+        CHECK (layout.virtualSpeakers().size() == 2);                   // the zero-strength one is dropped
+        CHECK (std::abs (layout.virtualSpeakers()[0].strength - 0.8) < 1e-12 && std::abs (layout.virtualSpeakers()[1].strength - 0.3) < 1e-12);
+        CHECK (layout.numLayers() == 3);
+        double sumWeights = 0.0;
+        for (int i = 0; i < layout.numLayers(); ++i) sumWeights += layout.layerWeight (i);
+        CHECK (isNear (sumWeights, 1.0, 1e-12));
+        CHECK (isNear (layout.layerWeight (0), 0.2, 1e-12) && isNear (layout.layerWeight (1), 0.5, 1e-12) && isNear (layout.layerWeight (2), 0.3, 1e-12));
+        CHECK (layout.layer (0).numVirtual() == 0 && layout.layer (2).numVirtual() == 2);
+        CHECK (layout.full().numVirtual() == 2);
+
+        std::mt19937 rng (22);
+        std::uniform_real_distribution<double> u (-9.0, 9.0);
+        for (int k = 0; k < 300; ++k)
+        {
+            const auto g = computeGains (layout, { u (rng), u (rng) });
+            CHECK (isNear (sumSq (g), 1.0, 1e-5));
+        }
+    }
+
+    // Equal strengths and odd input do not break anything.
+    {
+        const SpeakerLayout equalStrengths (base, std::vector<VirtualSpeaker> { { { 0.0, 0.0 }, 0.5 }, { { 0.0, -5.0 }, 0.5 } });
+        CHECK (equalStrengths.numLayers() == 2); // the middle layer has no weight and is not built
+        const SpeakerLayout nan (base, std::vector<VirtualSpeaker> { { { std::nan (""), 0.0 }, 1.0 } });
+        CHECK (nan.virtualSpeakers().empty());
+        const SpeakerLayout empty;
+        CHECK (computeGains (empty, { 0.0, 0.0 }).count == 0 && empty.full().triangles().empty());
+    }
+}
+
+// The point of the soft decisions: while a speaker moves across a threshold, the gains of a source change
+// smoothly. With hard thresholds (the old behaviour) they jump.
+static void testNoJumpsWhileSpeakersMove()
+{
+    VirtualSpeakerOptions hard;
+    hard.gapSoftnessDegrees = hard.ringSoftness = hard.centreSoftness = 0.0;
+    hard.enclosedBelowDegrees = 180.0;
+
+    const Vec2 sources[] = { { 1.0, -3.0 }, { 0.0, -4.0 }, { 0.5, 0.5 }, { -2.0, -2.0 }, { 3.0, 3.0 }, { 0.0, -1.0 } };
+
+    const auto sweep = [&] (const VirtualSpeakerOptions& options)
+    {
+        double worst = 0.0;
+        std::vector<SourceGains> prev (std::size (sources));
+        bool have = false;
+
+        // The surrounds move from 145 degrees (back gap 70) to 105 degrees (back gap 150): across 90 and 110.
+        for (double azimuth = 145.0; azimuth >= 105.0; azimuth -= 0.005)
+        {
+            const auto speakers = ring ({ -30, 30, 0, -azimuth, azimuth });
+            const SpeakerLayout layout (speakers, findVirtualSpeakers (speakers, {}, options));
+
+            for (size_t k = 0; k < std::size (sources); ++k)
+            {
+                const auto g = computeGains (layout, sources[k]);
+                if (have)
+                    for (int i = 0; i < 5; ++i)
+                        worst = std::max (worst, (double) std::abs (gainFor (g, i) - gainFor (prev[k], i)));
+                prev[k] = g;
+            }
+            have = true;
+        }
+        return worst;
+    };
+
+    const double soft = sweep ({});
+    const double jumpy = sweep (hard);
+    std::printf ("largest gain jump per 0.005 degree step while a surround speaker moves: soft %.4f, hard thresholds %.4f\n", soft, jumpy);
+    CHECK (soft < 0.01);
+    CHECK (jumpy > 0.1); // the hard version jumps, which is what the soft blend is for
+}
+
 int main()
 {
     testLimits();
@@ -424,6 +595,9 @@ int main()
     testDuplicatesAndNonFinite();
     testFindVirtualSpeakers();
     testVirtualSpeakerGains();
+    testVirtualSpeakerStrengths();
+    testSpeakerLayoutBlend();
+    testNoJumpsWhileSpeakersMove();
 
     if (failures == 0)
         std::printf ("All tests passed\n");

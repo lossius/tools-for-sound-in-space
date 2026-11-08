@@ -1,7 +1,7 @@
-// Stress test for TriangulationExchange: one writer publishing, one reader reading continuously.
+// Stress test for LayoutExchange: one writer publishing, one reader reading continuously.
 // Run under ThreadSanitizer/AddressSanitizer for the strongest check.
 #include "tripan/Gains.h"
-#include "tripan/TriangulationExchange.h"
+#include "tripan/LayoutExchange.h"
 
 #include <atomic>
 #include <cmath>
@@ -13,7 +13,7 @@ using namespace tripan;
 
 int main()
 {
-    TriangulationExchange ex;
+    LayoutExchange ex;
     if (ex.acquire() != nullptr)
     {
         std::printf ("FAIL: expected nullptr before first publish\n");
@@ -46,7 +46,7 @@ int main()
         const int n = 3 + iter % 20;
         for (int i = 0; i < n; ++i)
             pts.push_back ({ std::cos (i * 6.2831853 / n + iter * 0.01), std::sin (i * 6.2831853 / n + iter * 0.01) });
-        ex.publish (std::make_unique<const Triangulation> (pts));
+        ex.publish (std::make_unique<const SpeakerLayout> (pts, findVirtualSpeakers (pts)));
     }
 
     stop = true;

@@ -56,12 +56,17 @@ not redistributable: keep it outside this repo. Check its current licence before
 - Virtual (imaginary) speakers: `Triangulation(real, virtual)` triangulates real + virtual points (real first);
   `computeGains` splits the gain of a virtual point equally (weights 1/sqrt(k)) over its real neighbours
   (`redistribution()`) and renormalises, so `SourceGains` can have up to 64 entries. `findVirtualSpeakers`
-  (core/VirtualSpeakers) places them: gap fillers for angular gaps > 90 deg, a centre speaker for rings; nothing
-  unless the listener (origin) is enclosed. Processor mode Auto/Manual/Off (`virtualMode`, `manualVirtual` in the
-  state, max 16, not host parameters); `refreshTriangulation` publishes real+virtual. Manual ones are edited on
-  the pad (double-click add/delete, drag) when mode is Manual and speakers are set to Edit. Known limit: cocircular
-  grid cells (3x3, 4x4) still have arbitrary diagonals; virtual speakers appear/disappear discontinuously when a
-  speaker is dragged across a threshold (gains ramp per block, so no clicks).
+  (core/VirtualSpeakers) returns `VirtualSpeaker {position, strength}`: one gap filler per angular gap (strength
+  ramps 0..1 over 90..110 deg), a centre speaker for rings (soft ring tolerance 0.25 +-0.05, soft clearance), all
+  scaled by an enclosure factor that fades from 1 at largest gap 160 deg to 0 at 180 deg (nothing if the listener,
+  the origin, is not enclosed). Strengths < 1 are blended by `SpeakerLayout` (core): virtual speakers sorted by
+  strength, nested layers (real + the j strongest), layer weights s_j - s_(j+1), gains = weighted sum, renormalised
+  (continuous in the speaker positions, no state; up to 17 triangulations, ~0.5 ms/block worst case for 64
+  sources). `LayoutExchange` hands the immutable `SpeakerLayout` to the audio thread (hazard pointer). The audio
+  thread skips sources whose position and layout `id()` are unchanged. Processor mode Auto/Manual/Off
+  (`virtualMode`, `manualVirtual` in the state, max 16, not host parameters; manual ones have strength 1);
+  Manual ones are edited on the pad (double-click add/delete, drag) when speakers are set to Edit. Known limit:
+  cocircular grid cells (3x3, 4x4) still have arbitrary diagonals.
 - Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-10 m
   centred on 0. Zoom In steps by 1.5x towards `fittedView()` (bounding box of the speakers in use, min +-2 m) and
   stops there; Zoom Out steps back to the full view. The view is fixed once set (it doesn't follow dragged

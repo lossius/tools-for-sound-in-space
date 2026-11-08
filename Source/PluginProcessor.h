@@ -2,7 +2,7 @@
 
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"
-#include "tripan/TriangulationExchange.h"
+#include "tripan/LayoutExchange.h"
 #include "tripan/VirtualSpeakers.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -73,14 +73,16 @@ public:
 
     /** Message thread. Virtual speakers. They are not host parameters; the mode and the manual list
         are saved with the state. Switching from Auto to Manual with an empty manual list starts
-        the manual list from the automatic result. */
+        the manual list from the automatic speakers that are at least half in effect. */
     static constexpr int kMaxVirtualSpeakers = 16;
     VirtualMode getVirtualMode() const;
     void setVirtualMode (VirtualMode);
     std::vector<tripan::Vec2> getManualVirtualSpeakers() const;
     void setManualVirtualSpeakers (const std::vector<tripan::Vec2>&);
-    /** The virtual speakers in effect (according to the mode), for the speakers currently in use. */
-    std::vector<tripan::Vec2> getVirtualSpeakers() const;
+    /** The virtual speakers in effect (according to the mode), for the speakers currently in use. Manual
+        ones have strength 1; automatic ones have a strength between 0 and 1 that follows the layout
+        smoothly (see tripan::SpeakerLayout). */
+    std::vector<tripan::VirtualSpeaker> getVirtualSpeakers() const;
 
     /** Message thread. Width of the editor window in pixels (0 if never set); saved with the state
         so that the chosen GUI size is restored. */
@@ -103,14 +105,23 @@ private:
     std::atomic<float>* numSpeakersParam = nullptr;
 
     // Message thread -> audio thread
-    tripan::TriangulationExchange exchange;
+    tripan::LayoutExchange exchange;
     std::vector<tripan::Vec2> publishedSpeakers; // message thread only
-    std::vector<tripan::Vec2> publishedVirtual;  // message thread only
+    std::vector<tripan::VirtualSpeaker> publishedVirtual; // message thread only
     bool havePublished = false;                  // message thread only
 
     // Audio thread only
     std::array<tripan::SourceGains, tripan::kMaxChannels> prevGains {};
     int prevUsedSpeakers = 0;
+
+    // What prevGains[s] was computed from, so unchanged sources need no new computation.
+    struct GainKey
+    {
+        float x = 0.0f, y = 0.0f;
+        std::uint64_t layoutId = 0;
+        bool valid = false;
+    };
+    std::array<GainKey, tripan::kMaxChannels> gainKeys {};
     std::atomic<bool> restartRamp { true }; // set from any thread: next block starts at its target gains
     juce::AudioBuffer<float> inputCopy;
 

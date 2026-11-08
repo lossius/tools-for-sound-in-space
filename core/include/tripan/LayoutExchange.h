@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tripan/Triangulation.h"
+#include "tripan/SpeakerLayout.h"
 
 #include <atomic>
 #include <memory>
@@ -8,7 +8,7 @@
 
 namespace tripan
 {
-/** Hands immutable Triangulation objects from one writer thread (message thread) to one reader
+/** Hands immutable SpeakerLayout objects from one writer thread (message thread) to one reader
     thread (audio thread) without locks or allocation on the reader side.
 
     Uses a single hazard pointer: the reader announces the object it is using, and the writer only
@@ -19,25 +19,25 @@ namespace tripan
     - acquire() returns nullptr until the first publish(). The returned pointer stays valid until
       the next acquire() or release() on the reader thread.
 */
-class TriangulationExchange
+class LayoutExchange
 {
 public:
-    TriangulationExchange() = default;
-    ~TriangulationExchange();
+    LayoutExchange() = default;
+    ~LayoutExchange();
 
-    TriangulationExchange (const TriangulationExchange&) = delete;
-    TriangulationExchange& operator= (const TriangulationExchange&) = delete;
+    LayoutExchange (const LayoutExchange&) = delete;
+    LayoutExchange& operator= (const LayoutExchange&) = delete;
 
-    void publish (std::unique_ptr<const Triangulation> next);
+    void publish (std::unique_ptr<const SpeakerLayout> next);
 
-    const Triangulation* acquire() noexcept;
+    const SpeakerLayout* acquire() noexcept;
     void release() noexcept { hazard.store (nullptr, std::memory_order_seq_cst); }
 
 private:
     void collect();
 
-    std::atomic<const Triangulation*> current { nullptr };
-    std::atomic<const Triangulation*> hazard { nullptr };
-    std::vector<std::unique_ptr<const Triangulation>> retired; // writer thread only
+    std::atomic<const SpeakerLayout*> current { nullptr };
+    std::atomic<const SpeakerLayout*> hazard { nullptr };
+    std::vector<std::unique_ptr<const SpeakerLayout>> retired; // writer thread only
 };
 }

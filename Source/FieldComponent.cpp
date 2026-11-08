@@ -64,7 +64,7 @@ juce::Point<double> FieldComponent::position (const Handle& h) const
     if (h.isVirtual)
     {
         const auto i = (size_t) h.index;
-        return i < virtualSpeakers.size() ? juce::Point<double> (virtualSpeakers[i].x, virtualSpeakers[i].y) : juce::Point<double>();
+        return i < virtualSpeakers.size() ? juce::Point<double> (virtualSpeakers[i].position.x, virtualSpeakers[i].position.y) : juce::Point<double>();
     }
 
     const auto read = [] (juce::RangedAudioParameter* prm) { return (double) prm->convertFrom0to1 (prm->getValue()); };
@@ -266,19 +266,26 @@ void FieldComponent::timerCallback()
     mix ((double) processor.getVirtualMode());
     for (const auto& v : virtualSpeakers)
     {
-        mix (v.x);
-        mix (v.y);
+        mix (v.position.x);
+        mix (v.position.y);
+        mix (v.strength);
     }
 
-    const auto same = [] (const std::vector<tripan::Vec2>& a, const std::vector<tripan::Vec2>& b)
+    const auto samePosition = [] (const tripan::Vec2& p, const tripan::Vec2& q) { return juce::exactlyEqual (p.x, q.x) && juce::exactlyEqual (p.y, q.y); };
+    const auto sameVirtual = [&] (const tripan::VirtualSpeaker& p, const tripan::VirtualSpeaker& q)
     {
-        return a.size() == b.size() && std::equal (a.begin(), a.end(), b.begin(),
-                                                   [] (const tripan::Vec2& p, const tripan::Vec2& q) { return juce::exactlyEqual (p.x, q.x) && juce::exactlyEqual (p.y, q.y); });
+        return samePosition (p.position, q.position) && juce::exactlyEqual (p.strength, q.strength);
     };
 
-    if (triangulation == nullptr || ! same (speakers, triangulatedSpeakers) || ! same (virtualSpeakers, triangulatedVirtual))
+    const bool changed = triangulation == nullptr
+                      || speakers.size() != triangulatedSpeakers.size()
+                      || ! std::equal (speakers.begin(), speakers.end(), triangulatedSpeakers.begin(), samePosition)
+                      || virtualSpeakers.size() != triangulatedVirtual.size()
+                      || ! std::equal (virtualSpeakers.begin(), virtualSpeakers.end(), triangulatedVirtual.begin(), sameVirtual);
+
+    if (changed)
     {
-        triangulation = std::make_unique<tripan::Triangulation> (speakers, virtualSpeakers);
+        triangulation = std::make_unique<tripan::SpeakerLayout> (speakers, virtualSpeakers);
         triangulatedSpeakers = std::move (speakers);
         triangulatedVirtual = virtualSpeakers;
     }
@@ -359,8 +366,9 @@ void FieldComponent::paint (juce::Graphics& g)
     if (showTriangulation && triangulation != nullptr)
     {
         g.setColour (juce::Colour (0xff7aa2c8).withAlpha (0.55f));
-        const auto pts = triangulation->speakers();
-        for (const auto& t : triangulation->triangles())
+        const auto& full = triangulation->full(); // the triangulation with all virtual speakers
+        const auto pts = full.speakers();
+        for (const auto& t : full.triangles())
         {
             juce::Path path;
             const auto a = toView (pts[(size_t) t.a].x, pts[(size_t) t.a].y);
@@ -410,12 +418,14 @@ void FieldComponent::paint (juce::Graphics& g)
     // Virtual speakers: hollow squares. They are not outputs; their gain goes to the real speakers around them.
     for (int i = 0; i < (int) virtualSpeakers.size(); ++i)
     {
-        const auto c = toView (virtualSpeakers[(size_t) i].x, virtualSpeakers[(size_t) i].y);
+        // Automatic virtual speakers fade in and out with their strength; manual ones are always solid.
+        const float strength = (float) juce::jlimit (0.15, 1.0, virtualSpeakers[(size_t) i].strength);
+        const auto c = toView (virtualSpeakers[(size_t) i].position.x, virtualSpeakers[(size_t) i].position.y);
         const bool hot = (hovered && hovered->isVirtual && hovered->index == i) || (dragging && dragging->isVirtual && dragging->index == i);
         const auto r = juce::Rectangle<float> (14.0f, 14.0f).withCentre (c);
-        g.setColour (juce::Colour (0xff15181d).withAlpha (0.85f));
+        g.setColour (juce::Colour (0xff15181d).withAlpha (0.85f * strength));
         g.fillRoundedRectangle (r, 2.0f);
-        g.setColour (hot ? juce::Colours::white : juce::Colour (0xffe6b450));
+        g.setColour ((hot ? juce::Colours::white : juce::Colour (0xffe6b450)).withAlpha (strength));
         g.drawRoundedRectangle (r, 2.0f, hot ? 2.0f : 1.5f);
         g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
         g.drawText ("v" + juce::String (i + 1), r, juce::Justification::centred);

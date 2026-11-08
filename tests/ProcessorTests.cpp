@@ -700,7 +700,7 @@ static void testMirrorSymmetryWithVirtualSpeakers (const juce::File& dir)
 
         const auto virtualSpeakers = p.getVirtualSpeakers();
         CHECK (! virtualSpeakers.empty());
-        const tripan::Triangulation tri (speakers, virtualSpeakers);
+        const tripan::SpeakerLayout tri (speakers, virtualSpeakers);
 
         // mirror[i] = the speaker at the mirrored position (-x, y)
         std::vector<int> mirror (speakers.size(), -1);
@@ -750,6 +750,57 @@ static void testMirrorSymmetryWithVirtualSpeakers (const juce::File& dir)
     }
 }
 
+// Sources that have not moved reuse their gains, but must follow any change of the layout.
+static void testUnchangedSourcesFollowLayoutChanges()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 1, 6, 256));
+    p.setVirtualMode (VirtualMode::Off);
+
+    juce::AudioBuffer<float> buf (6, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (31);
+
+    // A stationary source right next to speaker 1 (the first speaker, at the front).
+    setParam (p, tripan::params::sourceId (0, 'x'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'x'))->load());
+    setParam (p, tripan::params::sourceId (0, 'y'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'y'))->load());
+
+    double inE = 0.0;
+    for (int block = 0; block < 4; ++block)
+    {
+        inE = fillNoise (buf, 1, 0, rng);
+        p.processBlock (buf, midi); // from the second block on the gains come from the cache
+    }
+    CHECK (std::abs (channelEnergy (buf, 0) - inE) < 1e-3 * inE);
+
+    // Move speaker 1 elsewhere; the source stays. The cached gains must be dropped.
+    setParam (p, tripan::params::speakerId (0, 'x'), -4.0f);
+    setParam (p, tripan::params::speakerId (0, 'y'), -4.0f);
+    p.refreshTriangulation();
+    for (int block = 0; block < 4; ++block)
+    {
+        inE = fillNoise (buf, 1, 0, rng);
+        p.processBlock (buf, midi);
+    }
+    CHECK (channelEnergy (buf, 0) < 0.9 * inE); // speaker 1 is no longer under the source
+
+    double outE = 0.0;
+    for (int ch = 0; ch < 6; ++ch) outE += channelEnergy (buf, ch);
+    CHECK (std::abs (outE - inE) < 1e-3 * inE);
+
+    // Switching the virtual speakers also changes the layout.
+    p.setVirtualMode (VirtualMode::Manual);
+    p.setManualVirtualSpeakers ({ { 0.0, 0.0 } });
+    for (int block = 0; block < 4; ++block)
+    {
+        inE = fillNoise (buf, 1, 0, rng);
+        p.processBlock (buf, midi);
+    }
+    outE = 0.0;
+    for (int ch = 0; ch < 6; ++ch) outE += channelEnergy (buf, ch);
+    CHECK (std::abs (outE - inE) < 1e-3 * inE);
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
@@ -764,6 +815,7 @@ int main (int argc, char** argv)
     testFullSizeEnergyConservation();
     testParameterAutomationWhileProcessing();
     testVirtualSpeakerModes();
+    testUnchangedSourcesFollowLayoutChanges();
     testFullSize64x64();
 
     if (argc > 1)

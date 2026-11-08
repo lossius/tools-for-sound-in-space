@@ -6,7 +6,20 @@
 
 namespace tripan
 {
-std::vector<Vec2> findVirtualSpeakers (std::span<const Vec2> speakers, Vec2 listener, const VirtualSpeakerOptions& o)
+namespace
+{
+/** 0 below `lo`, 1 above `hi`, smooth in between (zero slope at both ends). */
+double smoothstep (double x, double lo, double hi) noexcept
+{
+    if (hi <= lo)
+        return x >= hi ? 1.0 : 0.0;
+
+    const double t = std::clamp ((x - lo) / (hi - lo), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+}
+
+std::vector<VirtualSpeaker> findVirtualSpeakers (std::span<const Vec2> speakers, Vec2 listener, const VirtualSpeakerOptions& o)
 {
     struct Polar
     {
@@ -15,7 +28,9 @@ std::vector<Vec2> findVirtualSpeakers (std::span<const Vec2> speakers, Vec2 list
     };
 
     constexpr double twoPi = 2.0 * std::numbers::pi;
+    constexpr double toRadians = std::numbers::pi / 180.0;
     constexpr double atListener = 1e-6;
+    constexpr double minStrength = 1e-6;
 
     std::vector<Polar> ring;
     bool speakerAtListener = false;
@@ -60,34 +75,36 @@ std::vector<Vec2> findVirtualSpeakers (std::span<const Vec2> speakers, Vec2 list
         largestGap = std::max (largestGap, gap[i]);
     }
 
-    // The listener must be enclosed by the speakers, otherwise there is nothing to fill in.
-    if (largestGap >= std::numbers::pi - 1e-9)
+    // How well the listener is enclosed: 1 below enclosedBelowDegrees, falling to 0 at 180 degrees.
+    const double enclosed = 1.0 - smoothstep (largestGap, o.enclosedBelowDegrees * toRadians, std::numbers::pi);
+    if (enclosed <= minStrength)
         return {};
 
-    const auto at = [&] (double azimuth, double radius) -> Vec2
+    std::vector<VirtualSpeaker> result;
+    const auto add = [&] (Vec2 p, double strength)
     {
-        return { listener.x + radius * std::sin (azimuth), listener.y + radius * std::cos (azimuth) };
+        if (strength > minStrength)
+            result.push_back ({ p, std::min (strength, 1.0) });
     };
 
-    std::vector<Vec2> result;
-    const double threshold = o.gapThresholdDegrees * std::numbers::pi / 180.0;
+    if (o.fillGaps)
+    {
+        const double lo = (o.gapThresholdDegrees - o.gapSoftnessDegrees) * toRadians;
+        const double hi = (o.gapThresholdDegrees + o.gapSoftnessDegrees) * toRadians;
 
-    if (o.fillGaps && threshold > 0.0)
         for (size_t i = 0; i < n; ++i)
         {
-            if (gap[i] <= threshold + 1e-9)
+            const double strength = enclosed * smoothstep (gap[i], lo, hi);
+            if (strength <= minStrength)
                 continue;
 
-            const int count = (int) std::ceil (gap[i] / threshold - 1e-9) - 1;
             const auto& from = ring[i];
             const auto& to = ring[(i + 1) % n];
-
-            for (int j = 1; j <= count; ++j)
-            {
-                const double t = (double) j / (double) (count + 1);
-                result.push_back (at (from.azimuth + gap[i] * t, from.radius + (to.radius - from.radius) * t));
-            }
+            const double azimuth = from.azimuth + 0.5 * gap[i];
+            const double radius = 0.5 * (from.radius + to.radius);
+            add ({ listener.x + radius * std::sin (azimuth), listener.y + radius * std::cos (azimuth) }, strength);
         }
+    }
 
     if (o.addCentre && n >= 3 && ! speakerAtListener)
     {
@@ -100,8 +117,10 @@ std::vector<Vec2> findVirtualSpeakers (std::span<const Vec2> speakers, Vec2 list
         }
 
         const double mean = sum / (double) n;
-        if (maxR - minR <= o.ringTolerance * mean && minR > o.centreClearance * mean)
-            result.push_back (listener);
+        const double spread = (maxR - minR) / mean;
+        const double isRing = 1.0 - smoothstep (spread, o.ringTolerance - o.ringSoftness, o.ringTolerance + o.ringSoftness);
+        const double clear = smoothstep (minR / mean, o.centreClearance - o.centreSoftness, o.centreClearance + o.centreSoftness);
+        add (listener, enclosed * isRing * clear);
     }
 
     if ((int) result.size() > o.maxCount)

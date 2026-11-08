@@ -2,7 +2,7 @@
 
 #include "PluginProcessor.h"
 #include "Parameters.h"
-#include "tripan/Triangulation.h"
+#include "tripan/SpeakerLayout.h"
 
 #include <array>
 #include <memory>
@@ -84,9 +84,9 @@ private:
     std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> srcXp {}, srcYp {}, spkXp {}, spkYp {};
 
     std::vector<tripan::Vec2> triangulatedSpeakers;
-    std::vector<tripan::Vec2> triangulatedVirtual;
-    std::vector<tripan::Vec2> virtualSpeakers; // as in effect, refreshed by the timer
-    std::unique_ptr<tripan::Triangulation> triangulation;
+    std::vector<tripan::VirtualSpeaker> triangulatedVirtual;
+    std::vector<tripan::VirtualSpeaker> virtualSpeakers; // as in effect, refreshed by the timer
+    std::unique_ptr<tripan::SpeakerLayout> triangulation;
     size_t lastStateHash = 0;
     bool showTriangulation = true;
     double viewHalf = (double) tripan::params::kCoordRange; // see zoomIn()
