@@ -874,10 +874,53 @@ static void testSourceSpread()
     CHECK (q.getValueTreeState().getParameter (tripan::params::spreadId (63)) != nullptr);
 }
 
+// The order of the parameters as a host lists them: counts, then each source (x, y, spread), then each speaker (x, y).
+static void testParameterOrder()
+{
+    TriPanAudioProcessor p;
+    const auto& parameters = p.getParameters();
+
+    std::vector<juce::String> expected { tripan::params::kNumSourcesId, tripan::params::kNumSpeakersId };
+    for (int i = 0; i < tripan::kMaxChannels; ++i)
+    {
+        expected.push_back (tripan::params::sourceId (i, 'x'));
+        expected.push_back (tripan::params::sourceId (i, 'y'));
+        expected.push_back (tripan::params::spreadId (i));
+    }
+    for (int i = 0; i < tripan::kMaxChannels; ++i)
+    {
+        expected.push_back (tripan::params::speakerId (i, 'x'));
+        expected.push_back (tripan::params::speakerId (i, 'y'));
+    }
+
+    CHECK ((size_t) parameters.size() == expected.size());
+    CHECK (expected.size() == 2 + 64 * 3 + 64 * 2);
+
+    bool inOrder = parameters.size() == (int) expected.size();
+    for (int i = 0; inOrder && i < parameters.size(); ++i)
+    {
+        const auto* withId = dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i]);
+        if (withId == nullptr || withId->paramID != expected[(size_t) i])
+        {
+            std::printf ("parameter %d is %s, expected %s\n", i, withId != nullptr ? withId->paramID.toRawUTF8() : "?", expected[(size_t) i].toRawUTF8());
+            inOrder = false;
+        }
+    }
+    CHECK (inOrder);
+
+    // The names a host shows follow the same order.
+    CHECK (parameters[0]->getName (64) == "Number of Sources" && parameters[1]->getName (64) == "Number of Speakers");
+    CHECK (parameters[2]->getName (64) == "Source 1 X" && parameters[3]->getName (64) == "Source 1 Y" && parameters[4]->getName (64) == "Source 1 Spread");
+    CHECK (parameters[5]->getName (64) == "Source 2 X");
+    CHECK (parameters[2 + 64 * 3]->getName (64) == "Speaker 1 X" && parameters[2 + 64 * 3 + 1]->getName (64) == "Speaker 1 Y");
+    CHECK (parameters[parameters.size() - 1]->getName (64) == "Speaker 64 Y");
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
+    testParameterOrder();
     testStationaryEnergyAndLocality();
     testNumberOfSourcesAndSpeakersInUse();
     testUnusedSpeakersAreSilentImmediately();

@@ -43,15 +43,16 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { kNumSpeakersId, 1 }, "Number of Speakers",
                                                            1, kMaxChannels, kMaxChannels));
 
-    for (int i = 0; i < kMaxChannels; ++i)
-        layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { spreadId (i), 1 }, "Source " + juce::String (i + 1) + " Spread",
-                                                           NormalisableRange<float> (0.0f, kMaxSpread), 0.0f,
-                                                           juce::AudioParameterFloatAttributes().withLabel ("m")));
-
+    // The order of the parameters is the order a host lists them in (automation lanes, parameter
+    // menus): the two counts, then everything for source 1 (x, y, spread), source 2, ..., then
+    // everything for speaker 1 (x, y), speaker 2, ...
     for (int i = 0; i < kMaxChannels; ++i)
     {
         add (sourceId (i, 'x'), "Source " + juce::String (i + 1) + " X");
         add (sourceId (i, 'y'), "Source " + juce::String (i + 1) + " Y");
+        layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { spreadId (i), 1 }, "Source " + juce::String (i + 1) + " Spread",
+                                                           NormalisableRange<float> (0.0f, kMaxSpread), 0.0f,
+                                                           juce::AudioParameterFloatAttributes().withLabel ("m")));
     }
 
     for (int i = 0; i < kMaxChannels; ++i)

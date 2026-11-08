@@ -101,6 +101,8 @@ not redistributable: keep it outside this repo. Check its current licence before
   The host range is fixed; the effective count is clamped to the track's channel count
   (`getActiveSources/Speakers`). Unused sources are silent, unused speakers are left out of the
   triangulation. The GUI shows them at the top with their maximum set to the channel count.
+- Parameter order (as listed by hosts, set by the order in `createLayout`): Number of Sources, Number of Speakers, then
+  per source x, y, spread (source 1, 2, ...), then per speaker x, y (speaker 1, 2, ...). `ProcessorTests` checks it.
 - Parameters (Source/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±10, +y front.
   Speaker changes are picked up by a 30 Hz message-thread timer (`refreshTriangulation`), which
   publishes an immutable Triangulation through `TriangulationExchange` (hazard-pointer handover).
