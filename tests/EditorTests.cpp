@@ -280,15 +280,22 @@ int main (int argc, char** argv)
         setParam (p, tripan::params::speakerId (11, 'y'), 0.0f);
         setParam (p, tripan::params::speakerId (11, 'x'), 0.0f);
 
-        // Import follows the Edit/View setting of its kind; export is always available.
+        // Import and export are available whether a kind is set to Edit or View (View only locks dragging and reset).
         for (int combination = 0; combination < 4; ++combination)
         {
             const bool editSources = (combination & 1) != 0, editSpeakers = (combination & 2) != 0;
             editor->getSourcesModeBox().setSelectedId (editSources ? 1 : 2, juce::sendNotificationSync);
             editor->getSpeakersModeBox().setSelectedId (editSpeakers ? 1 : 2, juce::sendNotificationSync);
-            CHECK (editor->getImportSourcesButton().isEnabled() == editSources);
-            CHECK (editor->getImportSpeakersButton().isEnabled() == editSpeakers);
+            CHECK (editor->getImportSourcesButton().isEnabled() && editor->getImportSpeakersButton().isEnabled());
             CHECK (editor->getExportSourcesButton().isEnabled() && editor->getExportSpeakersButton().isEnabled());
+
+            // Importing really changes the positions, even for a kind that is set to View.
+            setParam (p, tripan::params::sourceId (0, 'x'), -9.0f);
+            setParam (p, tripan::params::speakerId (0, 'x'), -9.0f);
+            CHECK (editor->importPositionsFrom (Kind::Sources, srcFile).wasOk());
+            CHECK (editor->importPositionsFrom (Kind::Speakers, spkFile).wasOk());
+            CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - srcX[0]) < 1e-3f);
+            CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - spkX[0]) < 1e-3f);
         }
         editor->getSourcesModeBox().setSelectedId (1, juce::sendNotificationSync);
         editor->getSpeakersModeBox().setSelectedId (1, juce::sendNotificationSync);

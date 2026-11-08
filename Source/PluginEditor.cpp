@@ -66,9 +66,9 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     };
     using tripan::io::Kind;
     setUpFileButton (exportSourcesButton,  Kind::Sources,  true,  "Save the source positions in use to an XML file");
-    setUpFileButton (importSourcesButton,  Kind::Sources,  false, "Load source positions from an XML file (needs the sources menu set to Edit)");
+    setUpFileButton (importSourcesButton,  Kind::Sources,  false, "Load source positions from an XML file");
     setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the speaker positions in use to an XML file");
-    setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file (needs the speakers menu set to Edit)");
+    setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file");
 
     // Scalable GUI: the base size is the minimum, the aspect ratio is fixed.
     setResizable (true, true);
@@ -152,9 +152,6 @@ void TriPanAudioProcessorEditor::syncControls()
     if (speakersModeBox.getSelectedId() != (editSpeakers ? 1 : 2))
         speakersModeBox.setSelectedId (editSpeakers ? 1 : 2, juce::dontSendNotification);
     resetButton.setEnabled (editSources || editSpeakers);
-    // Importing changes positions, so it follows the same locks as dragging.
-    importSourcesButton.setEnabled (editSources);
-    importSpeakersButton.setEnabled (editSpeakers);
 
     const bool showingStatus = statusText.isNotEmpty() && juce::Time::getMillisecondCounter() < statusUntil;
     infoLabel.setText (showingStatus ? statusText

@@ -19,7 +19,7 @@ On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each b
 
 ## Edit and View
 In the top rows of the window, one row for sources and one for speakers, a menu switches each kind of
-position between **Edit** (can be dragged and imported) and **View** (locked). By default sources
+position between **Edit** (can be dragged in the window) and **View** (locked against dragging and "Reset layout"; importing and exporting still work). By default sources
 are set to Edit and speakers to View. The choice is saved with the session. It only affects the
 window: automation from the host can still move everything.
 
@@ -37,12 +37,12 @@ file dialog each time. Sources and speakers are separate files:
 Export writes the channels currently in use, with coordinates rounded to 3 decimal places and padded with spaces so that positive and negative values line up (import ignores the padding). Import checks the whole file first, applies every valid
 entry by index. Importing speakers also sets "Number of Speakers" to the number of speakers in the
 file, provided the track has that many outputs (otherwise the setting is left alone and the status
-line says so). Importing sources never changes "Number of Sources". Import is disabled while
-that kind of position is set to View.
+line says so). Importing sources never changes "Number of Sources". Import and export work whether a
+kind is set to Edit or View.
 
 ## Speaker presets
 The `speaker layouts/` folder has ready-made speaker layouts in the same XML format. Load one with
-"Import speakers..." (set the speakers menu to Edit first). Number of Speakers is adjusted to
+"Import speakers...". Number of Speakers is adjusted to
 the preset automatically when the track has enough outputs. Angles are azimuths clockwise from the front, speakers are on a 5 m circle, and the LFE
 channel is left out.
 
