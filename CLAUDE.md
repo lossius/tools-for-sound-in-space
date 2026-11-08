@@ -57,9 +57,10 @@ not redistributable: keep it outside this repo. Check its current licence before
   pans from the position plus 8 points on a circle of radius `spread` (rotated 22.5 deg, mirror-symmetric) and averages the
   squared gains (MDAP-like, constant power, continuous in position and spread; spread <= 0 = plain). The audio thread's
   gain cache key includes the spread. On the pad (`FieldComponent`): semi-transparent circle of radius spread, drawn under
-  the sources; only the inner circle (`kSourceRadius` 9 px) is a mouse target; Option/Cmd (Alt/Ctrl) + drag from a source
-  sets spread = distance to mouse, modifier + double-click resets it. The mouse handlers delegate to `pressAt/dragTo/
-  release/doubleClickAt` so tests need no real mouse events. Source XML has an optional `spread` attribute.
+  the sources; only the inner circle (`kSourceRadius` 9 px) is a mouse target. Option (Alt) only, not Cmd: Option + vertical
+  drag from a source changes the spread relative to its value at the press (up = more, down = less, sideways ignored,
+  limited to 0..10 m at every step so there is no dead zone), Option + double-click resets it. The mouse handlers
+  delegate to `pressAt/dragTo/release/doubleClickAt` so tests need no real mouse events. Source XML has an optional `spread` attribute.
   `TooltipWindow` in the editor makes all tooltips visible. `readNumber` in PositionIO rejects non-numeric attributes.
 - Virtual (imaginary) speakers: `Triangulation(real, virtual)` triangulates real + virtual points (real first);
   `computeGains` splits the gain of a virtual point over its real neighbours with weights ~ 1/distance (unit L2 norm;

@@ -630,7 +630,7 @@ int main (int argc, char** argv)
         const auto spread = [&] (int i) { return value (p, tripan::params::spreadId (i)); };
         const juce::ModifierKeys none, alt (juce::ModifierKeys::altModifier), cmd (juce::ModifierKeys::commandModifier);
 
-        CHECK (FieldComponent::isSpreadModifier (alt) && FieldComponent::isSpreadModifier (cmd) && ! FieldComponent::isSpreadModifier (none));
+        CHECK (FieldComponent::isSpreadModifier (alt) && ! FieldComponent::isSpreadModifier (none));
         CHECK (std::abs (spread (0)) < 1e-6f && field.getSpread (0) == 0.0);       // default: no spread
 
         // A big spread circle on source 1 covers source 3, but only inner circles take the mouse.
@@ -646,28 +646,56 @@ int main (int argc, char** argv)
         CHECK (! field.findHandleAt (p0 + juce::Point<float> (FieldComponent::kSourceRadius + 2.0f, 0.0f)).has_value());
         setParam (p, tripan::params::spreadId (0), 0.0f);
 
-        // Option + drag: the spread is the distance from the source to the mouse, in metres. The source stays.
+        // Option + drag, vertically: up increases the spread, down decreases it, sideways does nothing.
+        // The change is relative to the value at the press, and the source stays where it is.
+        const auto up = [&] (double metres) { return juce::Point<float> (0.0f, (float) (-metres * ppm)); };
+        const auto stay = [] (juce::Point<float> a, juce::Point<float> b) { return a + b; };
+
         field.pressAt (p0, alt);
-        field.dragTo (p0 + juce::Point<float> (2.0f * ppm, 0.0f));
+        CHECK (spread (0) < 1e-6f);                                             // pressing alone changes nothing
+        auto pointer = p0;
+        pointer = stay (pointer, up (2.0));    field.dragTo (pointer);          // up 2 m
         CHECK (std::abs (spread (0) - 2.0f) < 0.03f);
-        field.dragTo (p0 + juce::Point<float> (0.0f, 3.5f * ppm));
-        CHECK (std::abs (spread (0) - 3.5f) < 0.03f);
-        field.dragTo (p0 + juce::Point<float> (5000.0f, 0.0f));
-        CHECK (std::abs (spread (0) - 10.0f) < 1e-3f);                             // limited to the maximum
-        field.dragTo (p0);
-        CHECK (spread (0) < 0.03f);                                                // back at the centre: no spread
-        field.dragTo (p0 + juce::Point<float> (1.0f * ppm, 0.0f));
-        field.release();
+        pointer = stay (pointer, { 300.0f, 0.0f }); field.dragTo (pointer);     // sideways: no effect
+        CHECK (std::abs (spread (0) - 2.0f) < 0.03f);
+        pointer = stay (pointer, { -600.0f, 0.0f }); field.dragTo (pointer);
+        CHECK (std::abs (spread (0) - 2.0f) < 0.03f);
+        pointer = stay (pointer, up (-1.0));   field.dragTo (pointer);          // down 1 m
         CHECK (std::abs (spread (0) - 1.0f) < 0.03f);
+        pointer = stay (pointer, up (-5.0));   field.dragTo (pointer);          // far down: stops at 0
+        CHECK (spread (0) < 1e-6f);
+        pointer = stay (pointer, up (0.5));    field.dragTo (pointer);          // up again: increases at once (no dead zone)
+        CHECK (std::abs (spread (0) - 0.5f) < 0.03f);
+        pointer = stay (pointer, up (30.0));   field.dragTo (pointer);          // far up: stops at the maximum
+        CHECK (std::abs (spread (0) - 10.0f) < 1e-3f);
+        pointer = stay (pointer, up (-1.0));   field.dragTo (pointer);          // and down again at once
+        CHECK (std::abs (spread (0) - 9.0f) < 0.03f);
+        field.release();
         CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 0.5f) < 0.02f && std::abs (value (p, tripan::params::sourceId (0, 'y')) - 1.0f) < 0.02f);
 
-        // Cmd works the same way.
-        field.pressAt (p0, cmd);
-        field.dragTo (p0 + juce::Point<float> (0.0f, -2.5f * ppm));
+        // A new drag starts from the current value, wherever the mouse is pressed on the inner circle.
+        setParam (p, tripan::params::spreadId (0), 2.5f);
+        field.pressAt (p0 + juce::Point<float> (4.0f, 3.0f), alt);
+        field.dragTo (p0 + juce::Point<float> (4.0f, 3.0f) + up (1.0));
         field.release();
-        CHECK (std::abs (spread (0) - 2.5f) < 0.03f);
+        CHECK (std::abs (spread (0) - 3.5f) < 0.03f);
+        setParam (p, tripan::params::spreadId (0), 0.0f);
+
+        // Only Option does this: with Cmd (or Ctrl, or Shift) the drag moves the source as usual.
+        for (const auto& modifier : { cmd, juce::ModifierKeys (juce::ModifierKeys::ctrlModifier), juce::ModifierKeys (juce::ModifierKeys::shiftModifier) })
+        {
+            field.pressAt (p0, modifier);
+            field.dragTo (field.toView (1.5, 1.5));
+            field.release();
+            CHECK (spread (0) < 1e-6f);
+            CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 1.5f) < 0.02f);
+            setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
+            setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+        }
+        CHECK (! FieldComponent::isSpreadModifier (cmd));
 
         // Without a modifier the drag moves the source and leaves the spread alone.
+        setParam (p, tripan::params::spreadId (0), 2.5f);
         field.pressAt (p0, none);
         field.dragTo (field.toView (1.5, 1.5));
         field.release();
@@ -675,8 +703,9 @@ int main (int argc, char** argv)
         setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
         setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
 
-        // Option + double-click on the source resets its spread; without the modifier nothing happens.
+        // Option + double-click on the source resets its spread; without the modifier (or with Cmd) nothing happens.
         field.doubleClickAt (p0, none);
+        field.doubleClickAt (p0, cmd);
         CHECK (std::abs (spread (0) - 2.5f) < 0.03f);
         field.doubleClickAt (p0, alt);
         CHECK (spread (0) < 1e-6f);
@@ -684,12 +713,18 @@ int main (int argc, char** argv)
         // A source whose position is set to View cannot get a new spread.
         editor->getSourcesModeBox().setSelectedId (2, juce::sendNotificationSync);
         field.pressAt (p0, alt);
-        field.dragTo (p0 + juce::Point<float> (3.0f * ppm, 0.0f));
+        field.dragTo (p0 + up (3.0));
         field.release();
         CHECK (spread (0) < 1e-6f);
-        field.setSpreadFromPoint (0, p0 + juce::Point<float> (3.0f * ppm, 0.0f));
+        field.setSpread (0, 3.0);
         CHECK (spread (0) < 1e-6f);
         editor->getSourcesModeBox().setSelectedId (1, juce::sendNotificationSync);
+        field.setSpread (0, 3.0);                                               // allowed again, and limited to the range
+        CHECK (std::abs (spread (0) - 3.0f) < 1e-3f);
+        field.setSpread (0, 99.0);
+        CHECK (std::abs (spread (0) - 10.0f) < 1e-3f);
+        field.setSpread (0, -4.0);
+        CHECK (spread (0) < 1e-6f);
 
         // The pad has a tooltip that explains the gesture.
         CHECK (field.getTooltip().containsIgnoreCase ("spread"));
@@ -700,7 +735,7 @@ int main (int argc, char** argv)
         const float zoomedPpm = field.toView (1.0, 0.0).x - field.toView (0.0, 0.0).x;
         CHECK (zoomedPpm > ppm);
         field.pressAt (zoomedP0, alt);
-        field.dragTo (zoomedP0 + juce::Point<float> (2.0f * zoomedPpm, 0.0f));
+        field.dragTo (zoomedP0 + juce::Point<float> (0.0f, -2.0f * zoomedPpm));   // up by 2 m worth of pixels
         field.release();
         CHECK (std::abs (spread (0) - 2.0f) < 0.03f);
         while (editor->getZoomOutButton().isEnabled()) editor->getZoomOutButton().onClick();

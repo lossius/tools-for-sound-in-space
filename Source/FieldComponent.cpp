@@ -35,8 +35,8 @@ FieldComponent::FieldComponent (TriPanAudioProcessor& p)
         spkYp[(size_t) i] = apvts.getParameter (tripan::params::speakerId (i, 'y'));
     }
 
-    setTooltip ("Drag a source (its inner circle) to move it. Option- or Cmd-drag from a source to set its spread: "
-                "the outer circle follows the mouse. Option- or Cmd-double-click resets the spread.");
+    setTooltip ("Drag a source (its inner circle) to move it. Hold Option and drag a source up or down to change its spread "
+                "(up = more, down = less, sideways does nothing). Option-double-click resets the spread to 0.");
 
     timerCallback();
     startTimerHz (30);
@@ -130,7 +130,7 @@ std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<
 
 bool FieldComponent::isSpreadModifier (const juce::ModifierKeys& mods) noexcept
 {
-    return mods.isAltDown() || mods.isCommandDown();
+    return mods.isAltDown(); // Option on macOS
 }
 
 double FieldComponent::getSpread (int source) const
@@ -142,17 +142,13 @@ double FieldComponent::getSpread (int source) const
     return (double) prm->convertFrom0to1 (prm->getValue());
 }
 
-void FieldComponent::setSpreadFromPoint (int source, juce::Point<float> p)
+void FieldComponent::setSpread (int source, double metres)
 {
     if (source < 0 || source >= tripan::kMaxChannels || ! processor.canEditSources())
         return;
 
-    const auto pos = position ({ true, source });
-    const double metresPerPixel = 2.0 * viewHalf / (double) planeBounds().getWidth();
-    const double spread = (double) toView (pos.x, pos.y).getDistanceFrom (p) * metresPerPixel;
-
     auto* prm = srcSpreadP[(size_t) source];
-    prm->setValueNotifyingHost (prm->convertTo0to1 (juce::jlimit (0.0f, tripan::params::kMaxSpread, (float) spread)));
+    prm->setValueNotifyingHost (prm->convertTo0to1 (juce::jlimit (0.0f, tripan::params::kMaxSpread, (float) metres)));
 }
 
 bool FieldComponent::canEditVirtualSpeakers() const
@@ -534,9 +530,11 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
 
     if (dragging->isSource && isSpreadModifier (mods))
     {
+        // The spread keeps its value at the press and then follows the vertical movement of the mouse.
         draggingSpread = true;
+        lastSpreadDragY = p.y;
         srcSpreadP[(size_t) dragging->index]->beginChangeGesture();
-        setSpreadFromPoint (dragging->index, p);
+        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         repaint();
         return;
     }
@@ -556,9 +554,19 @@ void FieldComponent::dragTo (juce::Point<float> p)
         return;
 
     if (draggingSpread)
-        setSpreadFromPoint (dragging->index, p);
+    {
+        // Up = more spread, down = less; one pixel is the same distance as on the pad (so the top of the
+        // circle follows the mouse). Applied step by step and limited at every step, which means there is
+        // no "dead zone" after dragging beyond 0 or the maximum.
+        const double metresPerPixel = 2.0 * viewHalf / (double) planeBounds().getWidth();
+        const double change = (double) (lastSpreadDragY - p.y) * metresPerPixel;
+        lastSpreadDragY = p.y;
+        setSpread (dragging->index, getSpread (dragging->index) + change);
+    }
     else
+    {
         moveHandle (*dragging, p);
+    }
 }
 
 void FieldComponent::release()
@@ -583,16 +591,15 @@ void FieldComponent::release()
 
 void FieldComponent::doubleClickAt (juce::Point<float> p, const juce::ModifierKeys& mods)
 {
-    // Modifier + double-click on a source: reset its spread.
+    // Option + double-click on a source: reset its spread.
     if (isSpreadModifier (mods))
     {
         const auto h = findHandleAt (p);
         if (h && h->isSource)
         {
-            auto* prm = srcSpreadP[(size_t) h->index];
-            prm->beginChangeGesture();
-            prm->setValueNotifyingHost (prm->convertTo0to1 (0.0f));
-            prm->endChangeGesture();
+            srcSpreadP[(size_t) h->index]->beginChangeGesture();
+            setSpread (h->index, 0.0);
+            srcSpreadP[(size_t) h->index]->endChangeGesture();
         }
         return;
     }
@@ -620,7 +627,7 @@ void FieldComponent::mouseMove (const juce::MouseEvent& e)
                       || (h && hovered && (h->isSource != hovered->isSource || h->isVirtual != hovered->isVirtual || h->index != hovered->index));
     hovered = h;
     const bool spreading = h && h->isSource && isSpreadModifier (e.mods);
-    setMouseCursor (spreading ? juce::MouseCursor::CrosshairCursor
+    setMouseCursor (spreading ? juce::MouseCursor::UpDownResizeCursor
                               : h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     if (changed)
         repaint();

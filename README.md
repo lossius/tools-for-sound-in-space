@@ -25,10 +25,13 @@ be automated and is saved with the session.
 On the pad the spread is drawn as a semi-transparent circle around the source, in the source's colour,
 and the source itself keeps its solid inner circle.
 
-* **Set the spread:** hold **Option** (or **Cmd**; **Alt** or **Ctrl** on Windows) and drag from the
-  source. The spread is the distance from the source to the mouse, so the outer circle follows the mouse, and a
-  readout shows the value while you drag. The source does not move.
-* **Reset it:** Option/Cmd + double-click the source.
+* **Set the spread:** hold **Option** (Alt on Windows) and drag the source **vertically**: moving the mouse
+  up increases the spread, moving it down decreases it, and sideways movement has no effect. The change is
+  relative to the value when you press, so you can start a drag anywhere on the inner circle. The spread is
+  limited to 0..10 m at every step, so dragging down to 0 and further, then up again, increases the spread at
+  once, which makes it easy to bring the spread back to 0 (just drag down). A readout shows the value while you
+  drag, and the source does not move. Only Option is used (Cmd is not), so Cmd keeps its usual meaning in hosts.
+* **Reset it:** Option + double-click the source.
 * **Moving** works as before: drag the inner circle without a modifier.
 * **Only the inner circle takes the mouse.** The spread circle is display only, so a source with a large spread
   never gets in the way of other sources inside it. Sources must be set to Edit.

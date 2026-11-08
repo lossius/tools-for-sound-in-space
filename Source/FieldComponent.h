@@ -33,13 +33,15 @@ public:
         spread circle around it is only a display and never takes part in mouse interaction. */
     static constexpr float kSourceRadius = 9.0f;
 
-    /** Spread: Option (Alt) or Cmd (Ctrl on Windows) with the mouse changes the spread of the source
-        under the mouse. The spread is the distance from the source to the mouse, in metres, so the outer
-        circle follows the mouse. The modifier together with a double-click resets the spread to 0. */
+    /** Spread: hold Option (Alt on Windows) and drag a source vertically. Moving the mouse up
+        increases the spread, moving it down decreases it, sideways movement has no effect. The change
+        is relative to where the drag starts and is limited to 0..10 m at every step, so dragging
+        down past zero and back up increases the spread again at once. Option + double-click resets
+        the spread to 0. Only Option is used (not Cmd). */
     static bool isSpreadModifier (const juce::ModifierKeys&) noexcept;
     double getSpread (int source) const;
-    /** Sets the spread of a source from a component-coordinate position (distance to the source). */
-    void setSpreadFromPoint (int source, juce::Point<float> p);
+    /** Sets the spread of a source in metres (limited to 0..10). Does nothing if sources are set to View. */
+    void setSpread (int source, double metres);
 
     // The mouse handlers call these, so that they can be tested without real mouse events.
     void pressAt (juce::Point<float> p, const juce::ModifierKeys& mods);
@@ -113,6 +115,7 @@ private:
 
     std::optional<Handle> dragging;
     bool draggingSpread = false; // the drag changes the spread of the source instead of moving it
+    float lastSpreadDragY = 0.0f; // mouse y at the previous step of a spread drag
     std::optional<Handle> hovered;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FieldComponent)
