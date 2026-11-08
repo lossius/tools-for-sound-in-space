@@ -17,7 +17,13 @@ set(TRIPAN_VST3_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3" CACHE PATH 
 
 enable_testing()
 
+# IDE organisation: everything JUCE creates goes in a "JUCE" folder, our own code is grouped under
+# "Sources" (plugin), "Core" and "Tests".
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set(CMAKE_FOLDER "JUCE")
 add_subdirectory(JUCE)
+set(CMAKE_FOLDER "")
+
 add_subdirectory(core)
 add_subdirectory(tests)
 
@@ -52,11 +58,23 @@ juce_add_plugin(TriPan
     AU_MAIN_TYPE kAudioUnitType_Effect
     AAX_CATEGORY AAX_ePlugInCategory_Effect)
 
+# Headers are listed too, so that they show up in the IDE's project navigator.
 target_sources(TriPan PRIVATE
     Source/PluginProcessor.cpp
+    Source/PluginProcessor.h
     Source/PluginEditor.cpp
+    Source/PluginEditor.h
     Source/FieldComponent.cpp
-    Source/PositionIO.cpp)
+    Source/FieldComponent.h
+    Source/PositionIO.cpp
+    Source/PositionIO.h
+    Source/Parameters.h)
+source_group("Sources" FILES
+    Source/PluginProcessor.cpp Source/PluginProcessor.h
+    Source/PluginEditor.cpp Source/PluginEditor.h
+    Source/FieldComponent.cpp Source/FieldComponent.h
+    Source/PositionIO.cpp Source/PositionIO.h
+    Source/Parameters.h)
 
 target_compile_definitions(TriPan PUBLIC
     JUCE_WEB_BROWSER=0
@@ -71,6 +89,16 @@ target_link_libraries(TriPan
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+# JUCE's module sources are compiled into our targets (they are not separate Xcode targets). Put
+# them all in a "JUCE" group, with one subgroup per module. Later groups win over earlier ones.
+source_group("JUCE" REGULAR_EXPRESSION "/JUCE/")
+file(GLOB TRIPAN_JUCE_MODULE_DIRS LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/JUCE/modules/juce_*")
+foreach(module_dir IN LISTS TRIPAN_JUCE_MODULE_DIRS)
+    get_filename_component(module_name "${module_dir}" NAME)
+    source_group("JUCE/${module_name}" REGULAR_EXPRESSION "/JUCE/modules/${module_name}/")
+endforeach()
+source_group("Tests" REGULAR_EXPRESSION "/tests/")
 
 if(TRIPAN_INSTALL_VST3)
     set(TRIPAN_VST3_BUNDLE "$<GENEX_EVAL:$<TARGET_PROPERTY:TriPan_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>")

@@ -32,6 +32,11 @@ on one thread while another processes audio.
 AAX (optional): `-DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK`. The Avid AAX SDK is
 not redistributable: keep it outside this repo. Check its current licence before publishing AAX builds.
 
+IDE layout (Xcode / Visual Studio): `source_group` calls in the CMake files give the project navigator the groups
+`Sources` (plugin code, headers included), `Core` (`src`, `include`), `Tests`, and `JUCE` (one subgroup per
+JUCE module; only the module `.mm/.cpp` units that are compiled, not every JUCE header). Headers must be listed
+in `target_sources` to show up; add new files there.
+
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.
 - Triangulation is computed off the audio thread (on parameter change) and handed over lock-free
