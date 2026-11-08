@@ -583,6 +583,65 @@ static void testNoJumpsWhileSpeakersMove()
     CHECK (jumpy > 0.1); // the hard version jumps, which is what the soft blend is for
 }
 
+// The share sent to a virtual speaker is split over its real neighbours in inverse proportion to distance.
+static void testDistanceWeightedRedistribution()
+{
+    const std::vector<Vec2> real { { 0.0, 4.0 }, { 5.0, -3.0 }, { -6.0, -2.0 } };
+    const Vec2 v { 1.0, 0.0 };
+    const Triangulation tri (real, std::vector<Vec2> { v });
+
+    const auto w = tri.redistribution (3);
+    CHECK (w.size() == 3);
+
+    double d[3], inverseNorm = 0.0;
+    for (int i = 0; i < 3; ++i)
+    {
+        d[i] = std::hypot (real[(size_t) i].x - v.x, real[(size_t) i].y - v.y);
+        inverseNorm += 1.0 / (d[i] * d[i]);
+    }
+    inverseNorm = std::sqrt (inverseNorm);
+
+    double sumSquares = 0.0;
+    for (const auto& e : w)
+    {
+        CHECK (isNear (e.weight, (1.0 / d[e.speaker]) / inverseNorm, 1e-6)); // w_i ~ 1 / d_i, unit norm
+        sumSquares += (double) e.weight * e.weight;
+    }
+    CHECK (isNear (sumSquares, 1.0, 1e-6));
+
+    // The nearest speaker gets the largest share, the farthest the smallest.
+    int nearest = 0, farthest = 0;
+    for (int i = 1; i < 3; ++i) { if (d[i] < d[nearest]) nearest = i; if (d[i] > d[farthest]) farthest = i; }
+    float shareOf[3] {};
+    for (const auto& e : w) shareOf[e.speaker] = e.weight;
+    CHECK (shareOf[nearest] > shareOf[farthest] && nearest != farthest);
+
+    // A source exactly on the virtual speaker is panned with these weights.
+    const auto g = computeGains (tri, v);
+    CHECK (g.count == 3);
+    for (int i = 0; i < 3; ++i)
+        CHECK (isNear (gainFor (g, i), shareOf[i], 1e-5));
+    CHECK (isNear (sumSq (g), 1.0, 1e-5));
+
+    // Equidistant neighbours (a ring centre) still share equally.
+    const auto fivePointOne = ring ({ -30, 30, 0, -110, 110 });
+    std::vector<Vec2> centre { { 0.0, 0.0 } };
+    const Triangulation ringTri (fivePointOne, centre);
+    for (const auto& e : ringTri.redistribution (5))
+        CHECK (isNear (e.weight, 1.0 / std::sqrt (5.0), 1e-6));
+
+    // A neighbour almost on top of the virtual speaker takes nearly everything, without blowing up.
+    const Triangulation close (real, std::vector<Vec2> { { 0.0, 4.0005 } });
+    float closest = 0.0f;
+    bool finite = true;
+    for (const auto& e : close.redistribution (3))
+    {
+        finite = finite && std::isfinite (e.weight);
+        if (e.speaker == 0) closest = e.weight;
+    }
+    CHECK (finite && closest > 0.99f);
+}
+
 int main()
 {
     testLimits();
@@ -595,6 +654,7 @@ int main()
     testDuplicatesAndNonFinite();
     testFindVirtualSpeakers();
     testVirtualSpeakerGains();
+    testDistanceWeightedRedistribution();
     testVirtualSpeakerStrengths();
     testSpeakerLayoutBlend();
     testNoJumpsWhileSpeakersMove();

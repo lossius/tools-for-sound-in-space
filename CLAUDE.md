@@ -54,7 +54,8 @@ not redistributable: keep it outside this repo. Check its current licence before
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, and "Reset layout" only resets kinds set to Edit (disabled if both are View).
   Host automation of the position parameters is unaffected.
 - Virtual (imaginary) speakers: `Triangulation(real, virtual)` triangulates real + virtual points (real first);
-  `computeGains` splits the gain of a virtual point equally (weights 1/sqrt(k)) over its real neighbours
+  `computeGains` splits the gain of a virtual point over its real neighbours with weights ~ 1/distance (unit L2 norm;
+  `kDistanceExponent` in Triangulation.cpp; equidistant neighbours, e.g. a ring centre, still get equal shares)
   (`redistribution()`) and renormalises, so `SourceGains` can have up to 64 entries. `findVirtualSpeakers`
   (core/VirtualSpeakers) returns `VirtualSpeaker {position, strength}`: one gap filler per angular gap (strength
   ramps 0..1 over 90..110 deg), a centre speaker for rings (soft ring tolerance 0.25 +-0.05, soft clearance), all

@@ -7,6 +7,10 @@ namespace tripan
 {
 namespace
 {
+/** How quickly a virtual speaker's gain falls off towards its real neighbours: 1 = inversely proportional
+    to the distance (amplitude), so the nearest neighbour gets the largest share. */
+constexpr double kDistanceExponent = 1.0;
+
 double cross (Vec2 o, Vec2 a, Vec2 b) noexcept
 {
     return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -97,9 +101,22 @@ void Triangulation::buildRedistribution()
                 if (std::isfinite (points[(size_t) i].x) && std::isfinite (points[(size_t) i].y))
                     neighbours.push_back (i);
 
-        const float weight = neighbours.empty() ? 0.0f : 1.0f / std::sqrt ((float) neighbours.size());
-        for (int i : neighbours)
-            weights.push_back ({ i, weight });
+        // Weights fall off with the distance from the virtual speaker: w_i ~ 1 / d_i^kDistanceExponent,
+        // normalised to unit L2 norm, so that the power sent to the virtual speaker is preserved.
+        // (Distances are floored at 1 mm so that a neighbour on top of the virtual speaker cannot blow up.)
+        std::vector<double> w (neighbours.size());
+        double sumSq = 0.0;
+        for (size_t k = 0; k < neighbours.size(); ++k)
+        {
+            const auto& q = points[(size_t) neighbours[k]];
+            const double d = std::max (std::hypot (q.x - points[(size_t) index].x, q.y - points[(size_t) index].y), 1e-3);
+            w[k] = std::pow (d, -kDistanceExponent);
+            sumSq += w[k] * w[k];
+        }
+
+        const double norm = sumSq > 0.0 ? 1.0 / std::sqrt (sumSq) : 0.0;
+        for (size_t k = 0; k < neighbours.size(); ++k)
+            weights.push_back ({ neighbours[k], (float) (w[k] * norm) });
 
         weightStart[(size_t) v + 1] = (int) weights.size();
     }

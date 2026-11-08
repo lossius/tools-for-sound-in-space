@@ -22,7 +22,8 @@ Speakers that lie on a circle around the listener (5.1, quad, hexagon, octagon, 
 Delaunay triangulation. Triangulation then picks an arbitrary, asymmetric set of triangles: in a 5.1
 layout a source at the origin used to favour the right front speaker and the surrounds. Virtual
 speakers fix this. They take part in the triangulation but are not outputs: the gain a source sends
-to a virtual speaker is shared equally (at constant power) between the real speakers around it. The
+to a virtual speaker is shared (at constant power) between the real speakers around it, in inverse
+proportion to their distance from the virtual speaker, so nearer speakers get more. The
 menu on the fourth row selects where they come from:
 
 * **Auto** (default): found from the speaker layout. A virtual speaker is added at the listener

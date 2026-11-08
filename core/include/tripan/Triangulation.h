@@ -44,7 +44,8 @@ struct Edge
 class Triangulation
 {
 public:
-    /** A real speaker that receives part of a virtual speaker's gain (weights have unit L2 norm). */
+    /** A real speaker that receives part of a virtual speaker's gain (the weights of one virtual
+        speaker have unit L2 norm). */
     struct Weight
     {
         int speaker;
@@ -59,8 +60,10 @@ public:
     int numReal() const noexcept { return realCount; }
     int numVirtual() const noexcept { return virtualCount; }
 
-    /** The real speakers sharing a triangle with virtual speaker `index` (>= numReal()), each with
-        weight 1/sqrt(k) for k neighbours, so that the redistributed power equals the virtual gain's. */
+    /** The real speakers sharing a triangle with virtual speaker `index` (>= numReal()). Their weights
+        are inversely proportional to their distance from the virtual speaker (nearer speakers get
+        more) and normalised to unit L2 norm, so that the redistributed power equals the virtual
+        gain's. */
     std::span<const Weight> redistribution (int index) const noexcept;
     std::span<const Triangle> triangles() const noexcept { return tris; }
 
