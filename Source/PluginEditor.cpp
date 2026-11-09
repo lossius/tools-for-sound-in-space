@@ -409,7 +409,7 @@ void TriPanAudioProcessorEditor::layoutContent()
 
     // Footer: links at the left, in the centre and at the right, each only as wide as its text so that
     // clicking the empty space between them does nothing.
-    auto footer = area.removeFromBottom (22).reduced (10, 2);
+    auto footer = area.removeFromBottom (28).withTrimmedBottom (8).withTrimmedTop (2).reduced (10, 0); // 8 px of air below the text
     const auto fitted = [] (const juce::HyperlinkButton& link)
     {
         juce::GlyphArrangement glyphs;

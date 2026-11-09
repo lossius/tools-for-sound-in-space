@@ -30,7 +30,7 @@ public:
     /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
         window is resized. The base size is also the smallest allowed size. */
     static constexpr int kBaseWidth = 700;   ///< Width in pixels at scale 1.
-    static constexpr int kBaseHeight = 854;  ///< Height in pixels at scale 1.
+    static constexpr int kBaseHeight = 860;  ///< Height in pixels at scale 1.
     static constexpr int kMaxScale = 3;      ///< The window can grow to this multiple of the base size.
 
     /** Fills the background. */
