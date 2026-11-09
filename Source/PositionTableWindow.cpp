@@ -477,6 +477,9 @@ PositionTableWindow::PositionTableWindow (TriPanAudioProcessor& processor, tripa
 {
     setUsingNativeTitleBar (true);
 
+    // Plug-in windows are usually floating windows of the host; an ordinary window would open behind them.
+    setAlwaysOnTop (true);
+
     content = new PositionTableContent (processor, kind);
     setContentOwned (content, false);
     setResizable (true, false);
@@ -514,6 +517,7 @@ void PositionTableWindow::show (juce::Component* around)
         centreAroundComponent (around, getWidth(), getHeight());
 
     shownBefore = true;
+    setAlwaysOnTop (true);
     setVisible (true);
     applyLimits(); // the native frame size is known once the window is shown
     toFront (true);

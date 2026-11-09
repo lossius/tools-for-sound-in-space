@@ -805,6 +805,7 @@ int main (int argc, char** argv)
         auto* speakersWindow = editor->getTableWindow (Kind::Speakers);
         CHECK (sourcesWindow != nullptr && speakersWindow != nullptr && sourcesWindow != speakersWindow);
         CHECK (sourcesWindow->isVisible() && speakersWindow->isVisible());
+        CHECK (sourcesWindow->isAlwaysOnTop() && speakersWindow->isAlwaysOnTop()); // in front of the (floating) plug-in window
 
         auto& sources = sourcesWindow->getContent();
         auto& speakers = speakersWindow->getContent();

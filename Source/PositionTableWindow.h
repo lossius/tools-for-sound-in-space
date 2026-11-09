@@ -194,7 +194,8 @@ private:
     The window is as wide as its content needs and follows when the width changes (the virtual speaker
     table appears or disappears). It can be resized vertically between a few rows and every row, and
     never beyond the screen; with more rows than fit, the table scrolls. Closing the window only hides
-    it. */
+    it. The window floats above ordinary windows, so it opens in front of the plug-in window (which hosts
+    usually show as a floating window). */
 class PositionTableWindow final : public juce::DocumentWindow
 {
 public:
@@ -206,7 +207,7 @@ public:
     /** Hides the window. */
     void closeButtonPressed() override { setVisible (false); }
 
-    /** Shows the window in front, the first time centred over `around`.
+    /** Shows the window in front of the plug-in window, the first time centred over `around`.
         @param around  Component to centre over on first use; may be null. */
     void show (juce::Component* around);
 
