@@ -96,7 +96,7 @@ warnings; keep it that way when adding code.
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
 - Table windows (`Source/PositionTableWindow.*`): a "Table..." button at the right end of the sources row and of the
-  speakers row opens a `PositionTableWindow` (native title bar, always on top so it is in front of the host's floating plug-in window, owned by the editor, close = hide; opened beside the plug-in window, right if the screen has room, else left, else centred over it: `chooseBesidePosition`). Sources: table of
+  speakers row opens a `PositionTableWindow` (native title bar, always on top so it is in front of the host's floating plug-in window, owned by the editor, close = hide, and the button toggles it; opened beside the plug-in window, right if the screen has room, else left, else centred over it: `chooseBesidePosition`). Sources: table of
   x, y, spread for the sources in use; speakers: x, y for the speakers in use, plus a second table to the right with
   the manual virtual speakers while `canEditVirtualSpeakers()` (mode Manual and speakers on Edit). Top row: count
   slider (the same parameter as in the main window) and, in the speakers window, the Auto/Manual/Off menu. Cells are

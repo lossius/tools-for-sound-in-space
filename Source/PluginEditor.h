@@ -71,6 +71,9 @@ public:
         @return The window, which is owned by the editor and closed with it. */
     PositionTableWindow& showTableWindow (tripan::io::Kind kind);
 
+    /** What the table buttons do: closes (hides) the window of that kind if it is open, otherwise opens it. */
+    void toggleTableWindow (tripan::io::Kind kind);
+
     /** @return The table window of that kind, or nullptr if it has not been opened yet. */
     PositionTableWindow* getTableWindow (tripan::io::Kind kind) noexcept;
 

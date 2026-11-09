@@ -927,11 +927,20 @@ int main (int argc, char** argv)
             }
         }
 
-        // Closing only hides; the button brings the same window back.
+        // Closing only hides; the button brings the same window back, and closes it when it is open.
         speakersWindow->closeButtonPressed();
         CHECK (! speakersWindow->isVisible());
         editor->getSpeakersTableButton().onClick();
         CHECK (speakersWindow->isVisible() && editor->getTableWindow (Kind::Speakers) == speakersWindow);
+        editor->getSpeakersTableButton().onClick();
+        CHECK (! speakersWindow->isVisible() && editor->getTableWindow (Kind::Speakers) == speakersWindow);
+        CHECK (sourcesWindow->isVisible()); // the other window is not affected
+        editor->getSpeakersTableButton().onClick();
+        CHECK (speakersWindow->isVisible());
+        editor->getSourcesTableButton().onClick();
+        CHECK (! sourcesWindow->isVisible() && speakersWindow->isVisible());
+        editor->getSourcesTableButton().onClick();
+        CHECK (sourcesWindow->isVisible());
 
         editor->getVirtualModeBox().setSelectedId ((int) VirtualMode::Auto, juce::sendNotificationSync);
         editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);

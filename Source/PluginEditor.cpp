@@ -102,12 +102,12 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the speaker positions in use to an XML file");
     setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file");
 
-    sourcesTableButton.setTooltip ("Open a table with the x, y and spread of every source, where the values can be typed in");
-    sourcesTableButton.onClick = [this] { showTableWindow (Kind::Sources); };
+    sourcesTableButton.setTooltip ("Open or close a table with the x, y and spread of every source, where the values can be typed in");
+    sourcesTableButton.onClick = [this] { toggleTableWindow (Kind::Sources); };
     content.addAndMakeVisible (sourcesTableButton);
 
-    speakersTableButton.setTooltip ("Open a table with the x and y of every speaker (and of the manual virtual speakers), where the values can be typed in");
-    speakersTableButton.onClick = [this] { showTableWindow (Kind::Speakers); };
+    speakersTableButton.setTooltip ("Open or close a table with the x and y of every speaker (and of the manual virtual speakers), where the values can be typed in");
+    speakersTableButton.onClick = [this] { toggleTableWindow (Kind::Speakers); };
     content.addAndMakeVisible (speakersTableButton);
 
     // Scalable GUI: the base size is the minimum, the aspect ratio is fixed.
@@ -133,6 +133,14 @@ TriPanAudioProcessorEditor::~TriPanAudioProcessorEditor()
 PositionTableWindow* TriPanAudioProcessorEditor::getTableWindow (tripan::io::Kind kind) noexcept
 {
     return (kind == tripan::io::Kind::Sources ? sourcesTableWindow : speakersTableWindow).get();
+}
+
+void TriPanAudioProcessorEditor::toggleTableWindow (tripan::io::Kind kind)
+{
+    if (auto* window = getTableWindow (kind); window != nullptr && window->isVisible())
+        window->setVisible (false);
+    else
+        showTableWindow (kind);
 }
 
 PositionTableWindow& TriPanAudioProcessorEditor::showTableWindow (tripan::io::Kind kind)
