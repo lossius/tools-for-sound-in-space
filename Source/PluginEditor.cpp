@@ -388,12 +388,18 @@ void TriPanAudioProcessorEditor::layoutContent()
 {
     auto area = content.getLocalBounds();
 
+    // The pad goes first, because the rows and the footer line up with its borders: nothing in the top rows sticks
+    // out beyond the pad on the left or on the right.
+    constexpr int rowHeight = 32, rowCount = 4, footerHeight = 28;
+    field.setBounds (area.withTrimmedTop (rowCount * rowHeight).withTrimmedBottom (footerHeight));
+    const auto plane = field.planeBounds().translated ((float) field.getX(), (float) field.getY()).toNearestInt();
+    const auto nextRow = [&] { return area.removeFromTop (rowHeight).withLeft (plane.getX()).withRight (plane.getRight()).reduced (0, 5); };
+
     // One row per kind of position, with everything that belongs to it: how many are in use, whether
     // they can be edited, and export / import of their positions. Both rows share the same columns.
     const auto layoutRow = [&] (juce::Rectangle<int> row, juce::Label& label, juce::Slider& count, juce::ComboBox& menu,
                                 juce::TextButton& exportButton, juce::TextButton& importButton, juce::TextButton& tableButton)
     {
-        row = row.reduced (10, 5);
         label.setBounds (row.removeFromLeft (70));
         count.setBounds (row.removeFromLeft (110));
         row.removeFromLeft (8);
@@ -407,11 +413,11 @@ void TriPanAudioProcessorEditor::layoutContent()
         importButton.setBounds (row);
     };
 
-    layoutRow (area.removeFromTop (32), sourcesLabel, sourceCount, sourcesModeBox, exportSourcesButton, importSourcesButton, sourcesTableButton);
-    layoutRow (area.removeFromTop (32), speakersLabel, speakerCount, speakersModeBox, exportSpeakersButton, importSpeakersButton, speakersTableButton);
+    layoutRow (nextRow(), sourcesLabel, sourceCount, sourcesModeBox, exportSourcesButton, importSourcesButton, sourcesTableButton);
+    layoutRow (nextRow(), speakersLabel, speakerCount, speakersModeBox, exportSpeakersButton, importSpeakersButton, speakersTableButton);
 
     // Third row: display options and zoom.
-    auto bar = area.removeFromTop (32).reduced (10, 5);
+    auto bar = nextRow();
     showTriangulationButton.setBounds (bar.removeFromLeft (140));
     showLinksButton.setBounds (bar.removeFromLeft (105));
     resetButton.setBounds (bar.removeFromLeft (90));
@@ -425,7 +431,7 @@ void TriPanAudioProcessorEditor::layoutContent()
     ungroupButton.setBounds (bar.removeFromLeft (74));
 
     // Fourth row: virtual speakers, and the line of text (track channels, import/export results).
-    auto last = area.removeFromTop (32).reduced (10, 5);
+    auto last = nextRow();
     virtualLabel.setBounds (last.removeFromLeft (110));
     virtualModeBox.setBounds (last.removeFromLeft (90));
     last.removeFromLeft (12);
@@ -435,8 +441,6 @@ void TriPanAudioProcessorEditor::layoutContent()
     // clicking the empty space between them does nothing.
     constexpr int inset = 4; // see below
     auto footer = area.removeFromBottom (28).withTrimmedBottom (8).withTrimmedTop (2);
-    field.setBounds (area);
-    const auto plane = field.planeBounds().translated ((float) field.getX(), (float) field.getY()).toNearestInt();
     // The text sits centred in its button, which is `inset` px wider than the text on each side. The outer links start
     // `inset` px outside the pad's borders, so that their text lines up with them.
     footer = footer.withLeft (plane.getX() - inset).withRight (plane.getRight() + inset);

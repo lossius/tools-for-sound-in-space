@@ -79,6 +79,21 @@ static void testGroups (const char* snapshotPath)
     int notifications = 0;
     field.onSelectionChanged = [&] { ++notifications; };
 
+    // Layout: nothing in the top rows reaches beyond the pad's left and right borders, and the rows end at them.
+    {
+        const auto plane = field.planeBounds().translated ((float) field.getX(), (float) field.getY()).toNearestInt();
+        const juce::Component* controls[] { &editor->getSourceCountSlider(), &editor->getSpeakerCountSlider(), &editor->getSourcesModeBox(),
+                                            &editor->getSpeakersModeBox(), &editor->getVirtualModeBox(), &editor->getExportSourcesButton(),
+                                            &editor->getImportSourcesButton(), &editor->getExportSpeakersButton(), &editor->getImportSpeakersButton(),
+                                            &editor->getSourcesTableButton(), &editor->getSpeakersTableButton(), &editor->getShowLinksButton(),
+                                            &editor->getResetButton(), &editor->getZoomInButton(), &editor->getZoomOutButton(),
+                                            &editor->getGroupButton(), &editor->getUngroupButton() };
+        for (const auto* c : controls)
+            CHECK (c->getX() >= plane.getX() && c->getRight() <= plane.getRight());
+        CHECK (editor->getSourcesTableButton().getRight() == plane.getRight() && editor->getSpeakersTableButton().getRight() == plane.getRight());
+        CHECK (editor->getSourceCountSlider().getX() > plane.getX());
+    }
+
     using Mode = FieldComponent::DragMode;
     const juce::ModifierKeys cmdShift (juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier),
                              altCmd (juce::ModifierKeys::altModifier | juce::ModifierKeys::commandModifier),
