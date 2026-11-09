@@ -409,12 +409,18 @@ void TriPanAudioProcessorEditor::layoutContent()
 
     // Footer: links at the left, in the centre and at the right, each only as wide as its text so that
     // clicking the empty space between them does nothing.
-    auto footer = area.removeFromBottom (28).withTrimmedBottom (8).withTrimmedTop (2).reduced (10, 0); // 8 px of air below the text
+    constexpr int inset = 4; // see below
+    auto footer = area.removeFromBottom (28).withTrimmedBottom (8).withTrimmedTop (2);
+    field.setBounds (area);
+    const auto plane = field.planeBounds().translated ((float) field.getX(), (float) field.getY()).toNearestInt();
+    // The text sits centred in its button, which is `inset` px wider than the text on each side. The outer links start
+    // `inset` px outside the pad's borders, so that their text lines up with them.
+    footer = footer.withLeft (plane.getX() - inset).withRight (plane.getRight() + inset);
     const auto fitted = [] (const juce::HyperlinkButton& link)
     {
         juce::GlyphArrangement glyphs;
         glyphs.addLineOfText (juce::FontOptions (11.0f), link.getButtonText(), 0.0f, 0.0f);
-        return juce::roundToInt (glyphs.getBoundingBox (0, -1, true).getWidth()) + 6;
+        return juce::roundToInt (std::ceil (glyphs.getBoundingBox (0, -1, true).getWidth())) + 2 * inset;
     };
     authorLink.setBounds (footer.removeFromLeft (fitted (authorLink)));
     institutionLink.setBounds (footer.removeFromRight (fitted (institutionLink)));
@@ -422,5 +428,4 @@ void TriPanAudioProcessorEditor::layoutContent()
     // so that it lines up with "Back" above the pad.
     helpLink.setBounds (juce::Rectangle<int> (fitted (helpLink), footer.getHeight()).withCentre ({ content.getWidth() / 2, footer.getCentreY() }));
 
-    field.setBounds (area);
 }

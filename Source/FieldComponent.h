@@ -117,9 +117,10 @@ public:
     /** Highlights the handle under the mouse. */
     void mouseMove (const juce::MouseEvent&) override;
 
-private:
-    /** The square, in component coordinates, in which the visible part of the plane is drawn. */
+    /** The square, in component coordinates, in which the visible part of the plane is drawn (the pad's border). */
     juce::Rectangle<float> planeBounds() const;
+
+private:
     /** Component coordinates -> plane coordinates (metres). */
     juce::Point<double> fromView (juce::Point<float> p) const;
     /** Current position of a handle in metres. */
