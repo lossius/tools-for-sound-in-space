@@ -1,4 +1,6 @@
 #!/bin/sh
+# SPDX-FileCopyrightText: 2026 Trond Lossius
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # Builds the Release VST3 and validates it with pluginval at strictness 10.
 # Requires pluginval (brew install --cask pluginval).
 set -e

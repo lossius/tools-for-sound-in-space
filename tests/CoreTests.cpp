@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Trond Lossius
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Minimal dependency-free test runner for TriPanCore (no JUCE).
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"

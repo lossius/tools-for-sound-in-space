@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Trond Lossius
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Editor tests: hit-testing, dragging through the parameters, and an optional PNG snapshot
 // (pass an output path as argv[1]).
 #include "../Source/Parameters.h"

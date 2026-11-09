@@ -1,6 +1,6 @@
 # TriPan
 
-Free, GPL-licensed audio plugin (VST3, AU, Standalone; AAX optional) for macOS and Windows.
+Free, AGPLv3-licensed audio plugin (VST3, AU, Standalone; AAX optional) for macOS and Windows.
 Distributes n source channels to m speaker channels (up to 64 each). Sources and speakers lie in
 one 2D plane, positions are xy plugin parameters. For each source, the speakers are triangulated
 (Delaunay), the triangle containing the source is found, and the source is panned only to that
@@ -128,4 +128,4 @@ M1 skeleton (pass-through, 64-ch layouts) · M2 SpatialCore + tests · M3 proces
 M4 2D editor · M5 state, pluginval, 64x64 stress · M6 AAX + Windows CI · M7 signing/notarization.
 
 ## Licence
-GPLv3 (see LICENSE); JUCE is used under AGPLv3. No copy protection.
+AGPLv3 (see LICENSE), because JUCE is used under AGPLv3 and the combined binary must follow it. Every source file carries an SPDX header (`SPDX-FileCopyrightText`, `SPDX-License-Identifier: AGPL-3.0-or-later`); add it to new files. No copy protection.

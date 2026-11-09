@@ -1,6 +1,6 @@
 # TriPan
 
-A free, open-source (GPL) spatial audio plugin that distributes n sound sources to m speakers in a
+A free, open-source (AGPLv3) spatial audio plugin that distributes n sound sources to m speakers in a
 2D plane. Each source is panned to the three speakers of the Delaunay triangle that contains it,
 with constant overall intensity.
 
@@ -191,4 +191,4 @@ hardened runtime). Windows builds are unsigned; Windows may show a SmartScreen w
 also publishes a GitHub release with the zips. AAX is not built in CI.
 
 ## Licence
-GPLv3. Built with JUCE (AGPLv3).
+AGPLv3 (see [LICENSE](LICENSE)); built with JUCE, which is used under its AGPLv3 option. Source files carry SPDX headers. If you distribute TriPan, you must make the corresponding source available under the same licence.

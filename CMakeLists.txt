@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Trond Lossius
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 cmake_minimum_required(VERSION 3.22)
 
 project(TriPan VERSION 0.1.0 LANGUAGES C CXX)

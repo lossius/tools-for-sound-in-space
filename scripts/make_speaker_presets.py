@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Trond Lossius
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Generates the speaker layout presets in "speaker layouts/" (TriPan speaker XML files).
 
 Run from anywhere:  python3 scripts/make_speaker_presets.py

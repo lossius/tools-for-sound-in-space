@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Trond Lossius
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Stress test for LayoutExchange: one writer publishing, one reader reading continuously.
 // Run under ThreadSanitizer/AddressSanitizer for the strongest check.
 #include "tripan/Gains.h"

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Trond Lossius
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 add_executable(TriPanCoreTests CoreTests.cpp)
 target_link_libraries(TriPanCoreTests PRIVATE TriPanCore)
 add_test(NAME TriPanCoreTests COMMAND TriPanCoreTests)

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Trond Lossius
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 #include "tripan/Triangulation.h"
 
 #include <algorithm>

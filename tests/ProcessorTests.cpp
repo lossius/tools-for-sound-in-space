@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Trond Lossius
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Offline tests of the TriPan processor (no DAW): energy conservation, locality, ramping,
 // speaker updates, state round-trip, large layouts.
 #include "../Source/Parameters.h"

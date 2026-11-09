@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Trond Lossius
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
 # SpatialCore: pure C++ geometry and gain computation. Must never depend on JUCE.
 add_library(TriPanCore STATIC
     src/Limits.cpp
