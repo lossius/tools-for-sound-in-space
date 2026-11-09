@@ -71,18 +71,22 @@ target_sources(TriPan PRIVATE
     Source/FieldComponent.h
     Source/PositionIO.cpp
     Source/PositionIO.h
+    Source/PositionTableWindow.cpp
+    Source/PositionTableWindow.h
     Source/Parameters.h)
 # In the IDE, sources and headers sit in separate subfolders, like in TriPanCore.
 source_group("Sources/src" FILES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/FieldComponent.cpp
-    Source/PositionIO.cpp)
+    Source/PositionIO.cpp
+    Source/PositionTableWindow.cpp)
 source_group("Sources/include" FILES
     Source/PluginProcessor.h
     Source/PluginEditor.h
     Source/FieldComponent.h
     Source/PositionIO.h
+    Source/PositionTableWindow.h
     Source/Parameters.h)
 
 target_compile_definitions(TriPan PUBLIC

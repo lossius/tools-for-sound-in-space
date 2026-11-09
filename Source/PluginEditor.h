@@ -9,6 +9,7 @@
 #include "FieldComponent.h"
 #include "PluginProcessor.h"
 #include "PositionIO.h"
+#include "PositionTableWindow.h"
 
 /** TriPan's editor window.
 
@@ -56,6 +57,8 @@ public:
     juce::TextButton& getImportSourcesButton() noexcept { return importSourcesButton; }   ///< "Import sources...".
     juce::TextButton& getExportSpeakersButton() noexcept { return exportSpeakersButton; } ///< "Export speakers...".
     juce::TextButton& getImportSpeakersButton() noexcept { return importSpeakersButton; } ///< "Import speakers...".
+    juce::TextButton& getSourcesTableButton() noexcept { return sourcesTableButton; }     ///< Opens the sources table window.
+    juce::TextButton& getSpeakersTableButton() noexcept { return speakersTableButton; }   ///< Opens the speakers table window.
     /// @}
 
     /** Writes / reads a positions file and shows the outcome in the status text. The buttons call
@@ -63,6 +66,13 @@ public:
     juce::Result exportPositionsTo (tripan::io::Kind kind, const juce::File& file);
     /** @copydoc exportPositionsTo() */
     juce::Result importPositionsFrom (tripan::io::Kind kind, const juce::File& file);
+
+    /** Opens (or brings to the front) the window with the table of source or speaker positions.
+        @return The window, which is owned by the editor and closed with it. */
+    PositionTableWindow& showTableWindow (tripan::io::Kind kind);
+
+    /** @return The table window of that kind, or nullptr if it has not been opened yet. */
+    PositionTableWindow* getTableWindow (tripan::io::Kind kind) noexcept;
 
     /** Re-reads the parameters and channel counts into the controls (also called by a timer). */
     void syncControls();
@@ -119,6 +129,11 @@ private:
     juce::TextButton importSourcesButton  { "Import sources..." };   ///< Loads source positions.
     juce::TextButton exportSpeakersButton { "Export speakers..." };  ///< Saves speaker positions.
     juce::TextButton importSpeakersButton { "Import speakers..." };  ///< Loads speaker positions.
+    juce::TextButton sourcesTableButton  { "Table..." };   ///< Opens the table of source positions.
+    juce::TextButton speakersTableButton { "Table..." };   ///< Opens the table of speaker positions.
+
+    std::unique_ptr<PositionTableWindow> sourcesTableWindow;   ///< Table of source positions, created on first use.
+    std::unique_ptr<PositionTableWindow> speakersTableWindow;  ///< Table of speaker positions, created on first use.
 
     std::unique_ptr<juce::FileChooser> fileChooser; ///< Kept alive while a dialog is open.
     juce::String statusText;                        ///< Message currently shown in the status area.

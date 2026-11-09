@@ -788,6 +788,152 @@ int main (int argc, char** argv)
         CHECK (std::abs (value (p, tripan::params::sourceId (1, 'y')) + 4.5f) < 0.02f);
     }
 
+    // Table windows: one for sources (x, y, spread) and one for speakers (x, y), opened by a button at the
+    // right end of the row. The values can be edited, the width follows the content.
+    {
+        using tripan::io::Kind;
+        using Col = PositionTable::Column;
+        CHECK (editor->getTableWindow (Kind::Sources) == nullptr && editor->getTableWindow (Kind::Speakers) == nullptr);
+
+        // The buttons sit at the right end of their rows.
+        CHECK (editor->getSourcesTableButton().getRight() > editor->getImportSourcesButton().getRight());
+        CHECK (editor->getSpeakersTableButton().getRight() > editor->getImportSpeakersButton().getRight());
+
+        editor->getSourcesTableButton().onClick();
+        editor->getSpeakersTableButton().onClick();
+        auto* sourcesWindow = editor->getTableWindow (Kind::Sources);
+        auto* speakersWindow = editor->getTableWindow (Kind::Speakers);
+        CHECK (sourcesWindow != nullptr && speakersWindow != nullptr && sourcesWindow != speakersWindow);
+        CHECK (sourcesWindow->isVisible() && speakersWindow->isVisible());
+
+        auto& sources = sourcesWindow->getContent();
+        auto& speakers = speakersWindow->getContent();
+
+        // Rows are the sources / speakers in use; the cells show the parameters.
+        CHECK (sources.getMainTable().getRowCount() == 3 && speakers.getMainTable().getRowCount() == 7);
+        CHECK (std::abs (sources.getMainTable().getValue (0, Col::xColumn) - value (p, tripan::params::sourceId (0, 'x'))) < 1e-4);
+        CHECK (std::abs (sources.getMainTable().getValue (1, Col::yColumn) - value (p, tripan::params::sourceId (1, 'y'))) < 1e-4);
+        CHECK (std::abs (speakers.getMainTable().getValue (2, Col::xColumn) - value (p, tripan::params::speakerId (2, 'x'))) < 1e-4);
+        CHECK (sources.getMainTable().getTable().getHeader().getNumColumns (true) == 4); // #, X, Y, Spread
+        CHECK (speakers.getMainTable().getTable().getHeader().getNumColumns (true) == 3); // #, X, Y
+
+        // Editing: typed text goes to the parameters, limited to the range; rubbish is rejected.
+        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "2.5") == "2.500");
+        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 2.5f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "99") == "10.000");
+        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "abc") == "10.000");
+        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "") == "10.000");
+        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (0, Col::spreadColumn, "-3") == "0.000");     // spread is 0..10
+        CHECK (sources.getMainTable().setValueFromText (0, Col::spreadColumn, "4.25") == "4.250");
+        CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 4.25f) < 1e-4f);
+        CHECK (speakers.getMainTable().setValueFromText (4, Col::yColumn, "-1.5") == "-1.500");
+        CHECK (std::abs (value (p, tripan::params::speakerId (4, 'y')) + 1.5f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (9, Col::xColumn, "1") == "0.000");           // no such row
+        setParam (p, tripan::params::sourceId (1, 'x'), -6.5f);                                       // back as before
+        setParam (p, tripan::params::spreadId (0), 0.0f);
+        setParam (p, tripan::params::speakerId (4, 'y'), 0.0f);
+
+        // A change made elsewhere (automation, the pad) shows up in the table.
+        setParam (p, tripan::params::sourceId (2, 'y'), -1.25f);
+        sources.refresh();
+        CHECK (std::abs (sources.getMainTable().getValue (2, Col::yColumn) + 1.25) < 1e-4);
+        setParam (p, tripan::params::sourceId (2, 'y'), -3.5f);
+
+        // The number of sources / speakers can be changed in the window, and the table follows.
+        sources.getCountSlider().setValue (2.0, juce::sendNotificationSync);
+        CHECK (p.getActiveSources() == 2 && sources.getMainTable().getRowCount() == 2);
+        speakers.getCountSlider().setValue (5.0, juce::sendNotificationSync);
+        CHECK (p.getActiveSpeakers() == 5 && speakers.getMainTable().getRowCount() == 5);
+        CHECK (sources.getCountSlider().getMaximum() == 3.0 && speakers.getCountSlider().getMaximum() == 7.0);
+        setParam (p, tripan::params::kNumSourcesId, 3.0f);  // as if automation changed it
+        setParam (p, tripan::params::kNumSpeakersId, 7.0f);
+        sources.refresh();
+        speakers.refresh();
+        CHECK (sources.getCountSlider().getValue() == 3.0 && speakers.getCountSlider().getValue() == 7.0);
+        CHECK (sources.getMainTable().getRowCount() == 3 && speakers.getMainTable().getRowCount() == 7);
+
+        // The virtual speaker menu is in the speakers window only.
+        CHECK (speakers.getVirtualModeBox().getNumItems() == 3);
+        CHECK (speakers.getVirtualModeBox().getSelectedId() == (int) p.getVirtualMode());
+
+        // The virtual speaker table appears to the right while they can be placed by hand (Manual and speakers on Edit).
+        const int narrow = speakersWindow->getWidth();
+        CHECK (narrow == speakers.getPreferredWidth() && sources.getPreferredWidth() < narrow);
+        editor->getVirtualModeBox().setSelectedId ((int) VirtualMode::Manual, juce::sendNotificationSync);
+        editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);          // View: no virtual table
+        speakers.refresh();
+        CHECK (speakers.getVirtualTable() == nullptr);
+        editor->getSpeakersModeBox().setSelectedId (1, juce::sendNotificationSync);          // Edit
+        speakers.refresh();
+        CHECK (speakers.getVirtualTable() != nullptr);
+        CHECK (speakersWindow->getWidth() > narrow && speakersWindow->getWidth() == speakers.getPreferredWidth());
+        CHECK (speakers.getVirtualTable()->getX() >= speakers.getMainTable().getRight());     // to the right of the other table
+
+        p.setManualVirtualSpeakers ({ { 1.0, 2.0 }, { -3.0, 0.5 } });
+        speakers.refresh();
+        auto* virtualTable = speakers.getVirtualTable();
+        CHECK (virtualTable != nullptr && virtualTable->getRowCount() == 2);
+        CHECK (virtualTable->getTable().getHeader().getNumColumns (true) == 3);
+        CHECK (virtualTable->setValueFromText (1, Col::xColumn, "4") == "4.000");
+        CHECK (virtualTable->setValueFromText (0, Col::yColumn, "-99") == "-10.000");
+        const auto manual = p.getManualVirtualSpeakers();
+        CHECK (manual.size() == 2 && std::abs (manual[1].x - 4.0) < 1e-9 && std::abs (manual[1].y - 0.5) < 1e-9
+               && std::abs (manual[0].x - 1.0) < 1e-9 && std::abs (manual[0].y + 10.0) < 1e-9);
+
+        // The menu in the window changes the mode; Auto removes the table and the window narrows again.
+        speakers.getVirtualModeBox().setSelectedId ((int) VirtualMode::Auto, juce::sendNotificationSync);
+        CHECK (p.getVirtualMode() == VirtualMode::Auto && speakers.getVirtualTable() == nullptr);
+        CHECK (speakersWindow->getWidth() == narrow);
+
+        // Height: resizable between a few rows and every row, the width is fixed.
+        CHECK (speakers.getMinimumHeight() <= speakersWindow->getHeight());
+        CHECK (speakersWindow->getHeight() <= speakers.getMaximumHeight());
+        CHECK (speakersWindow->getConstrainer()->getMinimumWidth() == speakersWindow->getConstrainer()->getMaximumWidth());
+        CHECK (speakers.getMinimumHeight() == speakers.getHeightForRows (PositionTableContent::kMinVisibleRows));
+
+        // Closing only hides; the button brings the same window back.
+        speakersWindow->closeButtonPressed();
+        CHECK (! speakersWindow->isVisible());
+        editor->getSpeakersTableButton().onClick();
+        CHECK (speakersWindow->isVisible() && editor->getTableWindow (Kind::Speakers) == speakersWindow);
+
+        editor->getVirtualModeBox().setSelectedId ((int) VirtualMode::Auto, juce::sendNotificationSync);
+        editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
+        p.setManualVirtualSpeakers ({});
+    }
+
+    // With more rows than fit, a table scrolls and its header stays put: a 64-channel track in a window
+    // of the smallest height.
+    {
+        TriPanAudioProcessor big;
+        juce::AudioProcessor::BusesLayout bigLayout;
+        bigLayout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (64));
+        bigLayout.outputBuses.add (juce::AudioChannelSet::discreteChannels (64));
+        CHECK (big.setBusesLayout (bigLayout));
+        big.setPlayConfigDetails (64, 64, 48000.0, 512);
+        big.prepareToPlay (48000.0, 512);
+
+        PositionTableWindow window (big, tripan::io::Kind::Sources);
+        auto& content = window.getContent();
+        CHECK (content.getMainTable().getRowCount() == 64);
+        CHECK (window.getHeight() < content.getHeightForRows (64));          // starts at a moderate height
+        CHECK (window.getHeight() <= content.getMaximumHeight());
+
+        window.setSize (window.getWidth(), content.getMinimumHeight());
+        content.setBounds (0, 0, window.getWidth(), content.getMinimumHeight());
+        auto& table = content.getMainTable().getTable();
+        CHECK (table.getViewport()->canScrollVertically());
+        CHECK (table.getHeader().getHeight() == PositionTable::kHeaderHeight);
+        const int headerY = table.getHeader().getY();                         // the header is outside the scrolling area
+        table.getViewport()->setViewPosition (0, 500);
+        CHECK (table.getHeader().getY() == headerY && table.getHeader().isVisible());
+        CHECK (table.getViewport()->getViewPositionY() > 0);
+        CHECK (table.getViewport()->getY() >= PositionTable::kHeaderHeight);
+        window.setVisible (false);
+    }
+
     // Restore a pleasant picture for the snapshot.
     setParam (p, tripan::params::speakerId (2, 'x'), 6.5f);
     setParam (p, tripan::params::speakerId (2, 'y'), -1.0f);
@@ -830,6 +976,24 @@ int main (int argc, char** argv)
         juce::PNGImageFormat png;
         CHECK (stream.openedOk() && png.writeImageToStream (image, stream));
         std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+
+        // Pictures of the table windows as well: <name>-sources.png and <name>-speakers.png (with virtual speakers by hand).
+        editor->getVirtualModeBox().setSelectedId ((int) VirtualMode::Manual, juce::sendNotificationSync);
+        editor->getSpeakersModeBox().setSelectedId (1, juce::sendNotificationSync);
+        p.setManualVirtualSpeakers ({ { 0.0, 0.0 }, { 0.0, -6.0 } });
+        for (auto kind : { tripan::io::Kind::Sources, tripan::io::Kind::Speakers })
+        {
+            auto& window = editor->showTableWindow (kind);
+            window.getContent().refresh();
+            auto& content = window.getContent();
+            content.setBounds (0, 0, window.getWidth(), window.getHeight());
+            auto picture = content.createComponentSnapshot (content.getLocalBounds(), true, 1.0f);
+            juce::File tableOut (out.getFullPathName().replace (".png", kind == tripan::io::Kind::Sources ? "-sources.png" : "-speakers.png"));
+            tableOut.deleteFile();
+            juce::FileOutputStream tableStream (tableOut);
+            CHECK (tableStream.openedOk() && png.writeImageToStream (picture, tableStream));
+            std::printf ("wrote %s\n", tableOut.getFullPathName().toRawUTF8());
+        }
     }
 
     base.reset();

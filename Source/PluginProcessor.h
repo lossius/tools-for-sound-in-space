@@ -122,6 +122,9 @@ public:
 
     /** @return The current virtual speaker mode. */
     VirtualMode getVirtualMode() const;
+    /** @return Whether the user can currently add, move and delete virtual speakers by hand: the mode is
+        Manual and the speakers are set to Edit. */
+    bool canEditVirtualSpeakers() const;
     /** Changes the virtual speaker mode and republishes the layout. */
     void setVirtualMode (VirtualMode);
     /** @return The user's own virtual speaker positions (used in Manual mode), in metres. */

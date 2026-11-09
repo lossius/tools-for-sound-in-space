@@ -165,7 +165,7 @@ void FieldComponent::setSpread (int source, double metres)
 
 bool FieldComponent::canEditVirtualSpeakers() const
 {
-    return processor.getVirtualMode() == VirtualMode::Manual && processor.canEditSpeakers();
+    return processor.canEditVirtualSpeakers();
 }
 
 bool FieldComponent::addVirtualSpeakerAt (juce::Point<float> p)

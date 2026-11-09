@@ -238,6 +238,11 @@ void TriPanAudioProcessor::setVirtualMode (VirtualMode mode)
     refreshTriangulation();
 }
 
+bool TriPanAudioProcessor::canEditVirtualSpeakers() const
+{
+    return getVirtualMode() == VirtualMode::Manual && canEditSpeakers();
+}
+
 std::vector<tripan::Vec2> TriPanAudioProcessor::getManualVirtualSpeakers() const
 {
     std::vector<tripan::Vec2> out;

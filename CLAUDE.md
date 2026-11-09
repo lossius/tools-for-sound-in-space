@@ -95,6 +95,16 @@ warnings; keep it that way when adding code.
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
+- Table windows (`Source/PositionTableWindow.*`): a "Table..." button at the right end of the sources row and of the
+  speakers row opens a `PositionTableWindow` (native title bar, owned by the editor, close = hide). Sources: table of
+  x, y, spread for the sources in use; speakers: x, y for the speakers in use, plus a second table to the right with
+  the manual virtual speakers while `canEditVirtualSpeakers()` (mode Manual and speakers on Edit). Top row: count
+  slider (the same parameter as in the main window) and, in the speakers window, the Auto/Manual/Off menu. Cells are
+  edited by a click, Return commits; non-numbers are rejected, values are limited to +-10 m (spread 0..10) and go
+  through the parameters with change gestures. The table edits regardless of the Edit/View menus (like import does).
+  Width is fixed to what the content needs (changes when the virtual table appears), height is resizable between 4 rows
+  and all rows (limited to the screen; the limits include the native title bar); the `TableListBox` header stays put
+  and the rows scroll. A 10 Hz timer follows parameter changes; a cell being edited is not overwritten.
 - Export/import (`Source/PositionIO.*`, four buttons in the editor): separate XML files for sources
   (`<TriPanSources version="1" count="n"><Source index="1" x=".." y=".."/>`) and speakers
   (`<TriPanSpeakers virtual="auto|manual|off">/<Speaker>`, plus `<VirtualSpeaker>` children when manual; an import

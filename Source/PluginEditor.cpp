@@ -102,6 +102,14 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the speaker positions in use to an XML file");
     setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file");
 
+    sourcesTableButton.setTooltip ("Open a table with the x, y and spread of every source, where the values can be typed in");
+    sourcesTableButton.onClick = [this] { showTableWindow (Kind::Sources); };
+    content.addAndMakeVisible (sourcesTableButton);
+
+    speakersTableButton.setTooltip ("Open a table with the x and y of every speaker (and of the manual virtual speakers), where the values can be typed in");
+    speakersTableButton.onClick = [this] { showTableWindow (Kind::Speakers); };
+    content.addAndMakeVisible (speakersTableButton);
+
     // Scalable GUI: the base size is the minimum, the aspect ratio is fixed.
     setResizable (true, true);
     setResizeLimits (kBaseWidth, kBaseHeight, kBaseWidth * kMaxScale, kBaseHeight * kMaxScale);
@@ -118,6 +126,23 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
 TriPanAudioProcessorEditor::~TriPanAudioProcessorEditor()
 {
     stopTimer();
+    sourcesTableWindow.reset();
+    speakersTableWindow.reset();
+}
+
+PositionTableWindow* TriPanAudioProcessorEditor::getTableWindow (tripan::io::Kind kind) noexcept
+{
+    return (kind == tripan::io::Kind::Sources ? sourcesTableWindow : speakersTableWindow).get();
+}
+
+PositionTableWindow& TriPanAudioProcessorEditor::showTableWindow (tripan::io::Kind kind)
+{
+    auto& window = kind == tripan::io::Kind::Sources ? sourcesTableWindow : speakersTableWindow;
+    if (window == nullptr)
+        window = std::make_unique<PositionTableWindow> (owner, kind);
+
+    window->show (this);
+    return *window;
 }
 
 void TriPanAudioProcessorEditor::setUpCountSlider (juce::Slider& slider, const juce::String& parameterId)
@@ -331,7 +356,7 @@ void TriPanAudioProcessorEditor::layoutContent()
     // One row per kind of position, with everything that belongs to it: how many are in use, whether
     // they can be edited, and export / import of their positions. Both rows share the same columns.
     const auto layoutRow = [&] (juce::Rectangle<int> row, juce::Label& label, juce::Slider& count, juce::ComboBox& menu,
-                                juce::TextButton& exportButton, juce::TextButton& importButton)
+                                juce::TextButton& exportButton, juce::TextButton& importButton, juce::TextButton& tableButton)
     {
         row = row.reduced (10, 5);
         label.setBounds (row.removeFromLeft (70));
@@ -339,14 +364,16 @@ void TriPanAudioProcessorEditor::layoutContent()
         row.removeFromLeft (8);
         menu.setBounds (row.removeFromLeft (84));
         row.removeFromLeft (16);
+        tableButton.setBounds (row.removeFromRight (80)); // at the right end of the row
+        row.removeFromRight (16);
         const int buttonWidth = (row.getWidth() - 8) / 2;
         exportButton.setBounds (row.removeFromLeft (buttonWidth));
         row.removeFromLeft (8);
         importButton.setBounds (row);
     };
 
-    layoutRow (area.removeFromTop (32), sourcesLabel, sourceCount, sourcesModeBox, exportSourcesButton, importSourcesButton);
-    layoutRow (area.removeFromTop (32), speakersLabel, speakerCount, speakersModeBox, exportSpeakersButton, importSpeakersButton);
+    layoutRow (area.removeFromTop (32), sourcesLabel, sourceCount, sourcesModeBox, exportSourcesButton, importSourcesButton, sourcesTableButton);
+    layoutRow (area.removeFromTop (32), speakersLabel, speakerCount, speakersModeBox, exportSpeakersButton, importSpeakersButton, speakersTableButton);
 
     // Third row: display options and zoom.
     auto bar = area.removeFromTop (32).reduced (10, 5);
