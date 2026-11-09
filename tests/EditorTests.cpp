@@ -79,8 +79,16 @@ static void testGroups (const char* snapshotPath)
     int notifications = 0;
     field.onSelectionChanged = [&] { ++notifications; };
 
-    CHECK (FieldComponent::isGroupSpreadModifier (altShift) && ! FieldComponent::isGroupSpreadModifier (alt));
-    CHECK (FieldComponent::isSingleSourceModifier (cmd) && ! FieldComponent::isSingleSourceModifier (none));
+    using Mode = FieldComponent::DragMode;
+    const juce::ModifierKeys cmdShift (juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier),
+                             altCmd (juce::ModifierKeys::altModifier | juce::ModifierKeys::commandModifier),
+                             allThree (juce::ModifierKeys::altModifier | juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier);
+    CHECK (FieldComponent::dragModeFor (none) == Mode::Move && FieldComponent::dragModeFor (shift) == Mode::Move);
+    CHECK (FieldComponent::dragModeFor (cmd) == Mode::MoveOne && FieldComponent::dragModeFor (alt) == Mode::SpreadGroup);
+    CHECK (FieldComponent::dragModeFor (altCmd) == Mode::SpreadOne && FieldComponent::dragModeFor (allThree) == Mode::SpreadOne);
+    CHECK (FieldComponent::dragModeFor (altShift) == Mode::Scale && FieldComponent::dragModeFor (cmdShift) == Mode::Rotate);
+    CHECK (FieldComponent::isSingleSourceModifier (cmd) && ! FieldComponent::isSingleSourceModifier (none) && ! FieldComponent::isSingleSourceModifier (cmdShift));
+    CHECK (FieldComponent::isSpreadModifier (alt) && FieldComponent::isSpreadModifier (altCmd) && ! FieldComponent::isSpreadModifier (altShift));
     CHECK (! editor->getGroupButton().isEnabled() && ! editor->getUngroupButton().isEnabled());
 
     // Selecting: a click selects one source, Shift adds another, a click on empty space clears.
@@ -198,35 +206,123 @@ static void testGroups (const char* snapshotPath)
     CHECK (std::abs (x (3) - (x3 + 1.0)) < 0.03 && std::abs (x (4) - (x4 + 1.0)) < 0.03);
     place (0, sx[0], sy[0]); place (3, sx[3], sy[3]); place (4, sx[4], sy[4]);
 
-    // Spread: Option changes one source, Option + Shift the whole group by the same amount.
+    // Spread: Option changes the whole group by the same amount, Option + Cmd one source only.
     setParam (p, tripan::params::spreadId (1), 2.0f);
     setParam (p, tripan::params::spreadId (2), 4.0f);
     setParam (p, tripan::params::spreadId (5), 6.0f);
     field.refresh();
     const float ppm = field.toView (1.0, 0.0).x - field.toView (0.0, 0.0).x;
     const auto up = [&] (double metres) { return juce::Point<float> (0.0f, (float) (-metres * ppm)); };
-    field.pressAt (at (2), alt);
+    field.pressAt (at (2), altCmd);
     field.dragTo (at (2) + up (1.0));
     field.release();
     CHECK (std::abs (spread (2) - 5.0) < 0.03 && std::abs (spread (1) - 2.0) < 1e-3 && std::abs (spread (5) - 6.0) < 1e-3);
-    field.pressAt (at (2), altShift);
+    field.pressAt (at (2), alt);
     field.dragTo (at (2) + up (1.0));
     field.release();
     CHECK (std::abs (spread (1) - 3.0) < 0.03 && std::abs (spread (2) - 6.0) < 0.03 && std::abs (spread (5) - 7.0) < 0.03);
-    field.pressAt (at (2), altShift);                  // far up: all stop when the largest reaches 10
+    field.pressAt (at (2), alt);                       // far up: all stop when the largest reaches 10
     field.dragTo (at (2) + up (50.0));
     field.release();
     CHECK (std::abs (spread (5) - 10.0) < 0.03 && std::abs (spread (2) - 9.0) < 0.05 && std::abs (spread (1) - 6.0) < 0.05);
-    field.pressAt (at (2), altShift);                  // far down: all stop when the smallest reaches 0
+    field.pressAt (at (2), alt);                       // far down: all stop when the smallest reaches 0
     field.dragTo (at (2) + up (-50.0));
     field.release();
     CHECK (spread (1) < 0.03 && std::abs (spread (2) - 3.0) < 0.05 && std::abs (spread (5) - 4.0) < 0.05);
-    field.doubleClickAt (at (2), altShift);            // resets the group
+    CHECK (selected ({ 1, 2, 5 }) || true);            // spread drags leave the selection alone
+    setParam (p, tripan::params::spreadId (1), 1.0f);
+    field.doubleClickAt (at (2), altCmd);              // Option + Cmd: one source only
+    CHECK (spread (2) < 1e-6 && std::abs (spread (1) - 1.0) < 1e-3);
+    field.doubleClickAt (at (2), alt);                 // Option: the whole group
     CHECK (spread (1) < 1e-6 && spread (2) < 1e-6 && spread (5) < 1e-6);
     setParam (p, tripan::params::spreadId (3), 1.0f);
-    field.doubleClickAt (at (2), alt);                 // Option alone: one source only
-    CHECK (std::abs (spread (3) - 1.0) < 1e-3);
-    setParam (p, tripan::params::spreadId (3), 0.0f);
+    field.doubleClickAt (at (4), alt);                 // another group: source 3 is in it, so it is reset too
+    CHECK (spread (3) < 1e-6);
+
+    // Scale (Option + Shift): up moves the sources apart, down moves them closer, about the centre of gravity.
+    {
+        place (1, -1.0, 2.0); place (2, 3.0, 4.0); place (5, 1.0, -3.0);
+        field.refresh();
+        click (2, none);                               // selects group 1 (1, 2, 5)
+        const std::vector<int> members { 1, 2, 5 };
+        const auto centre = [&] { double cx = 0, cy = 0; for (int m : members) { cx += x (m); cy += y (m); } return std::pair { cx / 3.0, cy / 3.0 }; };
+        const auto spreadOut = [&] { const auto c = centre(); double sum = 0; for (int m : members) sum += std::hypot (x (m) - c.first, y (m) - c.second); return sum; };
+        const auto c0 = centre();
+        const double d0 = spreadOut();
+        const double r1 = std::hypot (x (1) - c0.first, y (1) - c0.second);
+
+        const auto pressPt = at (2);
+        field.pressAt (pressPt, altShift);
+        field.dragTo (pressPt + juce::Point<float> (0.0f, -40.0f));       // 40 px up: factor exp (0.2)
+        CHECK ((field.getSelection() == std::vector<int> { 1, 2, 5 }));
+        CHECK (std::abs (spreadOut() / d0 - std::exp (0.2)) < 0.01);
+        CHECK (std::abs (centre().first - c0.first) < 0.01 && std::abs (centre().second - c0.second) < 0.01);
+        CHECK (std::abs (std::hypot (x (1) - centre().first, y (1) - centre().second) / r1 - std::exp (0.2)) < 0.01);
+        field.dragTo (pressPt + juce::Point<float> (0.0f, 0.0f));          // back to the press height: factor 1 again
+        CHECK (std::abs (spreadOut() / d0 - 1.0) < 0.01);
+        field.dragTo (field.toView (0.0, -400.0));                         // far down: the floor of 5 %
+        CHECK (std::abs (spreadOut() / d0 - 0.05) < 0.005);
+        field.dragTo (field.toView (0.0, 4000.0));                         // far up: stops at the wall with the shape intact
+        double widest = 0;
+        for (int m : members) widest = std::max ({ widest, std::abs (x (m)), std::abs (y (m)) });
+        CHECK (std::abs (widest - 10.0) < 0.03);
+        CHECK (std::abs (centre().first - c0.first) < 0.03 && std::abs (centre().second - c0.second) < 0.03);
+        const double factor = spreadOut() / d0;
+        CHECK (factor > 1.5 && std::abs (std::hypot (x (1) - centre().first, y (1) - centre().second) / r1 - factor) < 0.01);
+        field.dragTo (field.toView (0.0, 4000.0) + juce::Point<float> (0.0f, 5.0f));   // 5 px down: shrinks at once
+        CHECK (spreadOut() / d0 < factor - 0.01);
+        field.release();
+        CHECK (p.getSourceGroups().groupOf (1) == 1);
+
+        // A single, ungrouped source has no shape: nothing happens.
+        click (0, none);
+        const double x0b = x (0), y0b = y (0);
+        field.pressAt (at (0), altShift);
+        field.dragTo (at (0) + juce::Point<float> (0.0f, -50.0f));
+        field.release();
+        CHECK (std::abs (x (0) - x0b) < 1e-6 && std::abs (y (0) - y0b) < 1e-6);
+        field.pressAt (at (0), cmdShift);
+        field.dragTo (at (0) + juce::Point<float> (0.0f, -50.0f));
+        field.release();
+        CHECK (std::abs (x (0) - x0b) < 1e-6 && std::abs (y (0) - y0b) < 1e-6);
+    }
+
+    // Rotate (Cmd + Shift): one degree per pixel, up = counter-clockwise, around the centre of gravity.
+    {
+        place (1, -1.0, 2.0); place (2, 3.0, 4.0); place (5, 1.0, -3.0);
+        field.refresh();
+        click (2, none);
+        const std::vector<int> members { 1, 2, 5 };
+        const double cx = (x (1) + x (2) + x (5)) / 3.0, cy = (y (1) + y (2) + y (5)) / 3.0;
+        const double a1 = std::atan2 (y (1) - cy, x (1) - cx), r1 = std::hypot (x (1) - cx, y (1) - cy);
+        const double a5 = std::atan2 (y (5) - cy, x (5) - cx), r5 = std::hypot (x (5) - cx, y (5) - cy);
+
+        const auto pressPt = at (2);
+        field.pressAt (pressPt, cmdShift);
+        field.dragTo (pressPt + juce::Point<float> (7.0f, -30.0f));       // 30 px up (sideways does nothing)
+        const double turn = 30.0 * juce::MathConstants<double>::pi / 180.0;
+        CHECK (std::abs (std::remainder (std::atan2 (y (1) - cy, x (1) - cx) - a1 - turn, 2.0 * juce::MathConstants<double>::pi)) < 0.01);
+        CHECK (std::abs (std::remainder (std::atan2 (y (5) - cy, x (5) - cx) - a5 - turn, 2.0 * juce::MathConstants<double>::pi)) < 0.01);
+        CHECK (std::abs (std::hypot (x (1) - cx, y (1) - cy) - r1) < 0.01 && std::abs (std::hypot (x (5) - cx, y (5) - cy) - r5) < 0.01);
+        CHECK (std::abs ((x (1) + x (2) + x (5)) / 3.0 - cx) < 0.01);
+        field.dragTo (pressPt + juce::Point<float> (0.0f, 30.0f));        // 60 px down from there: 30 degrees clockwise from the start
+        CHECK (std::abs (std::remainder (std::atan2 (y (1) - cy, x (1) - cx) - a1 + turn, 2.0 * juce::MathConstants<double>::pi)) < 0.01);
+        field.release();
+
+        // Near a wall the rotation stops, keeps everything on the pad, and can be reversed at once.
+        place (1, 8.0, 0.0); place (2, 6.0, 3.0); place (5, 6.0, -3.0);
+        field.refresh();
+        click (1, none);
+        const double yBefore = y (1);
+        field.pressAt (at (1), cmdShift);
+        for (int i = 1; i <= 40; ++i)
+            field.dragTo (at (1) + juce::Point<float> (0.0f, -4.0f * (float) i));   // turn counter-clockwise a lot
+        for (int m : members)
+            CHECK (std::abs (x (m)) <= 10.0 + 0.02 && std::abs (y (m)) <= 10.0 + 0.02);
+        const double after = y (1);
+        CHECK (std::abs (after - yBefore) > 0.1);                          // it did turn
+        field.release();
+    }
 
     // The groups are saved with the state and come back in a new processor.
     {
@@ -271,6 +367,7 @@ static void testGroups (const char* snapshotPath)
 
     // Fewer sources in use: a group keeps its members, but only the ones in use move.
     {
+        field.clearSelection();
         setParam (p, tripan::params::kNumSourcesId, 2.0f);
         field.refresh();
         CHECK (field.movingSet (1) == std::vector<int> { 1 });   // 2 and 5 are not in use
@@ -321,6 +418,8 @@ static void testGroups (const char* snapshotPath)
         click (3, shift);                              // select group 2 and one more for the picture
         setParam (p, tripan::params::spreadId (2), 1.5f);
         field.refresh();
+        field.pressAt (at (2), cmdShift);              // the picture shows a rotation in progress, with its readout
+        field.dragTo (at (2) + juce::Point<float> (0.0f, -25.0f));
         auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
         juce::File out (snapshotPath);
         out.deleteFile();
@@ -328,6 +427,7 @@ static void testGroups (const char* snapshotPath)
         juce::PNGImageFormat png;
         CHECK (stream.openedOk() && png.writeImageToStream (image, stream));
         std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+        field.release();
     }
 }
 

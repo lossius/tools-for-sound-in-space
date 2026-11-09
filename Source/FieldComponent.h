@@ -50,21 +50,45 @@ public:
         spread circle around it is only a display and never takes part in mouse interaction. */
     static constexpr float kSourceRadius = 9.0f;
 
-    /** Spread: hold Option (Alt on Windows) and drag a source vertically. Moving the mouse up
-        increases the spread, moving it down decreases it, sideways movement has no effect. The change
-        is relative to where the drag starts and is limited to 0..10 m at every step, so dragging
-        down past zero and back up increases the spread again at once. Option + double-click resets
-        the spread to 0. Only Option is used (not Cmd). */
+    /** What a drag that starts on a source does. The modifiers are read when the button goes down and apply to the
+        whole drag. "Group" means the sources that move with the one you grab: its group, or the selection if
+        it is part of one.
+
+        | Modifiers (macOS / Windows)     | Mode           | Effect                                                   |
+        |---------------------------------|----------------|----------------------------------------------------------|
+        | none                            | Move           | moves the whole group                                    |
+        | Cmd / Ctrl                      | MoveOne        | moves the grabbed source only                            |
+        | Option / Alt                    | SpreadGroup    | changes the spread of the whole group                    |
+        | Option+Cmd / Alt+Ctrl           | SpreadOne      | changes the spread of the grabbed source only            |
+        | Option+Shift / Alt+Shift        | Scale          | drag up = group members move apart, down = closer        |
+        | Cmd+Shift / Ctrl+Shift          | Rotate         | up = counter-clockwise, down = clockwise (around the centre of gravity) |
+
+        Spread, Scale and Rotate are vertical drags (sideways movement does nothing). */
+    enum class DragMode
+    {
+        Move,          ///< Move the group (plain drag).
+        MoveOne,       ///< Move one source (Cmd).
+        SpreadGroup,   ///< Change the spread of the group (Option).
+        SpreadOne,     ///< Change the spread of one source (Option+Cmd).
+        Scale,         ///< Change the distances in the group (Option+Shift).
+        Rotate         ///< Rotate the group (Cmd+Shift).
+    };
+
+    /** @return The mode that the modifiers select (see DragMode). */
+    static DragMode dragModeFor (const juce::ModifierKeys& mods) noexcept;
+
+    /** @return Whether the modifiers change a spread (Option, with or without Cmd; not with Shift alone). Option +
+        double-click resets the spread to 0 (the group's, or with Cmd the grabbed source's). */
     static bool isSpreadModifier (const juce::ModifierKeys& mods) noexcept;
 
-    /** Group spread: hold Option and Shift and drag a source vertically. The same change is applied to the
-        spread of every source that moves with it, limited so that none leaves 0..10 m (the differences
-        between them are kept). Option + Shift + double-click resets all of them to 0. */
-    static bool isGroupSpreadModifier (const juce::ModifierKeys& mods) noexcept;
-
-    /** Move one source alone: hold Cmd (Ctrl on Windows) and drag a source that is in a group or a
-        selection. The others stay where they are, and the group stays a group (with a new shape). */
+    /** @return Whether the modifiers move one source alone: Cmd (Ctrl on Windows) without Option or Shift. */
     static bool isSingleSourceModifier (const juce::ModifierKeys& mods) noexcept;
+
+    /** Sensitivity of the vertical drags. Spread: one pixel is the same distance as on the pad. Scale: each pixel
+        multiplies the distances by exp(0.005), about 0.5 %. Rotate: one pixel is one degree. */
+    static constexpr double kScalePerPixel = 0.005;                           ///< Natural log of the scale change per pixel.
+    static constexpr double kRotationPerPixel = 3.14159265358979323846 / 180.0; ///< Radians per pixel.
+    static constexpr double kMinScale = 0.05;                                 ///< Smallest scale factor of a drag (5 %).
 
     /** @return The colour of a source: its own colour, or, if it is in a group, the own colour of the member
         with the lowest number, so that a group is drawn in one colour and ungrouping gives the individual colours back. */
@@ -216,8 +240,12 @@ private:
     juce::Point<double> viewCentre;                            ///< Centre of the view in metres.
 
     std::optional<Handle> dragging;     ///< The handle being dragged, if any.
-    bool draggingSpread = false;        ///< The drag changes the spread of the source instead of moving it.
-    float lastSpreadDragY = 0.0f;       ///< Mouse y at the previous step of a spread drag.
+    bool draggingSpread = false;        ///< The drag changes spreads instead of moving sources.
+    DragMode dragMode = DragMode::Move; ///< What the drag in progress does.
+    float lastSpreadDragY = 0.0f;       ///< Mouse y at the previous step of a vertical drag (spread, scale, rotate).
+    tripan::Vec2 dragCentre;            ///< Centre of gravity of the dragged sources at the press (scale, rotate).
+    double dragScale = 1.0;             ///< Scale factor of the drag in progress.
+    double dragAngle = 0.0;             ///< Rotation in radians of the drag in progress (counter-clockwise positive).
     std::optional<Handle> hovered;      ///< The handle under the mouse, if any.
 
     std::vector<int> selection;                 ///< Selected sources, ascending.
@@ -230,6 +258,8 @@ private:
     std::vector<int> marqueeBase;               ///< Selection to extend (Shift) or empty.
     juce::String baseTooltip;                   ///< Tooltip text without the group note.
 
+    /** Sets the x and y parameters of `dragSources` to `positions` (same order). */
+    void writeDragPositions (const std::vector<tripan::Vec2>& positions);
     /** Moves `dragSources` so that the grabbed source is at `p` (component coordinates), as far as the pad allows. */
     void moveSelectionTo (juce::Point<float> p);
     /** Selects what the rectangle holds (with the groups) in addition to marqueeBase. */

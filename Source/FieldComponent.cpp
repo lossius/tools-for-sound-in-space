@@ -49,11 +49,13 @@ FieldComponent::FieldComponent (TriPanAudioProcessor& p)
         spkYp[(size_t) i] = apvts.getParameter (tripan::params::speakerId (i, 'y'));
     }
 
-    baseTooltip = "Drag a source (its inner circle) to move it, with the rest of its group or selection. "
+    baseTooltip = "Drag a source (its inner circle) to move it with the rest of its group or selection. "
                   "Shift-click adds to the selection; drag on empty space to select several. "
-                  "Cmd-drag moves one source alone. Cmd+G groups the selection, Cmd+Shift+G ungroups it.\n"
-                  "Option-drag a source up or down to change its spread (up = more, down = less); "
-                  "add Shift to change the whole group. Option-double-click resets the spread to 0.";
+                  "Cmd+G groups the selection, Cmd+Shift+G ungroups it.\n"
+                  "Cmd-drag: move one source alone.\n"
+                  "Option-drag up/down: spread of the group (+Cmd: of one source). Option-double-click resets it.\n"
+                  "Option+Shift-drag up/down: move the group's sources apart / together.\n"
+                  "Cmd+Shift-drag up/down: rotate the group counter-clockwise / clockwise.";
     setTooltip (baseTooltip);
     setWantsKeyboardFocus (true);
 
@@ -153,9 +155,22 @@ std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<
     return best;
 }
 
+FieldComponent::DragMode FieldComponent::dragModeFor (const juce::ModifierKeys& mods) noexcept
+{
+    const bool alt = mods.isAltDown(), cmd = mods.isCommandDown(), shift = mods.isShiftDown();
+
+    if (alt && cmd)   return DragMode::SpreadOne;
+    if (alt && shift) return DragMode::Scale;
+    if (cmd && shift) return DragMode::Rotate;
+    if (alt)          return DragMode::SpreadGroup;
+    if (cmd)          return DragMode::MoveOne;
+    return DragMode::Move;
+}
+
 bool FieldComponent::isSpreadModifier (const juce::ModifierKeys& mods) noexcept
 {
-    return mods.isAltDown(); // Option on macOS
+    const auto mode = dragModeFor (mods);
+    return mode == DragMode::SpreadGroup || mode == DragMode::SpreadOne;
 }
 
 double FieldComponent::getSpread (int source) const
@@ -187,14 +202,9 @@ juce::Colour FieldComponent::sourceColour (int source, const tripan::SourceGroup
     return individualColour (source);
 }
 
-bool FieldComponent::isGroupSpreadModifier (const juce::ModifierKeys& mods) noexcept
-{
-    return mods.isAltDown() && mods.isShiftDown();
-}
-
 bool FieldComponent::isSingleSourceModifier (const juce::ModifierKeys& mods) noexcept
 {
-    return mods.isCommandDown() && ! mods.isAltDown();
+    return dragModeFor (mods) == DragMode::MoveOne;
 }
 
 void FieldComponent::notifySelectionChanged()
@@ -301,6 +311,21 @@ juce::String FieldComponent::getTooltip()
     return baseTooltip;
 }
 
+void FieldComponent::writeDragPositions (const std::vector<tripan::Vec2>& positions)
+{
+    const auto set = [] (juce::RangedAudioParameter* prm, double v)
+    {
+        const float clamped = juce::jlimit (-tripan::params::kCoordRange, tripan::params::kCoordRange, (float) v);
+        prm->setValueNotifyingHost (prm->convertTo0to1 (clamped));
+    };
+
+    for (size_t i = 0; i < dragSources.size() && i < positions.size(); ++i)
+    {
+        set (srcXp[(size_t) dragSources[i]], positions[i].x);
+        set (srcYp[(size_t) dragSources[i]], positions[i].y);
+    }
+}
+
 void FieldComponent::moveSelectionTo (juce::Point<float> p)
 {
     if (dragSources.empty() || ! processor.canEditSources())
@@ -312,18 +337,13 @@ void FieldComponent::moveSelectionTo (juce::Point<float> p)
     const auto delta = tripan::clampTranslation (dragStart, { pos.x - dragGrabStart.x, pos.y - dragGrabStart.y },
                                                  (double) tripan::params::kCoordRange);
 
-    for (size_t i = 0; i < dragSources.size(); ++i)
+    auto moved = dragStart;
+    for (auto& q : moved)
     {
-        const auto set = [] (juce::RangedAudioParameter* prm, double v)
-        {
-            const float clamped = juce::jlimit (-tripan::params::kCoordRange, tripan::params::kCoordRange, (float) v);
-            prm->setValueNotifyingHost (prm->convertTo0to1 (clamped));
-        };
-
-        const auto src = (size_t) dragSources[i];
-        set (srcXp[src], dragStart[i].x + delta.x);
-        set (srcYp[src], dragStart[i].y + delta.y);
+        q.x += delta.x;
+        q.y += delta.y;
     }
+    writeDragPositions (moved);
 }
 
 void FieldComponent::updateMarqueeSelection()
@@ -764,18 +784,36 @@ void FieldComponent::paint (juce::Graphics& g)
         g.drawText (juce::String (s + 1), r, juce::Justification::centred);
     }
 
-    // While the spread is being dragged, show its value next to the circle.
-    if (draggingSpread && dragging && dragging->isSource)
+    // While a vertical drag is going on, show its value: next to the circle for spread, at the centre of gravity
+    // of the group for scale and rotation.
+    if (dragging && dragging->isSource && dragMode != DragMode::Move && dragMode != DragMode::MoveOne)
     {
-        const auto pos = position (*dragging);
-        const auto c = toView (pos.x, pos.y);
-        const float radius = (float) getSpread (dragging->index) * planeBounds().getWidth() / (float) (2.0 * viewHalf);
-        const auto label = juce::Rectangle<float> (90.0f, 16.0f).withCentre ({ c.x, c.y + radius + 14.0f });
+        juce::String text;
+        juce::Point<float> c;
+
+        if (draggingSpread)
+        {
+            const auto pos = position (*dragging);
+            c = toView (pos.x, pos.y);
+            c.y += (float) getSpread (dragging->index) * planeBounds().getWidth() / (float) (2.0 * viewHalf) + 14.0f;
+            text = "spread " + juce::String (getSpread (dragging->index), 2) + " m";
+        }
+        else
+        {
+            c = toView (dragCentre.x, dragCentre.y);
+            c.y += 16.0f;
+            text = dragMode == DragMode::Scale ? "scale " + juce::String (juce::roundToInt (dragScale * 100.0)) + " %"
+                                               : "rotate " + juce::String (dragAngle * 180.0 / juce::MathConstants<double>::pi, 1) + juce::String (juce::CharPointer_UTF8 ("\xc2\xb0"));
+            g.setColour (juce::Colours::white.withAlpha (0.8f));
+            g.fillEllipse (juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ c.x, c.y - 16.0f }));
+        }
+
+        const auto label = juce::Rectangle<float> (90.0f, 16.0f).withCentre (c);
         g.setColour (juce::Colour (0xff15181d).withAlpha (0.8f));
         g.fillRoundedRectangle (label, 3.0f);
         g.setColour (juce::Colours::white);
         g.setFont (juce::FontOptions (11.0f));
-        g.drawText ("spread " + juce::String (getSpread (dragging->index), 2) + " m", label, juce::Justification::centred);
+        g.drawText (text, label, juce::Justification::centred);
     }
 
     if (marquee)
@@ -820,9 +858,10 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
     if (dragging->isSource)
     {
         const int s = dragging->index;
-        const bool spreadDrag = isSpreadModifier (mods);
+        dragMode = dragModeFor (mods);
+        draggingSpread = dragMode == DragMode::SpreadGroup || dragMode == DragMode::SpreadOne;
 
-        if (! spreadDrag && ! isSingleSourceModifier (mods))
+        if (dragMode == DragMode::Move)
         {
             const auto members = groups.membersOf (s, activeSources());
             if (mods.isShiftDown()) // add or remove the source together with its group
@@ -846,12 +885,11 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
             }
         }
 
-        if (spreadDrag)
+        if (draggingSpread)
         {
             // The spread keeps its value at the press and then follows the vertical movement of the mouse.
-            draggingSpread = true;
             lastSpreadDragY = p.y;
-            dragSources = isGroupSpreadModifier (mods) ? movingSet (s) : std::vector<int> { s };
+            dragSources = dragMode == DragMode::SpreadOne ? std::vector<int> { s } : movingSet (s);
             for (const int member : dragSources)
                 srcSpreadP[(size_t) member]->beginChangeGesture();
             setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
@@ -859,7 +897,17 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
             return;
         }
 
-        dragSources = isSingleSourceModifier (mods) ? std::vector<int> { s } : movingSet (s);
+        dragSources = dragMode == DragMode::MoveOne ? std::vector<int> { s } : movingSet (s);
+
+        if ((dragMode == DragMode::Scale || dragMode == DragMode::Rotate) && dragSources.size() < 2)
+        {
+            // Nothing to scale or rotate: a single source has no shape.
+            dragging.reset();
+            dragSources.clear();
+            dragMode = DragMode::Move;
+            return;
+        }
+
         for (const int member : dragSources)
         {
             const auto pos = position ({ true, member });
@@ -867,6 +915,18 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
             srcXp[(size_t) member]->beginChangeGesture();
             srcYp[(size_t) member]->beginChangeGesture();
         }
+
+        if (dragMode == DragMode::Scale || dragMode == DragMode::Rotate)
+        {
+            dragCentre = tripan::centroid (dragStart);
+            dragScale = 1.0;
+            dragAngle = 0.0;
+            lastSpreadDragY = p.y;
+            setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+            repaint();
+            return;
+        }
+
         const auto grabbed = position (*dragging);
         dragGrabStart = { grabbed.x, grabbed.y };
         moveSelectionTo (p);
@@ -914,6 +974,35 @@ void FieldComponent::dragTo (juce::Point<float> p)
         for (size_t i = 0; i < dragSources.size(); ++i)
             setSpread (dragSources[i], current[i] + change);
     }
+    else if (dragging->isSource && (dragMode == DragMode::Scale || dragMode == DragMode::Rotate))
+    {
+        // Vertical drags, relative to the press and limited at every step (no dead zone at the limits).
+        const double up = (double) (lastSpreadDragY - p.y);
+        lastSpreadDragY = p.y;
+        const double limit = (double) tripan::params::kCoordRange;
+
+        auto result = dragStart;
+        if (dragMode == DragMode::Scale)
+        {
+            const double highest = std::max (kMinScale, tripan::maxScaleFactor (dragStart, dragCentre, limit));
+            dragScale = std::clamp (dragScale * std::exp (kScalePerPixel * up), kMinScale, highest);
+            for (auto& q : result)
+            {
+                q.x = dragCentre.x + dragScale * (q.x - dragCentre.x);
+                q.y = dragCentre.y + dragScale * (q.y - dragCentre.y);
+            }
+        }
+        else
+        {
+            dragAngle = tripan::clampRotation (dragStart, dragCentre, dragAngle, dragAngle + up * kRotationPerPixel, limit);
+            for (auto& q : result)
+                q = tripan::rotateAbout (q, dragCentre, dragAngle);
+        }
+
+        if (processor.canEditSources())
+            writeDragPositions (result);
+        repaint();
+    }
     else if (dragging->isSource)
     {
         moveSelectionTo (p);
@@ -957,6 +1046,7 @@ void FieldComponent::release()
 
     dragging.reset();
     draggingSpread = false;
+    dragMode = DragMode::Move;
     dragSources.clear();
     dragStart.clear();
     repaint();
@@ -970,8 +1060,8 @@ void FieldComponent::doubleClickAt (juce::Point<float> p, const juce::ModifierKe
         const auto h = findHandleAt (p);
         if (h && h->isSource)
         {
-            // With Shift: everything that moves with the source.
-            const auto set = isGroupSpreadModifier (mods) ? movingSet (h->index) : std::vector<int> { h->index };
+            // Option: everything that moves with the source; Option+Cmd: the source alone.
+            const auto set = dragModeFor (mods) == DragMode::SpreadOne ? std::vector<int> { h->index } : movingSet (h->index);
             for (const int member : set)
             {
                 srcSpreadP[(size_t) member]->beginChangeGesture();
@@ -1004,7 +1094,8 @@ void FieldComponent::mouseMove (const juce::MouseEvent& e)
     const bool changed = h.has_value() != hovered.has_value()
                       || (h && hovered && (h->isSource != hovered->isSource || h->isVirtual != hovered->isVirtual || h->index != hovered->index));
     hovered = h;
-    const bool spreading = h && h->isSource && isSpreadModifier (e.mods);
+    const auto mode = dragModeFor (e.mods);
+    const bool spreading = h && h->isSource && mode != DragMode::Move && mode != DragMode::MoveOne; // vertical drags
     setMouseCursor (spreading ? juce::MouseCursor::UpDownResizeCursor
                               : h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     if (changed)

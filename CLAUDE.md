@@ -68,8 +68,8 @@ warnings; keep it that way when adding code.
   pans from the position plus 8 points on a circle of radius `spread` (rotated 22.5 deg, mirror-symmetric) and averages the
   squared gains (MDAP-like, constant power, continuous in position and spread; spread <= 0 = plain). The audio thread's
   gain cache key includes the spread. On the pad (`FieldComponent`): semi-transparent circle of radius spread, drawn under
-  the sources; only the inner circle (`kSourceRadius` 9 px) is a mouse target. Option (Alt) only, not Cmd: Option + vertical
-  drag from a source changes the spread relative to its value at the press (up = more, down = less, sideways ignored,
+  the sources; only the inner circle (`kSourceRadius` 9 px) is a mouse target. Option (Alt) + vertical
+  drag from a source changes the spread (of its `movingSet`; with Cmd of the source alone, see the group modes below) relative to its value at the press (up = more, down = less, sideways ignored,
   limited to 0..10 m at every step so there is no dead zone), Option + double-click resets it. The mouse handlers
   delegate to `pressAt/dragTo/release/doubleClickAt` so tests need no real mouse events. Source XML has an optional `spread` attribute.
   `TooltipWindow` in the editor makes all tooltips visible. `readNumber` in PositionIO rejects non-numeric attributes.
@@ -95,8 +95,14 @@ warnings; keep it that way when adding code.
   state as `sourceGroups` (not a host parameter; `getSourceGroups/setSourceGroups`). On the pad (`FieldComponent`): the selection is
   GUI state only (not saved). Click = select the source and its group; Shift-click toggles (with group); rectangle on empty space
   selects (Shift extends); dragging a selected source moves `movingSet()` (the selection, else its group) with offsets taken from
-  the positions at the press (nothing stored, so automation/table edits/imports never desync a group). Cmd-drag moves one source
-  only; Option-drag spread of one, Option+Shift of `movingSet` (also Option+Shift double-click reset). Cmd+G / Cmd+Shift+G (pad has
+  the positions at the press (nothing stored, so automation/table edits/imports never desync a group). Drag modes are chosen from the
+  modifiers at the press (`FieldComponent::dragModeFor`, at most two keys each, "group" = `movingSet`): none = move group; Cmd = move one;
+  Option = spread of the group; Option+Cmd = spread of one; Option+Shift = scale (up = apart, `kScalePerPixel` 0.005 per px as exp, floor `kMinScale`
+  5 %, cap `tripan::maxScaleFactor`); Cmd+Shift = rotate around the centroid (`kRotationPerPixel` 1 degree per px, up = counter-clockwise,
+  `tripan::clampRotation` follows the angle in 1 degree steps and stops at the first violation so it can never tunnel through a forbidden
+  range). Scale and rotation are relative to the press positions with a running factor/angle clamped at every step (no dead zone), need at least two
+  sources (else nothing happens), and show a readout and the centre of gravity while dragging. Option / Option+Cmd double-click reset the spread
+  of the group / the source. Cmd+G / Cmd+Shift+G (pad has
   keyboard focus; `keyPressed`), Group/Ungroup buttons in row 3, Group column in the sources table, optional `group` attribute in source
   XML (an import where any entry has it replaces all groups). Groups and moving need sources on Edit; members above `numSources` keep
   their group but are ignored when moving. Drawing: every member takes the own colour of the lowest-numbered member (`FieldComponent::sourceColour(source, groups)`; ungrouping restores the individual colours), also for the ring, spread circle, links, widened hull band, "G<n>" tag and the table swatch.

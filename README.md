@@ -37,8 +37,9 @@ and the source itself keeps its solid inner circle.
   relative to the value when you press, so you can start a drag anywhere on the inner circle. The spread is
   limited to 0..10 m at every step, so dragging down to 0 and further, then up again, increases the spread at
   once, which makes it easy to bring the spread back to 0 (just drag down). A readout shows the value while you
-  drag, and the source does not move. Only Option is used (Cmd is not), so Cmd keeps its usual meaning in hosts.
-* **Reset it:** Option + double-click the source.
+  drag, and the source does not move. If the source is in a group (or part of a selection) the spread of all of
+  them changes by the same amount; add **Cmd** (Ctrl on Windows) to change only the source you grab.
+* **Reset it:** Option + double-click the source (Option+Cmd for that source only when it is in a group).
 * **Moving** works as before: drag the inner circle without a modifier.
 * **Only the inner circle takes the mouse.** The spread circle is display only, so a source with a large spread
   never gets in the way of other sources inside it. Sources must be set to Edit.
@@ -68,12 +69,21 @@ automation or table edits of one source do not need the group.
 * **Group / Ungroup:** the buttons in the third row, or **Cmd+G** and **Cmd+Shift+G** (Ctrl on Windows) while
   the pad has the keyboard focus. Grouping a selection that contains members of existing groups merges those
   groups whole. Ungrouping dissolves the whole group of every selected source. A group of one source does not exist.
-* **Move:** drag any member (or any selected source) and everything that is selected or in its group moves rigidly.
-  The movement is limited so that every member stays inside the +-10 m pad: the group stops at the wall
-  (and slides along it) without changing its shape.
-* **Move one source alone:** **Cmd**-drag (Ctrl on Windows). The group stays a group, with a new shape.
-* **Spread:** Option-drag changes one source, **Option+Shift**-drag changes the whole group by the same
-  amount (limited so that no member goes below 0 or above 10 m). Option+Shift double-click resets the group's spread.
+* **Moving and shaping a group:** the modifiers are read when you press the mouse button and apply to the whole drag.
+  "The group" is the group of the source you grab, or the selection if it is part of one.
+
+  | Drag | macOS / Windows | Effect |
+  |---|---|---|
+  | plain | | Moves the whole group, keeping its shape. Every member stays inside the +-10 m pad: the group stops at the wall (and slides along it) without being deformed. |
+  | **Cmd** | Cmd / Ctrl | Moves the source you grab only. It stays in the group, which gets a new shape. |
+  | **Option** | Option / Alt | Changes the spread of the whole group by the same amount (up = more). No member goes below 0 or above 10 m. |
+  | **Option + Cmd** | Option+Cmd / Alt+Ctrl | Changes the spread of the grabbed source only. |
+  | **Option + Shift** | Option+Shift / Alt+Shift | Scales the group around its centre of gravity: up = the sources move apart, down = closer together (about 0.5 % per pixel, not below 5 % of the size at the press). The shape is kept, and expansion stops when a member reaches the wall. |
+  | **Cmd + Shift** | Cmd+Shift / Ctrl+Shift | Rotates the group around its centre of gravity: up = counter-clockwise, down = clockwise (one degree per pixel). The rotation stops where a member would leave the pad, and you can turn back at once. |
+
+  Spread, scaling and rotation are vertical drags (sideways movement does nothing). Scaling and rotation need at
+  least two sources (a group or a selection) and show a readout and the centre of gravity while you drag.
+  Double-clicking with Option resets the spread of the group (Option+Cmd: of one source).
 * **Look:** all members of a group take the colour of the member with the lowest number (and get their own colours back when ungrouped); a ring marks the members and a soft band surrounds their outline, with a
   number "G1", "G2", ... above it. Hovering a grouped source names its group in the tooltip. The table window for
   sources has a Group column.

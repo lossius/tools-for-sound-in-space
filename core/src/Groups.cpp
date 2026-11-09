@@ -197,6 +197,92 @@ double clampSpreadChange (const std::vector<double>& spreads, double change, dou
     return std::min (std::max (change, -*lo), maxSpread - *hi);
 }
 
+Vec2 centroid (const std::vector<Vec2>& points)
+{
+    double sx = 0.0, sy = 0.0;
+    int n = 0;
+    for (const auto& p : points)
+        if (std::isfinite (p.x) && std::isfinite (p.y))
+        {
+            sx += p.x;
+            sy += p.y;
+            ++n;
+        }
+
+    return n > 0 ? Vec2 { sx / n, sy / n } : Vec2 {};
+}
+
+double maxScaleFactor (const std::vector<Vec2>& points, Vec2 centre, double limit)
+{
+    double factor = 1e9;
+    const auto consider = [&] (double offset, double middle)
+    {
+        if (offset > 1e-12)
+            factor = std::min (factor, (limit - middle) / offset);
+        else if (offset < -1e-12)
+            factor = std::min (factor, (-limit - middle) / offset);
+    };
+
+    for (const auto& p : points)
+        if (std::isfinite (p.x) && std::isfinite (p.y))
+        {
+            consider (p.x - centre.x, centre.x);
+            consider (p.y - centre.y, centre.y);
+        }
+
+    return std::max (factor, 0.0);
+}
+
+Vec2 rotateAbout (Vec2 p, Vec2 centre, double angle)
+{
+    const double c = std::cos (angle), s = std::sin (angle);
+    const double dx = p.x - centre.x, dy = p.y - centre.y;
+    return { centre.x + c * dx - s * dy, centre.y + s * dx + c * dy };
+}
+
+double clampRotation (const std::vector<Vec2>& points, Vec2 centre, double current, double wanted, double limit)
+{
+    if (! std::isfinite (wanted))
+        return current;
+
+    const auto inside = [&] (double angle)
+    {
+        for (const auto& p : points)
+        {
+            const auto q = rotateAbout (p, centre, angle);
+            if (std::abs (q.x) > limit + 1e-9 || std::abs (q.y) > limit + 1e-9)
+                return false;
+        }
+        return true;
+    };
+
+    // Walk from the current angle towards the wanted one in steps of a degree; at the first step that is not
+    // allowed, narrow it down by bisection.
+    constexpr double step = 3.14159265358979323846 / 180.0;
+    const double direction = wanted >= current ? 1.0 : -1.0;
+    double good = current;
+
+    while (std::abs (wanted - good) > 1e-12)
+    {
+        const double next = std::abs (wanted - good) <= step ? wanted : good + direction * step;
+        if (inside (next))
+        {
+            good = next;
+            continue;
+        }
+
+        double lo = good, hi = next;
+        for (int i = 0; i < 30; ++i)
+        {
+            const double mid = 0.5 * (lo + hi);
+            (inside (mid) ? lo : hi) = mid;
+        }
+        return lo;
+    }
+
+    return good;
+}
+
 std::vector<Vec2> convexHull (std::vector<Vec2> pts)
 {
     pts.erase (std::remove_if (pts.begin(), pts.end(), [] (const Vec2& p) { return ! std::isfinite (p.x) || ! std::isfinite (p.y); }), pts.end());

@@ -847,6 +847,32 @@ static void testGroupGeometry()
     CHECK (isNear (clampSpreadChange (sp, -99.0, 10.0), -1.0));
     CHECK (clampSpreadChange ({}, 1.0, 10.0) == 0.0);
 
+    // Centre of gravity.
+    auto c = centroid (pts);
+    CHECK (isNear (c.x, 2.0) && isNear (c.y, -2.0 / 3.0));
+    CHECK (centroid ({}).x == 0.0);
+
+    // Largest scale factor about a centre: here the y offset -5 limits it to 2.
+    CHECK (isNear (maxScaleFactor ({ { -2.0, 1.0 }, { 4.0, 1.0 }, { 0.0, -5.0 } }, { 0.0, 0.0 }, 10.0), 2.0));
+    CHECK (isNear (maxScaleFactor ({ { 1.0, 1.0 }, { 3.0, 1.0 } }, { 2.0, 1.0 }, 10.0), 8.0));   // (10 - 2) / 1
+    CHECK (maxScaleFactor ({ { 2.0, 2.0 } }, { 2.0, 2.0 }, 10.0) > 1e6);                       // no offsets: unlimited
+
+    // Rotation: a quarter turn counter-clockwise about the origin takes (1, 0) to (0, 1).
+    auto r = rotateAbout ({ 1.0, 0.0 }, { 0.0, 0.0 }, 1.5707963267948966);
+    CHECK (isNear (r.x, 0.0) && isNear (r.y, 1.0));
+    const std::vector<Vec2> ring { { 6.0, 0.0 }, { -6.0, 0.0 } };       // radius 6 about the origin: always inside +-10
+    CHECK (isNear (clampRotation (ring, { 0.0, 0.0 }, 0.0, 5.0, 10.0), 5.0));
+    // A wall: points at radius 6 about (5, 0) leave the square (x up to 11) when turned to the right.
+    const std::vector<Vec2> beside { { 5.0, 6.0 }, { 5.0, -6.0 } };
+    const double stop = clampRotation (beside, { 5.0, 0.0 }, 0.0, -1.5, 10.0);   // wanted -1.5 rad (clockwise)
+    CHECK (stop < 0.0 && stop > -1.5);
+    for (const auto& q : beside)
+    {
+        const auto m = rotateAbout (q, { 5.0, 0.0 }, stop);
+        CHECK (std::abs (m.x) <= 10.0 + 1e-6 && std::abs (m.y) <= 10.0 + 1e-6);
+    }
+    CHECK (isNear (clampRotation (beside, { 5.0, 0.0 }, stop, 0.0, 10.0), 0.0));   // and back again
+
     // Hull: the inner point and the point on an edge are dropped, order is counter-clockwise.
     auto hull = convexHull ({ { 0, 0 }, { 4, 0 }, { 4, 4 }, { 0, 4 }, { 2, 2 }, { 2, 0 } });
     CHECK (hull.size() == 4);

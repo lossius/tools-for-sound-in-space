@@ -93,6 +93,32 @@ Vec2 clampTranslation (const std::vector<Vec2>& points, Vec2 delta, double limit
     @return           The change to use: `change`, reduced as far as needed. */
 double clampSpreadChange (const std::vector<double>& spreads, double change, double maxSpread);
 
+/** @return The centre of gravity (the mean position) of the finite points, or the origin if there are none. */
+Vec2 centroid (const std::vector<Vec2>& points);
+
+/** The largest factor by which the points can be scaled away from `centre` (their offsets from it multiplied)
+    while all of them stay inside the square +-`limit`. A factor of 1 or more is always possible for points
+    that are inside. Points at the centre do not limit it; if nothing limits it, a very large number is returned.
+    @param points  The positions.
+    @param centre  The fixed point of the scaling.
+    @param limit   Half the side of the square in metres. */
+double maxScaleFactor (const std::vector<Vec2>& points, Vec2 centre, double limit);
+
+/** @return `p` turned by `angle` radians counter-clockwise (seen with +y up) around `centre`. */
+Vec2 rotateAbout (Vec2 p, Vec2 centre, double angle);
+
+/** Limits a rotation of a set of points around `centre` so that they all stay inside the square +-`limit`.
+    The rotation is followed from `current` towards `wanted` in steps of one degree and stops where the first
+    point would leave the square (found to a tiny fraction of a degree), so a rotation can never jump over a
+    forbidden range and can always be reversed.
+    @param points   The positions at angle 0.
+    @param centre   The centre of the rotation.
+    @param current  The angle in radians that is in effect now (must be a valid one).
+    @param wanted   The angle in radians that is wanted.
+    @param limit    Half the side of the square in metres.
+    @return         The angle to use, between `current` and `wanted`. */
+double clampRotation (const std::vector<Vec2>& points, Vec2 centre, double current, double wanted, double limit);
+
 /** @return The corners of the convex hull of the points, counter-clockwise, without repeated points
     (fewer than three points give the distinct points as they are; collinear points give the two ends). */
 std::vector<Vec2> convexHull (std::vector<Vec2> points);
