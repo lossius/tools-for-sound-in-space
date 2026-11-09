@@ -106,6 +106,14 @@ static void testGroups (const char* snapshotPath)
     field.release();
     CHECK (selected ({ 1, 2, 5 }));
 
+    // Show links: the toggle hides the source-to-speaker lines (on by default).
+    CHECK (field.getShowLinks() && editor->getShowLinksButton().getToggleState());
+    editor->getShowLinksButton().setToggleState (false, juce::sendNotificationSync);
+    CHECK (! field.getShowLinks());
+    editor->getShowLinksButton().setToggleState (true, juce::sendNotificationSync);
+    CHECK (field.getShowLinks());
+    CHECK (editor->getShowLinksButton().getRight() <= editor->getResetButton().getX() && editor->getUngroupButton().getRight() < editor->getWidth());
+
     // Group them (the button and Cmd+G do the same).
     editor->syncControls();
     CHECK (editor->getGroupButton().isEnabled());

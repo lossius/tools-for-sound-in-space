@@ -72,6 +72,12 @@ void FieldComponent::setShowTriangulation (bool shouldShow)
     repaint();
 }
 
+void FieldComponent::setShowLinks (bool shouldShow)
+{
+    showLinks = shouldShow;
+    repaint();
+}
+
 int FieldComponent::activeSources() const  { return processor.getActiveSources(); }
 int FieldComponent::activeSpeakers() const { return processor.getActiveSpeakers(); }
 
@@ -677,7 +683,7 @@ void FieldComponent::paint (juce::Graphics& g)
     }
 
     // Links from each source to the speakers it currently feeds, weighted by gain.
-    if (triangulation != nullptr)
+    if (showLinks && triangulation != nullptr)
     {
         for (int s = 0; s < n; ++s)
         {

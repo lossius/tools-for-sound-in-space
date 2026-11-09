@@ -50,6 +50,7 @@ public:
     juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }            ///< Edit/View menu for sources.
     juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }          ///< Edit/View menu for speakers.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }            ///< Auto/Manual/Off menu.
+    juce::ToggleButton& getShowLinksButton() noexcept { return showLinksButton; }      ///< "Show links".
     juce::TextButton& getResetButton() noexcept { return resetButton; }                ///< "Reset layout".
     juce::TextButton& getZoomInButton() noexcept { return zoomInButton; }              ///< "Zoom In".
     juce::TextButton& getZoomOutButton() noexcept { return zoomOutButton; }            ///< "Zoom Out".
@@ -127,6 +128,7 @@ private:
     juce::Label virtualLabel { {}, "Virtual speakers" }; ///< Caption of the virtual speaker menu.
     juce::ComboBox virtualModeBox;                       ///< Auto / Manual / Off.
     juce::ToggleButton showTriangulationButton { "Show triangulation" }; ///< Draws the triangles on the pad.
+    juce::ToggleButton showLinksButton { "Show links" }; ///< Draws the lines from each source to the speakers it feeds.
     juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.
     juce::TextButton zoomInButton { "Zoom In" };         ///< Zooms the pad towards the speakers.
     juce::TextButton zoomOutButton { "Zoom Out" };       ///< Zooms the pad back out.

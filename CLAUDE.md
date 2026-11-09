@@ -59,7 +59,7 @@ warnings; keep it that way when adding code.
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
 - Top of the editor: row 1 sources, row 2 speakers (count, Edit/View menu, export, import), row 3 triangulation
-  toggle, reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
+  toggle, "Show links" toggle (source-to-speaker lines, `FieldComponent::setShowLinks`), reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
   "View". Defaults: sources Edit, speakers View. Stored in the plugin state as `editSources` / `editSpeakers`
   (not host parameters; the old single `editMode` property from earlier versions is still read) and queried with
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, and "Reset layout" only resets kinds set to Edit (disabled if both are View).

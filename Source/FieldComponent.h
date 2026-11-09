@@ -40,6 +40,12 @@ public:
     /** Shows or hides the triangles. */
     void setShowTriangulation (bool shouldShow);
 
+    /** Shows or hides the lines from each source to the speakers it feeds (thickness and brightness follow the gain). */
+    void setShowLinks (bool shouldShow);
+
+    /** @return Whether the source-to-speaker lines are drawn. */
+    bool getShowLinks() const noexcept { return showLinks; }
+
     /** Radius in pixels of a source's inner circle. This is also its mouse target: the (semi-transparent)
         spread circle around it is only a display and never takes part in mouse interaction. */
     static constexpr float kSourceRadius = 9.0f;
@@ -204,6 +210,7 @@ private:
     std::unique_ptr<tripan::SpeakerLayout> triangulation;      ///< The layout that is drawn.
     size_t lastStateHash = 0;                                  ///< Hash of what was last drawn, to skip repaints.
     bool showTriangulation = true;                             ///< Whether the triangles are drawn.
+    bool showLinks = true;                                     ///< Whether the source-to-speaker lines are drawn.
     double viewHalf = (double) tripan::params::kCoordRange;    ///< Half extent of the view in metres, see zoomIn().
     juce::Point<double> viewCentre;                            ///< Centre of the view in metres.
 

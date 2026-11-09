@@ -69,6 +69,11 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     showTriangulationButton.onClick = [this] { field.setShowTriangulation (showTriangulationButton.getToggleState()); };
     content.addAndMakeVisible (showTriangulationButton);
 
+    showLinksButton.setTooltip ("Draw the lines from each source to the speakers it feeds. Turn off for a less cluttered pad.");
+    showLinksButton.setToggleState (true, juce::dontSendNotification);
+    showLinksButton.onClick = [this] { field.setShowLinks (showLinksButton.getToggleState()); };
+    content.addAndMakeVisible (showLinksButton);
+
     resetButton.setTooltip ("Place the unlocked sources and speakers in use on rings");
     resetButton.onClick = [this]
     {
@@ -407,16 +412,17 @@ void TriPanAudioProcessorEditor::layoutContent()
 
     // Third row: display options and zoom.
     auto bar = area.removeFromTop (32).reduced (10, 5);
-    showTriangulationButton.setBounds (bar.removeFromLeft (150));
-    resetButton.setBounds (bar.removeFromLeft (100));
+    showTriangulationButton.setBounds (bar.removeFromLeft (140));
+    showLinksButton.setBounds (bar.removeFromLeft (105));
+    resetButton.setBounds (bar.removeFromLeft (90));
     bar.removeFromLeft (8);
-    zoomInButton.setBounds (bar.removeFromLeft (74));
+    zoomInButton.setBounds (bar.removeFromLeft (70));
     bar.removeFromLeft (4);
-    zoomOutButton.setBounds (bar.removeFromLeft (74));
+    zoomOutButton.setBounds (bar.removeFromLeft (70));
     bar.removeFromLeft (16);
-    groupButton.setBounds (bar.removeFromLeft (70));
+    groupButton.setBounds (bar.removeFromLeft (62));
     bar.removeFromLeft (4);
-    ungroupButton.setBounds (bar.removeFromLeft (80));
+    ungroupButton.setBounds (bar.removeFromLeft (74));
 
     // Fourth row: virtual speakers, and the line of text (track channels, import/export results).
     auto last = area.removeFromTop (32).reduced (10, 5);
