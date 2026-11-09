@@ -30,7 +30,7 @@ public:
     /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
         window is resized. The base size is also the smallest allowed size. */
     static constexpr int kBaseWidth = 700;   ///< Width in pixels at scale 1.
-    static constexpr int kBaseHeight = 830;  ///< Height in pixels at scale 1.
+    static constexpr int kBaseHeight = 854;  ///< Height in pixels at scale 1.
     static constexpr int kMaxScale = 3;      ///< The window can grow to this multiple of the base size.
 
     /** Fills the background. */
@@ -134,6 +134,10 @@ private:
     juce::TextButton importSpeakersButton { "Import speakers..." };  ///< Loads speaker positions.
     juce::TextButton sourcesTableButton  { "Table..." };   ///< Opens the table of source positions.
     juce::TextButton speakersTableButton { "Table..." };   ///< Opens the table of speaker positions.
+
+    juce::HyperlinkButton authorLink { "Trond Lossius", juce::URL ("https://trondlossius.no") };   ///< Footer, left: the author's site.
+    juce::HyperlinkButton helpLink { "Help", juce::URL ("https://trondlossius.no/software/") };      ///< Footer, centre: help and software page.
+    juce::HyperlinkButton institutionLink { "FTVS, INN", juce::URL ("https://www.inn.no/english/about-inn/faculty-of-film-tv-games/") }; ///< Footer, right: the faculty.
 
     std::unique_ptr<PositionTableWindow> sourcesTableWindow;   ///< Table of source positions, created on first use.
     std::unique_ptr<PositionTableWindow> speakersTableWindow;  ///< Table of speaker positions, created on first use.

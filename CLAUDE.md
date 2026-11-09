@@ -91,7 +91,9 @@ warnings; keep it that way when adding code.
   centred on 0. Zoom In steps by 1.5x towards `fittedView()` (bounding box of the speakers in use, min +-2 m) and
   stops there; Zoom Out steps back to the full view. The view is fixed once set (it doesn't follow dragged
   speakers) and not saved. `toView/fromView` and the grid use it, so hit-testing and dragging work zoomed.
-- Scalable GUI: all controls sit in `content`, laid out at the base size 700x830 (`kBaseWidth/Height`, also
+- Footer row (bottom of `content`, 11 px, `juce::HyperlinkButton`s sized to their text): left "Trond Lossius" -> trondlossius.no,
+  centre "Help" -> trondlossius.no/software/, right "FTVS, INN" -> inn.no faculty page.
+- Scalable GUI: all controls sit in `content`, laid out at the base size 700x854 (`kBaseWidth/Height`, also
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.

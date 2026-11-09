@@ -110,6 +110,14 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     speakersTableButton.onClick = [this] { toggleTableWindow (Kind::Speakers); };
     content.addAndMakeVisible (speakersTableButton);
 
+    // Footer with links; small and quiet, as it is secondary to the plugin itself.
+    for (auto* link : { &authorLink, &helpLink, &institutionLink })
+    {
+        link->setFont (juce::FontOptions (11.0f), false);
+        link->setColour (juce::HyperlinkButton::textColourId, juce::Colours::white.withAlpha (0.55f));
+        content.addAndMakeVisible (*link);
+    }
+
     // Scalable GUI: the base size is the minimum, the aspect ratio is fixed.
     setResizable (true, true);
     setResizeLimits (kBaseWidth, kBaseHeight, kBaseWidth * kMaxScale, kBaseHeight * kMaxScale);
@@ -398,6 +406,19 @@ void TriPanAudioProcessorEditor::layoutContent()
     virtualModeBox.setBounds (last.removeFromLeft (90));
     last.removeFromLeft (12);
     infoLabel.setBounds (last);
+
+    // Footer: links at the left, in the centre and at the right, each only as wide as its text so that
+    // clicking the empty space between them does nothing.
+    auto footer = area.removeFromBottom (22).reduced (10, 2);
+    const auto fitted = [] (const juce::HyperlinkButton& link)
+    {
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText (juce::FontOptions (11.0f), link.getButtonText(), 0.0f, 0.0f);
+        return juce::roundToInt (glyphs.getBoundingBox (0, -1, true).getWidth()) + 6;
+    };
+    authorLink.setBounds (footer.removeFromLeft (fitted (authorLink)));
+    institutionLink.setBounds (footer.removeFromRight (fitted (institutionLink)));
+    helpLink.setBounds (footer.withSizeKeepingCentre (fitted (helpLink), footer.getHeight()));
 
     field.setBounds (area);
 }
