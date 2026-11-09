@@ -74,7 +74,7 @@ automation or table edits of one source do not need the group.
 * **Move one source alone:** **Cmd**-drag (Ctrl on Windows). The group stays a group, with a new shape.
 * **Spread:** Option-drag changes one source, **Option+Shift**-drag changes the whole group by the same
   amount (limited so that no member goes below 0 or above 10 m). Option+Shift double-click resets the group's spread.
-* **Look:** each group has a colour (a ring around its members, a soft band around their outline) and a
+* **Look:** all members of a group take the colour of the member with the lowest number (and get their own colours back when ungrouped); a ring marks the members and a soft band surrounds their outline, with a
   number "G1", "G2", ... above it. Hovering a grouped source names its group in the tooltip. The table window for
   sources has a Group column.
 * Groups need sources set to **Edit**. If you lower the number of sources, hidden members keep their group

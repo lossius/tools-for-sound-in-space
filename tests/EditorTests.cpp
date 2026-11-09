@@ -129,6 +129,15 @@ static void testGroups (const char* snapshotPath)
     CHECK (field.keyPressed (juce::KeyPress ('g', juce::ModifierKeys::commandModifier, 'g')));
     CHECK (p.getSourceGroups().groupOf (3) == 2 && p.getSourceGroups().groupOf (4) == 2 && p.getSourceGroups().groupOf (0) == 0);
 
+    // Colours: members of a group share the colour of the lowest-numbered member; others keep their own.
+    {
+        const auto groups = p.getSourceGroups();
+        const auto own = [&] (int i) { return FieldComponent::sourceColour (i, tripan::SourceGroups()); };
+        CHECK (FieldComponent::sourceColour (2, groups) == own (1) && FieldComponent::sourceColour (5, groups) == own (1));
+        CHECK (FieldComponent::sourceColour (4, groups) == own (3) && FieldComponent::sourceColour (0, groups) == own (0));
+        CHECK (own (1) != own (2) && own (0) != own (1));   // individual colours differ again when ungrouped
+    }
+
     // Clicking one member selects the whole group.
     click (2, none);
     CHECK (selected ({ 1, 2, 5 }));

@@ -27,8 +27,8 @@ constexpr float kGrabRadius = 13.0f;
 /// Space in pixels around the plane for the axis labels.
 constexpr float kMargin = 22.0f;
 
-/** Colour of source `index`: hues spaced by the golden ratio, so neighbours are easy to tell apart. */
-juce::Colour sourceColour (int index)
+/** Own colour of source `index`: hues spaced by the golden ratio, so neighbours are easy to tell apart. */
+juce::Colour individualColour (int index)
 {
     const float hue = std::fmod ((float) index * 0.61803398875f, 1.0f);
     return juce::Colour::fromHSV (hue, 0.55f, 0.98f, 1.0f);
@@ -176,11 +176,15 @@ void FieldComponent::setSpread (int source, double metres)
     prm->setValueNotifyingHost (prm->convertTo0to1 (juce::jlimit (0.0f, tripan::params::kMaxSpread, (float) metres)));
 }
 
-juce::Colour FieldComponent::groupColour (int id)
+juce::Colour FieldComponent::sourceColour (int source, const tripan::SourceGroups& groups)
 {
-    static const juce::uint32 palette[] { 0xffff9f43, 0xff48dbfb, 0xffff6bcb, 0xffa4de3c,
-                                          0xfff9ca24, 0xffa29bfe, 0xffff6b6b, 0xff1dd1a1 };
-    return juce::Colour (palette[(size_t) (std::max (id, 1) - 1) % std::size (palette)]);
+    const int id = groups.groupOf (source);
+    if (id > 0)
+        for (int i = 0; i < tripan::kMaxChannels; ++i)
+            if (groups.groupOf (i) == id)
+                return individualColour (i); // the lowest member
+
+    return individualColour (source);
 }
 
 bool FieldComponent::isGroupSpreadModifier (const juce::ModifierKeys& mods) noexcept
@@ -627,13 +631,16 @@ void FieldComponent::paint (juce::Graphics& g)
             continue;
 
         std::vector<tripan::Vec2> pts;
+        std::vector<int> members;
         for (int s = 0; s < n; ++s)
             if (groups.groupOf (s) == id)
             {
                 const auto pos = position ({ true, s });
                 pts.push_back ({ pos.x, pos.y });
+                members.push_back (s);
             }
 
+        const auto groupTint = sourceColour (members.front(), groups);
         const auto hull = tripan::convexHull (pts);
         juce::Path path;
         for (size_t i = 0; i < hull.size(); ++i)
@@ -644,10 +651,10 @@ void FieldComponent::paint (juce::Graphics& g)
         if (hull.size() >= 3)
         {
             path.closeSubPath();
-            g.setColour (groupColour (id).withAlpha (0.08f));
+            g.setColour (groupTint.withAlpha (0.08f));
             g.fillPath (path);
         }
-        g.setColour (groupColour (id).withAlpha (0.2f));
+        g.setColour (groupTint.withAlpha (0.2f));
         g.strokePath (path, juce::PathStrokeType (30.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         auto top = toView (hull.front().x, hull.front().y);
@@ -656,7 +663,7 @@ void FieldComponent::paint (juce::Graphics& g)
             const auto v = toView (h.x, h.y);
             if (v.y < top.y) top = v;
         }
-        g.setColour (groupColour (id).withAlpha (0.95f));
+        g.setColour (groupTint.withAlpha (0.95f));
         g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
         g.drawText ("G" + juce::String (id), juce::Rectangle<float> (30.0f, 12.0f).withCentre ({ top.x, top.y - 27.0f }), juce::Justification::centred);
     }
@@ -675,9 +682,9 @@ void FieldComponent::paint (juce::Graphics& g)
             const auto c = toView (pos.x, pos.y);
             const float radius = (float) spread * pixelsPerMetre;
             const auto circle = juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (c);
-            g.setColour (sourceColour (s).withAlpha (0.16f));
+            g.setColour (sourceColour (s, groups).withAlpha (0.16f));
             g.fillEllipse (circle);
-            g.setColour (sourceColour (s).withAlpha (0.6f));
+            g.setColour (sourceColour (s, groups).withAlpha (0.6f));
             g.drawEllipse (circle, 1.2f);
         }
     }
@@ -695,7 +702,7 @@ void FieldComponent::paint (juce::Graphics& g)
                 const auto spk = position ({ false, gains.speaker[(size_t) i] });
                 const auto to = toView (spk.x, spk.y);
                 const float gain = gains.gain[(size_t) i];
-                g.setColour (sourceColour (s).withAlpha (0.15f + 0.75f * gain));
+                g.setColour (sourceColour (s, groups).withAlpha (0.15f + 0.75f * gain));
                 g.drawLine (from.x, from.y, to.x, to.y, 0.8f + 2.4f * gain);
             }
         }
@@ -740,7 +747,7 @@ void FieldComponent::paint (juce::Graphics& g)
         const auto r = juce::Rectangle<float> (18.0f, 18.0f).withCentre (c);
         if (const int id = groups.groupOf (s); id > 0) // ring in the colour of the group
         {
-            g.setColour (groupColour (id));
+            g.setColour (sourceColour (s, groups));
             g.drawEllipse (r.expanded (3.0f), 2.0f);
         }
         if (std::binary_search (selection.begin(), selection.end(), s)) // selected
@@ -748,7 +755,7 @@ void FieldComponent::paint (juce::Graphics& g)
             g.setColour (juce::Colours::white.withAlpha (0.9f));
             g.drawEllipse (r.expanded (7.0f), 1.5f);
         }
-        g.setColour (sourceColour (s));
+        g.setColour (sourceColour (s, groups));
         g.fillEllipse (r);
         g.setColour (hot ? juce::Colours::white : juce::Colours::black.withAlpha (0.6f));
         g.drawEllipse (r, hot ? 2.0f : 1.0f);

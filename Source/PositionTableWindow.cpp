@@ -271,11 +271,12 @@ void PositionTable::paintCell (juce::Graphics& g, int row, int column, int width
     if (column == groupColumn)
     {
         // The group's colour and number, or a dash for a source that is in no group.
-        const int id = processor.getSourceGroups().groupOf (row);
+        const auto groups = processor.getSourceGroups();
+        const int id = groups.groupOf (row);
         const auto text = id > 0 ? juce::String (id) : juce::String ("-");
         if (id > 0)
         {
-            g.setColour (FieldComponent::groupColour (id));
+            g.setColour (FieldComponent::sourceColour (row, groups));
             g.fillEllipse (14.0f, ((float) height - 10.0f) * 0.5f, 10.0f, 10.0f);
         }
         g.setColour (juce::Colours::white.withAlpha (id > 0 ? 0.9f : 0.4f));

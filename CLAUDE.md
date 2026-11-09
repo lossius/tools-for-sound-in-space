@@ -99,7 +99,7 @@ warnings; keep it that way when adding code.
   only; Option-drag spread of one, Option+Shift of `movingSet` (also Option+Shift double-click reset). Cmd+G / Cmd+Shift+G (pad has
   keyboard focus; `keyPressed`), Group/Ungroup buttons in row 3, Group column in the sources table, optional `group` attribute in source
   XML (an import where any entry has it replaces all groups). Groups and moving need sources on Edit; members above `numSources` keep
-  their group but are ignored when moving. Drawing: palette colour per id (`FieldComponent::groupColour`), ring, widened hull band, "G<n>" tag.
+  their group but are ignored when moving. Drawing: every member takes the own colour of the lowest-numbered member (`FieldComponent::sourceColour(source, groups)`; ungrouping restores the individual colours), also for the ring, spread circle, links, widened hull band, "G<n>" tag and the table swatch.
 - Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-10 m
   centred on 0. Zoom In steps by 1.5x towards `fittedView()` (bounding box of the speakers in use, min +-2 m) and
   stops there; Zoom Out steps back to the full view. The view is fixed once set (it doesn't follow dragged

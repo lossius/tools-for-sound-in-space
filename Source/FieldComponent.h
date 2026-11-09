@@ -66,8 +66,9 @@ public:
         selection. The others stay where they are, and the group stays a group (with a new shape). */
     static bool isSingleSourceModifier (const juce::ModifierKeys& mods) noexcept;
 
-    /** @return The colour of group `id` (1 and up): from a fixed palette that repeats, so a group keeps its colour. */
-    static juce::Colour groupColour (int id);
+    /** @return The colour of a source: its own colour, or, if it is in a group, the own colour of the member
+        with the lowest number, so that a group is drawn in one colour and ungrouping gives the individual colours back. */
+    static juce::Colour sourceColour (int source, const tripan::SourceGroups& groups);
 
     /// @name Selection and groups
     /// Clicking a source selects it and the rest of its group; Shift-click adds or removes a source (with
