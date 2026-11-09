@@ -1,4 +1,5 @@
 build/
+build-aax/
 cmake-build-*/
 .DS_Store
 *.xcuserstate

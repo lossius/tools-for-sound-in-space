@@ -207,8 +207,10 @@ cmake --build build --config Release --target TriPan_AAX
 ```
 Pro Tools only loads AAX plugins that are signed through Avid's PACE process. Development builds
 need a Pro Tools Developer build; release builds need signing arranged with Avid. This path has not
-been built or tested yet, and the channel/stem formats Pro Tools accepts for 64-channel layouts
-must be verified.
+been tested in Pro Tools yet, and the channel/stem formats Pro Tools accepts for 64-channel layouts
+must be verified. The plug-in compiles and links against AAX SDK 2.10.0 (unsigned `.aaxplugin`, macOS Release build).
+The SDK's `LICENSE.txt` offers it under Avid's commercial licence or under GPLv3; GPLv3 can be combined with
+AGPLv3, but read the licence yourself before distributing an AAX build.
 
 ## Signing and notarization (macOS)
 Unsigned downloads are blocked by Gatekeeper, so releases are signed with a **Developer ID
