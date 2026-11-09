@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file PluginEditor.cpp
+    @brief Layout, scaling, controls and file dialogs of the plugin window. */
+
 #include "PluginEditor.h"
 #include "Parameters.h"
 
@@ -247,6 +250,7 @@ juce::Result TriPanAudioProcessorEditor::importPositionsFrom (tripan::io::Kind k
 
 namespace
 {
+/** The folder last used in a file dialog (starts at the user's Documents folder), shared by all dialogs. */
 juce::File& lastDirectory()
 {
     static juce::File dir = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);

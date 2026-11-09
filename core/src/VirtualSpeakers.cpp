@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file VirtualSpeakers.cpp
+    @brief Automatic detection of where virtual speakers are useful (gap fillers and ring centre). */
+
 #include "tripan/VirtualSpeakers.h"
 
 #include <algorithm>

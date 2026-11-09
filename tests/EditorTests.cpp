@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Editor tests: hit-testing, dragging through the parameters, and an optional PNG snapshot
-// (pass an output path as argv[1]).
+/** @file EditorTests.cpp
+    @brief Editor tests: hit-testing, dragging through the parameters, and an optional PNG snapshot (pass an output path as argv[1]). */
+
 #include "../Source/Parameters.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/PluginProcessor.h"
@@ -10,8 +11,10 @@
 #include <cmath>
 #include <cstdio>
 
+/** Number of failed checks so far; the exit code of main(). */
 static int failures = 0;
 
+/** Counts and prints a failed condition, and carries on with the next check. */
 #define CHECK(cond)                                                          \
     do {                                                                     \
         if (! (cond)) {                                                      \
@@ -20,17 +23,20 @@ static int failures = 0;
         }                                                                    \
     } while (false)
 
+/** Current real value of a parameter. */
 static float value (TriPanAudioProcessor& p, const juce::String& id)
 {
     return p.getValueTreeState().getRawParameterValue (id)->load();
 }
 
+/** Sets a parameter to a real value. */
 static void setParam (TriPanAudioProcessor& p, const juce::String& id, float v)
 {
     auto* prm = p.getValueTreeState().getParameter (id);
     prm->setValueNotifyingHost (prm->convertTo0to1 (v));
 }
 
+/** Runs the editor tests; with argv[1] writes a PNG snapshot of the editor there (argv[2] optionally names a speaker file to load first). @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;

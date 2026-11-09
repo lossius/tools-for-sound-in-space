@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file Triangulation.h
+    @brief Delaunay triangulation of the speaker positions (JUCE-free). */
+
 #pragma once
 
 #include <span>
@@ -8,22 +11,26 @@
 
 namespace tripan
 {
+/** A point in the panning plane, in metres. +y is the front, +x the right. */
 struct Vec2
 {
-    double x = 0.0;
-    double y = 0.0;
+    double x = 0.0; ///< Horizontal position (positive = right).
+    double y = 0.0; ///< Depth position (positive = front).
 };
 
 /** Indices into the speaker array passed to Triangulation, counter-clockwise. */
 struct Triangle
 {
-    int a, b, c;
+    int a; ///< First corner (point index; real speakers first, then virtual ones).
+    int b; ///< Second corner.
+    int c; ///< Third corner.
 };
 
 /** Directed boundary edge (counter-clockwise around the hull). */
 struct Edge
 {
-    int a, b;
+    int a; ///< Point index of the start of the edge.
+    int b; ///< Point index of the end of the edge.
 };
 
 /** Delaunay triangulation of the speaker positions.
@@ -51,16 +58,25 @@ public:
         speaker have unit L2 norm). */
     struct Weight
     {
-        int speaker;
-        float weight;
+        int speaker;  ///< Index of the real speaker.
+        float weight; ///< Share of the virtual speaker's gain (amplitude weight).
     };
 
+    /** Creates an empty triangulation (no points). */
     Triangulation() = default;
+
+    /** Triangulates the points. Allocates: call off the audio thread.
+        @param speakers         Real speaker positions (index = output channel).
+        @param virtualSpeakers  Positions of virtual speakers to take part in the triangulation. */
     explicit Triangulation (std::span<const Vec2> speakers, std::span<const Vec2> virtualSpeakers = {});
 
     /** All points: the real speakers first, then the virtual ones. */
     std::span<const Vec2> speakers() const noexcept { return points; }
+
+    /** Number of real speakers (including unusable ones such as duplicates). */
     int numReal() const noexcept { return realCount; }
+
+    /** Number of virtual speakers. */
     int numVirtual() const noexcept { return virtualCount; }
 
     /** The real speakers sharing a triangle with virtual speaker `index` (>= numReal()). Their weights
@@ -68,6 +84,8 @@ public:
         more) and normalised to unit L2 norm, so that the redistributed power equals the virtual
         gain's. */
     std::span<const Weight> redistribution (int index) const noexcept;
+
+    /** The triangles, counter-clockwise, as indices into speakers(). */
     std::span<const Triangle> triangles() const noexcept { return tris; }
 
     /** Hull edges (triangle case) or the chain of consecutive speakers (collinear case). */
@@ -77,16 +95,19 @@ public:
     int loneSpeaker() const noexcept { return lone; }
 
 private:
+    /** Runs Bowyer-Watson on the usable points and fills tris and edges. */
     void build();
+
+    /** Computes the weights of every virtual speaker (see redistribution()). */
     void buildRedistribution();
 
-    int realCount = 0;
-    int virtualCount = 0;
-    std::vector<Weight> weights;
-    std::vector<int> weightStart; // virtualCount + 1 offsets into `weights`
-    std::vector<Vec2> points;
-    std::vector<Triangle> tris;
-    std::vector<Edge> edges;
-    int lone = -1;
+    int realCount = 0;                ///< See numReal().
+    int virtualCount = 0;             ///< See numVirtual().
+    std::vector<Weight> weights;      ///< Redistribution weights of all virtual speakers, one after the other.
+    std::vector<int> weightStart;     ///< virtualCount + 1 offsets into #weights.
+    std::vector<Vec2> points;         ///< Real speakers, then virtual ones.
+    std::vector<Triangle> tris;       ///< See triangles().
+    std::vector<Edge> edges;          ///< See boundaryEdges().
+    int lone = -1;                    ///< See loneSpeaker().
 };
 }

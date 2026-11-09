@@ -1,100 +1,131 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file PluginEditor.h
+    @brief The plugin window: count sliders, Edit/View and virtual speaker menus, file buttons and the pad. */
+
 #pragma once
 
 #include "FieldComponent.h"
 #include "PluginProcessor.h"
 #include "PositionIO.h"
 
+/** TriPan's editor window.
+
+    All controls live in a child component laid out at the base size (kBaseWidth x kBaseHeight) and
+    scaled uniformly with the window, which has a fixed aspect ratio. Rows from the top: sources,
+    speakers, display options (triangulation, reset, zoom, status), virtual speakers, then the
+    FieldComponent pad. */
 class TriPanAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                          private juce::Timer
 {
 public:
-    explicit TriPanAudioProcessorEditor (TriPanAudioProcessor&);
+    /** Creates the editor for `processor` and restores the saved window size. */
+    explicit TriPanAudioProcessorEditor (TriPanAudioProcessor& processor);
+
+    /** Stops the timer and detaches from the parameters. */
     ~TriPanAudioProcessorEditor() override;
 
     /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
         window is resized. The base size is also the smallest allowed size. */
-    static constexpr int kBaseWidth = 700;
-    static constexpr int kBaseHeight = 830;
-    static constexpr int kMaxScale = 3;
+    static constexpr int kBaseWidth = 700;   ///< Width in pixels at scale 1.
+    static constexpr int kBaseHeight = 830;  ///< Height in pixels at scale 1.
+    static constexpr int kMaxScale = 3;      ///< The window can grow to this multiple of the base size.
 
+    /** Fills the background. */
     void paint (juce::Graphics&) override;
+
+    /** Applies the scale transform to the content and remembers the window width. */
     void resized() override;
 
     /** Current display scale (1.0 at the base size). */
     float getScale() const noexcept { return scale; }
 
-    FieldComponent& getField() noexcept { return field; }
-    juce::Slider& getSourceCountSlider() noexcept { return sourceCount; }
-    juce::Slider& getSpeakerCountSlider() noexcept { return speakerCount; }
-    juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }
-    juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }
-    juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }
-    juce::TextButton& getResetButton() noexcept { return resetButton; }
-    juce::TextButton& getZoomInButton() noexcept { return zoomInButton; }
-    juce::TextButton& getZoomOutButton() noexcept { return zoomOutButton; }
-    juce::TextButton& getExportSourcesButton() noexcept { return exportSourcesButton; }
-    juce::TextButton& getImportSourcesButton() noexcept { return importSourcesButton; }
-    juce::TextButton& getExportSpeakersButton() noexcept { return exportSpeakersButton; }
-    juce::TextButton& getImportSpeakersButton() noexcept { return importSpeakersButton; }
+    /// @name Access to the controls (used by the tests)
+    /// @{
+    FieldComponent& getField() noexcept { return field; }                              ///< The pad.
+    juce::Slider& getSourceCountSlider() noexcept { return sourceCount; }              ///< "Number of Sources" slider.
+    juce::Slider& getSpeakerCountSlider() noexcept { return speakerCount; }            ///< "Number of Speakers" slider.
+    juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }            ///< Edit/View menu for sources.
+    juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }          ///< Edit/View menu for speakers.
+    juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }            ///< Auto/Manual/Off menu.
+    juce::TextButton& getResetButton() noexcept { return resetButton; }                ///< "Reset layout".
+    juce::TextButton& getZoomInButton() noexcept { return zoomInButton; }              ///< "Zoom In".
+    juce::TextButton& getZoomOutButton() noexcept { return zoomOutButton; }            ///< "Zoom Out".
+    juce::TextButton& getExportSourcesButton() noexcept { return exportSourcesButton; }   ///< "Export sources...".
+    juce::TextButton& getImportSourcesButton() noexcept { return importSourcesButton; }   ///< "Import sources...".
+    juce::TextButton& getExportSpeakersButton() noexcept { return exportSpeakersButton; } ///< "Export speakers...".
+    juce::TextButton& getImportSpeakersButton() noexcept { return importSpeakersButton; } ///< "Import speakers...".
+    /// @}
 
     /** Writes / reads a positions file and shows the outcome in the status text. The buttons call
         these after the user has chosen a file; failures are returned, not shown in a dialog. */
-    juce::Result exportPositionsTo (tripan::io::Kind, const juce::File&);
-    juce::Result importPositionsFrom (tripan::io::Kind, const juce::File&);
+    juce::Result exportPositionsTo (tripan::io::Kind kind, const juce::File& file);
+    /** @copydoc exportPositionsTo() */
+    juce::Result importPositionsFrom (tripan::io::Kind kind, const juce::File& file);
 
     /** Re-reads the parameters and channel counts into the controls (also called by a timer). */
     void syncControls();
 
 private:
+    /** Timer callback: keeps the controls in step with the parameters. */
     void timerCallback() override { syncControls(); }
+
+    /** Positions every control in base-size pixels. */
     void layoutContent();
 
-    void chooseFileAndExport (tripan::io::Kind);
-    void chooseFileAndImport (tripan::io::Kind);
-    void showStatus (const juce::String&);
+    /** Asks where to save (async file dialog) and exports. */
+    void chooseFileAndExport (tripan::io::Kind kind);
+
+    /** Asks which file to open (async file dialog) and imports. */
+    void chooseFileAndImport (tripan::io::Kind kind);
+
+    /** Shows a message in the status area for a few seconds. */
+    void showStatus (const juce::String& message);
 
     /** Wires a count slider to its parameter. The slider shows the effective value (parameter
         clamped to the track's channel count) and its maximum is the channel count. */
-    void setUpCountSlider (juce::Slider&, const juce::String& parameterId);
-    void syncCountSlider (juce::Slider&, int effectiveValue, int channels);
+    void setUpCountSlider (juce::Slider& slider, const juce::String& parameterId);
 
-    TriPanAudioProcessor& owner;
+    /** Shows `effectiveValue` and the channel count as the slider's maximum, without changing the parameter. */
+    void syncCountSlider (juce::Slider& slider, int effectiveValue, int channels);
 
-    juce::TooltipWindow tooltipWindow { this, 600 }; // shows the tooltips of the buttons, menus and the pad
+    TriPanAudioProcessor& owner; ///< The processor this editor belongs to.
+
+    juce::TooltipWindow tooltipWindow { this, 600 }; ///< Shows the tooltips of the buttons, menus and the pad.
 
     // All controls live in `content`, which is laid out at the base size and scaled by a transform.
     // (Declared before the controls so that it is destroyed after them.)
-    juce::Component content;
-    float scale = 1.0f;
-    bool sizeIsRestored = false;
+    juce::Component content;       ///< Parent of all controls, laid out at the base size.
+    float scale = 1.0f;            ///< Current display scale, see getScale().
+    bool sizeIsRestored = false;   ///< True once the saved window size has been applied.
 
-    FieldComponent field;
+    FieldComponent field;          ///< The XY pad.
 
-    juce::Label sourcesLabel  { {}, "Sources" };
-    juce::Label speakersLabel { {}, "Speakers" };
-    juce::Slider sourceCount, speakerCount;
-    juce::Label infoLabel;
-    juce::ComboBox sourcesModeBox, speakersModeBox; // "Edit" / "View"
-    juce::Label virtualLabel { {}, "Virtual speakers" };
-    juce::ComboBox virtualModeBox;                  // Auto / Manual / Off
-    juce::ToggleButton showTriangulationButton { "Show triangulation" };
-    juce::TextButton resetButton { "Reset layout" };
-    juce::TextButton zoomInButton { "Zoom In" };
-    juce::TextButton zoomOutButton { "Zoom Out" };
-    juce::TextButton exportSourcesButton  { "Export sources..." };
-    juce::TextButton importSourcesButton  { "Import sources..." };
-    juce::TextButton exportSpeakersButton { "Export speakers..." };
-    juce::TextButton importSpeakersButton { "Import speakers..." };
+    juce::Label sourcesLabel  { {}, "Sources" };    ///< Row 1 caption.
+    juce::Label speakersLabel { {}, "Speakers" };   ///< Row 2 caption.
+    juce::Slider sourceCount;      ///< Number of sources in use.
+    juce::Slider speakerCount;     ///< Number of speakers in use.
+    juce::Label infoLabel;         ///< Status text and the track's channel counts.
+    juce::ComboBox sourcesModeBox;   ///< "Edit" / "View" for sources.
+    juce::ComboBox speakersModeBox;  ///< "Edit" / "View" for speakers.
+    juce::Label virtualLabel { {}, "Virtual speakers" }; ///< Caption of the virtual speaker menu.
+    juce::ComboBox virtualModeBox;                       ///< Auto / Manual / Off.
+    juce::ToggleButton showTriangulationButton { "Show triangulation" }; ///< Draws the triangles on the pad.
+    juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.
+    juce::TextButton zoomInButton { "Zoom In" };         ///< Zooms the pad towards the speakers.
+    juce::TextButton zoomOutButton { "Zoom Out" };       ///< Zooms the pad back out.
+    juce::TextButton exportSourcesButton  { "Export sources..." };   ///< Saves source positions.
+    juce::TextButton importSourcesButton  { "Import sources..." };   ///< Loads source positions.
+    juce::TextButton exportSpeakersButton { "Export speakers..." };  ///< Saves speaker positions.
+    juce::TextButton importSpeakersButton { "Import speakers..." };  ///< Loads speaker positions.
 
-    std::unique_ptr<juce::FileChooser> fileChooser; // kept alive while a dialog is open
-    juce::String statusText;
-    juce::uint32 statusUntil = 0;
+    std::unique_ptr<juce::FileChooser> fileChooser; ///< Kept alive while a dialog is open.
+    juce::String statusText;                        ///< Message currently shown in the status area.
+    juce::uint32 statusUntil = 0;                   ///< Millisecond counter value at which the message expires.
 
-    bool syncing = false;
-    bool dragging = false;
+    bool syncing = false;   ///< True while controls are updated from parameters (ignores their callbacks).
+    bool dragging = false;  ///< True while the user drags a count slider, so that syncing does not move it.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriPanAudioProcessorEditor)
 };

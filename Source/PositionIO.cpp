@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file PositionIO.cpp
+    @brief XML writing and strict, all-or-nothing reading of position files. */
+
 #include "PositionIO.h"
 #include "Parameters.h"
 
@@ -12,21 +15,27 @@ namespace tripan::io
 {
 namespace
 {
+/** Value of the `version` attribute written to every file. */
 constexpr int kFormatVersion = 1;
 
+/** Name of the root element for the kind of file. */
 const char* rootTag (Kind k)  { return k == Kind::Sources ? "TriPanSources" : "TriPanSpeakers"; }
+/** Name of the per-entry elements for the kind of file. */
 const char* entryTag (Kind k) { return k == Kind::Sources ? "Source" : "Speaker"; }
 
+/** Parameter ID of the x or y (`axis`) coordinate of entry `index` (0-based). */
 juce::String idFor (Kind k, int index, char axis)
 {
     return k == Kind::Sources ? params::sourceId (index, axis) : params::speakerId (index, axis);
 }
 
+/** Current real value of a parameter. */
 float readParam (const TriPanAudioProcessor& p, const juce::String& id)
 {
     return p.getValueTreeState().getRawParameterValue (id)->load();
 }
 
+/** Sets a parameter to a real value inside a change gesture, so that hosts record it. */
 void writeParam (TriPanAudioProcessor& p, const juce::String& id, float value)
 {
     if (auto* prm = p.getValueTreeState().getParameter (id))
@@ -63,10 +72,12 @@ bool readNumber (const juce::XmlElement& e, const char* name, double& out)
     return std::isfinite (out);
 }
 
+/** One validated entry of an imported file. */
 struct Entry
 {
-    float x, y;
-    float spread = -1.0f; // negative: the file has none
+    float x;                ///< Position x in metres.
+    float y;                ///< Position y in metres.
+    float spread = -1.0f;   ///< Spread in metres; negative if the file has none.
 };
 }
 

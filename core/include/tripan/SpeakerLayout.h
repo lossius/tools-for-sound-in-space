@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file SpeakerLayout.h
+    @brief The real speakers plus smoothly blended virtual speakers, and the gain computation on top of it. */
+
 #pragma once
 
 #include "tripan/Gains.h"
@@ -28,15 +31,25 @@ namespace tripan
 class SpeakerLayout
 {
 public:
+    /** Creates an empty layout (no layers, id 0). */
     SpeakerLayout() = default;
+
+    /** Builds all layers. Allocates: call off the audio thread.
+        @param realSpeakers     Positions of the real speakers (index = output channel).
+        @param virtualSpeakers  Virtual speakers with their strengths; zero-strength ones are dropped. */
     SpeakerLayout (std::span<const Vec2> realSpeakers, std::span<const VirtualSpeaker> virtualSpeakers = {});
 
     /** Unique number of this layout (0 for a default-constructed one), so that a cached result can be
         tied to the layout it was computed from (a pointer is not enough: freed memory may be reused). */
     std::uint64_t id() const noexcept { return layoutId; }
 
+    /** Number of nested layers (1 + number of virtual speakers with strength > 0, or 0 if empty). */
     int numLayers() const noexcept { return (int) layers.size(); }
+
+    /** Triangulation of layer `index` (0 = real speakers only, j = plus the j strongest virtual ones). */
     const Triangulation& layer (int index) const noexcept { return layers[(size_t) index].triangulation; }
+
+    /** Weight of layer `index` in the blend (non-negative; the weights sum to 1). */
     double layerWeight (int index) const noexcept { return layers[(size_t) index].weight; }
 
     /** The layer with all virtual speakers that have any strength (for drawing). Empty if there are no layers. */
@@ -46,18 +59,22 @@ public:
     std::span<const VirtualSpeaker> virtualSpeakers() const noexcept { return sorted; }
 
 private:
+    /** One nested triangulation and its blend weight. */
     struct Layer
     {
-        Triangulation triangulation;
-        double weight;
+        Triangulation triangulation; ///< Real speakers plus the strongest virtual ones.
+        double weight;               ///< Share of this layer in the blended gains.
     };
 
-    std::uint64_t layoutId = 0;
-    std::vector<Layer> layers;
-    std::vector<VirtualSpeaker> sorted;
+    std::uint64_t layoutId = 0;         ///< See id().
+    std::vector<Layer> layers;          ///< Layer 0 first.
+    std::vector<VirtualSpeaker> sorted; ///< Virtual speakers, strongest first.
 };
 
-/** Gains of a source for the real speakers of the layout (constant power). Real-time safe. */
+/** Gains of a source for the real speakers of the layout (constant power). Real-time safe.
+    @param layout  The layout to pan within.
+    @param source  Source position in metres.
+    @return        Gains for the real speakers. */
 SourceGains computeGains (const SpeakerLayout& layout, Vec2 source) noexcept;
 
 /** Largest spread radius in metres that is used (larger values are limited to this). */
@@ -71,6 +88,10 @@ inline constexpr double kMaxSpreadRadius = 100.0;
     plain gain. A larger spread feeds more speakers more evenly and makes the panning smoother:
     - continuous in the position and in the spread,
     - symmetric: mirroring the layout and the source mirrors the gains.
-    Costs up to 9 times the plain computation; real-time safe. */
+    Costs up to 9 times the plain computation; real-time safe.
+    @param layout  The layout to pan within.
+    @param source  Source position in metres.
+    @param spread  Radius of the spread circle in metres (limited to tripan::kMaxSpreadRadius).
+    @return        Gains for the real speakers. */
 SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double spread) noexcept;
 }

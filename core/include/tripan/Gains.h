@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file Gains.h
+    @brief Constant-power barycentric gains of one source for a single Triangulation. */
+
 #pragma once
 
 #include "tripan/Triangulation.h"
@@ -9,7 +12,7 @@
 
 namespace tripan
 {
-/** At most one entry per real speaker. */
+/** Capacity of SourceGains: at most one entry per real speaker. */
 inline constexpr int kMaxGainEntries = 64;
 
 /** Gains for one source. Without virtual speakers at most three speakers receive signal; with
@@ -17,15 +20,16 @@ inline constexpr int kMaxGainEntries = 64;
     speakers can be involved. Always constant power (sum of squared gains = 1). */
 struct SourceGains
 {
+    /** Creates an empty result (no speakers, all gains zero). */
     SourceGains()
     {
         speaker.fill (-1);
         gain.fill (0.0f);
     }
 
-    int count = 0;                                  // number of valid entries
-    std::array<int, kMaxGainEntries> speaker;       // real speaker indices
-    std::array<float, kMaxGainEntries> gain;
+    int count = 0;                                  ///< Number of valid entries in #speaker and #gain.
+    std::array<int, kMaxGainEntries> speaker;       ///< Real speaker indices (-1 for unused entries).
+    std::array<float, kMaxGainEntries> gain;        ///< Linear gain for the speaker at the same index.
 };
 
 /** Computes the speaker gains for a source at the given position.
@@ -39,6 +43,9 @@ struct SourceGains
       are connected to (Triangulation::redistribution) and the result is renormalised.
     - Real-time safe: no allocation, no locks. Cost is linear in the number of triangles.
     - Non-finite source positions or an empty triangulation give count == 0.
-*/
+
+    @param triangulation  Triangulation of the real (and optionally virtual) speakers.
+    @param source         Source position in metres.
+    @return               The speakers that receive signal and their gains (sum of squares is 1). */
 SourceGains computeGains (const Triangulation& triangulation, Vec2 source) noexcept;
 }

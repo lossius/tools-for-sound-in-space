@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file PositionIO.h
+    @brief XML export and import of source and speaker positions. */
+
 #pragma once
 
 #include "PluginProcessor.h"
@@ -35,29 +38,44 @@
     Message thread only. */
 namespace tripan::io
 {
-enum class Kind { Sources, Speakers };
-
-struct ImportReport
+/** Which positions a file holds. */
+enum class Kind
 {
-    int applied = 0;  // entries written to parameters
-    int inUse = 0;    // of those, how many are in use afterwards (index <= active count)
-    int fileCount = 0;        // speakers in the file (highest valid index); speaker imports only
-    int speakersSetTo = 0;    // new "Number of Speakers" if it was adjusted, otherwise 0
-    int trackOutputs = 0;     // outputs available on the track; speaker imports only
-    int clamped = 0;  // entries whose coordinates were limited to the allowed range
-    int skipped = 0;  // malformed entries that were ignored
-    int spreadApplied = 0; // source imports: entries that also set the spread
-
-    std::optional<VirtualMode> virtualMode; // speaker imports: set if the file specified the virtual speakers
-    int virtualCount = 0;                   // manual virtual speakers applied from the file
+    Sources,  ///< Source positions (and spreads).
+    Speakers  ///< Speaker positions and the virtual speaker setting.
 };
 
-std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor&, Kind);
+/** What an import did, for the message shown to the user. */
+struct ImportReport
+{
+    int applied = 0;          ///< Entries written to parameters.
+    int inUse = 0;            ///< Of those, how many are in use afterwards (index <= active count).
+    int fileCount = 0;        ///< Speakers in the file (highest valid index); speaker imports only.
+    int speakersSetTo = 0;    ///< New "Number of Speakers" if it was adjusted, otherwise 0.
+    int trackOutputs = 0;     ///< Outputs available on the track; speaker imports only.
+    int clamped = 0;          ///< Entries whose coordinates were limited to the allowed range.
+    int skipped = 0;          ///< Malformed entries that were ignored.
+    int spreadApplied = 0;    ///< Source imports: entries that also set the spread.
 
-juce::Result save (const TriPanAudioProcessor&, Kind, const juce::File&);
+    std::optional<VirtualMode> virtualMode; ///< Speaker imports: set if the file specified the virtual speakers.
+    int virtualCount = 0;                   ///< Manual virtual speakers applied from the file.
+};
 
-/** Reads and validates the whole file first; nothing is changed if it fails. */
-juce::Result load (TriPanAudioProcessor&, Kind, const juce::File&, ImportReport&);
+/** Builds the XML document for the sources or speakers currently in use. */
+std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& processor, Kind kind);
 
-juce::String describe (Kind) ;
+/** Writes toXml() to a file (coordinates rounded to 3 decimals and padded to a fixed width).
+    @return Success, or an error message if the file could not be written. */
+juce::Result save (const TriPanAudioProcessor& processor, Kind kind, const juce::File& file);
+
+/** Reads and validates the whole file first; nothing is changed if it fails.
+    @param processor  The processor whose parameters are written.
+    @param kind       Which kind of file is expected.
+    @param file       The file to read.
+    @param report     Filled in with what was done (only valid on success).
+    @return           Success, or an error message describing what is wrong with the file. */
+juce::Result load (TriPanAudioProcessor& processor, Kind kind, const juce::File& file, ImportReport& report);
+
+/** @return The singular word used for the kind in messages ("source" or "speaker"). */
+juce::String describe (Kind);
 }

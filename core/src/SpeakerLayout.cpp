@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file SpeakerLayout.cpp
+    @brief Nested virtual-speaker layers and the blended, optionally spread, gain computation. */
+
 #include "tripan/SpeakerLayout.h"
 
 #include <algorithm>

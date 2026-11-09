@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file FieldComponent.cpp
+    @brief Drawing, hit-testing, dragging, spread editing, virtual speaker editing and zoom of the XY pad. */
+
 #include "FieldComponent.h"
 #include "Parameters.h"
 
@@ -12,12 +15,18 @@
 
 namespace
 {
-constexpr double kFullHalf = tripan::params::kCoordRange; // the full view shows +-kFullHalf metres
-constexpr double kZoomStep = 1.5;                         // view size ratio between two zoom levels
-constexpr double kMinHalf = 2.0;                          // never zoom in closer than +-2 m
+/// The full view shows +-kFullHalf metres.
+constexpr double kFullHalf = tripan::params::kCoordRange;
+/// View size ratio between two zoom levels.
+constexpr double kZoomStep = 1.5;
+/// Never zoom in closer than +-2 m.
+constexpr double kMinHalf = 2.0;
+/// Mouse grab distance in pixels for speakers and virtual speakers (sources use FieldComponent::kSourceRadius).
 constexpr float kGrabRadius = 13.0f;
+/// Space in pixels around the plane for the axis labels.
 constexpr float kMargin = 22.0f;
 
+/** Colour of source `index`: hues spaced by the golden ratio, so neighbours are easy to tell apart. */
 juce::Colour sourceColour (int index)
 {
     const float hue = std::fmod ((float) index * 0.61803398875f, 1.0f);

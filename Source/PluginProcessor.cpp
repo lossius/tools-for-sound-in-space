@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file PluginProcessor.cpp
+    @brief Parameter access, state, triangulation publishing and the real-time panning loop. */
+
 #include "PluginProcessor.h"
 #include "Parameters.h"
 #include "PluginEditor.h"
@@ -10,13 +13,20 @@
 
 namespace
 {
+/// State property: set once the default ring layout has been applied.
 const juce::Identifier kLayoutInitialised { "layoutInitialised" };
+/// State property: whether source positions can be edited in the editor.
 const juce::Identifier kEditSources { "editSources" };
+/// State property: whether speaker positions can be edited in the editor.
 const juce::Identifier kEditSpeakers { "editSpeakers" };
-const juce::Identifier kLegacyEditMode { "editMode" }; // 1 sources, 2 speakers, 3 both, 4 view only
+/// Old single mode property from early versions (1 sources, 2 speakers, 3 both, 4 view only); still read.
+const juce::Identifier kLegacyEditMode { "editMode" };
+/// State property: width of the editor window in pixels.
 const juce::Identifier kEditorWidth { "editorWidth" };
+/// State property: the VirtualMode as an integer.
 const juce::Identifier kVirtualMode { "virtualMode" };
-const juce::Identifier kManualVirtual { "manualVirtual" }; // "x1 y1 x2 y2 ..."
+/// State property: manual virtual speakers as text, "x1 y1 x2 y2 ...".
+const juce::Identifier kManualVirtual { "manualVirtual" };
 
 /** k-th of `count` positions on a ring; k = 0 at the front (+y), going clockwise. */
 juce::Point<float> ringPosition (int k, int count, float radius)
@@ -26,6 +36,7 @@ juce::Point<float> ringPosition (int k, int count, float radius)
     return { radius * std::sin (theta), radius * std::cos (theta) };
 }
 
+/** The gain `g` gives to `speaker`, or 0 if it is not in the list. */
 float gainOf (const tripan::SourceGains& g, int speaker) noexcept
 {
     for (int i = 0; i < g.count; ++i)
@@ -34,6 +45,7 @@ float gainOf (const tripan::SourceGains& g, int speaker) noexcept
     return 0.0f;
 }
 
+/** True if `speaker` is in the list of `g`. */
 bool contains (const tripan::SourceGains& g, int speaker) noexcept
 {
     for (int i = 0; i < g.count; ++i)
@@ -71,6 +83,7 @@ TriPanAudioProcessor::~TriPanAudioProcessor()
 
 namespace
 {
+/** Number of channels in use: the parameter value rounded and limited to 1..min(channels, 64), or 0 if there are no channels. */
 int clampCount (float parameterValue, int channels) noexcept
 {
     const int available = std::min (channels, tripan::kMaxChannels);
@@ -483,6 +496,7 @@ juce::AudioProcessorEditor* TriPanAudioProcessor::createEditor()
     return new TriPanAudioProcessorEditor (*this);
 }
 
+/** Entry point used by the JUCE plugin wrappers (VST3, AU, Standalone) to create the processor. */
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new TriPanAudioProcessor();

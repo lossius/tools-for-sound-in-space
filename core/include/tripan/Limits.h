@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file Limits.h
+    @brief Compile-time limits shared by the core and the plugin. */
+
 #pragma once
 
 namespace tripan

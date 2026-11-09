@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Minimal dependency-free test runner for TriPanCore (no JUCE).
+/** @file CoreTests.cpp
+    @brief Minimal dependency-free test runner for TriPanCore (no JUCE): triangulation, gains and virtual speakers. */
+
 #include "tripan/Gains.h"
 #include "tripan/Limits.h"
 #include "tripan/SpeakerLayout.h"
@@ -17,8 +19,10 @@
 
 using namespace tripan;
 
+/** Number of failed checks so far; the exit code of main(). */
 static int failures = 0;
 
+/** Counts and prints a failed condition, and carries on with the next check. */
 #define CHECK(cond)                                                          \
     do {                                                                     \
         if (! (cond)) {                                                      \
@@ -27,12 +31,16 @@ static int failures = 0;
         }                                                                    \
     } while (false)
 
+/** True if `a` and `b` differ by at most `tol`. */
 static bool isNear (double a, double b, double tol = 1e-6) { return std::abs (a - b) <= tol; }
 
+/** Twice the signed area of the triangle (o, a, b). */
 static double cross (Vec2 o, Vec2 a, Vec2 b) { return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x); }
 
+/** Area of the triangle `t` of the points `p`. */
 static double triArea (const std::vector<Vec2>& p, const Triangle& t) { return 0.5 * cross (p[(size_t) t.a], p[(size_t) t.b], p[(size_t) t.c]); }
 
+/** Area of the convex hull of `p` (and its vertex count in `hullCount`), used to check that the triangles tile the hull exactly. */
 static double hullArea (std::vector<Vec2> p, int* hullCount = nullptr)
 {
     std::sort (p.begin(), p.end(), [] (Vec2 a, Vec2 b) { return a.x < b.x || (a.x == b.x && a.y < b.y); });
@@ -74,6 +82,7 @@ static double hullArea (std::vector<Vec2> p, int* hullCount = nullptr)
     return 0.5 * std::abs (a);
 }
 
+/** True if `d` lies strictly inside the circumcircle of triangle `t` (the Delaunay criterion, checked independently of the library). */
 static bool strictlyInsideCircumcircle (const std::vector<Vec2>& p, const Triangle& t, Vec2 d)
 {
     const auto a = p[(size_t) t.a], b = p[(size_t) t.b], c = p[(size_t) t.c];
@@ -84,6 +93,7 @@ static bool strictlyInsideCircumcircle (const std::vector<Vec2>& p, const Triang
     return det > 1e-9;
 }
 
+/** Sum of the squared gains: 1 for a constant-power result. */
 static double sumSq (const SourceGains& g)
 {
     double s = 0.0;
@@ -91,6 +101,7 @@ static double sumSq (const SourceGains& g)
     return s;
 }
 
+/** The gain `g` gives to `speaker` (0 if it gets none). */
 static float gainFor (const SourceGains& g, int speaker)
 {
     for (int i = 0; i < g.count; ++i)
@@ -98,6 +109,7 @@ static float gainFor (const SourceGains& g, int speaker)
     return 0.0f;
 }
 
+/** Checks a triangulation of `pts`: valid indices, counter-clockwise triangles, Delaunay property, and that the triangles cover the hull. */
 static void checkStructure (const std::vector<Vec2>& pts, const char* label)
 {
     Triangulation tri (pts);
@@ -129,6 +141,7 @@ static void checkStructure (const std::vector<Vec2>& pts, const char* label)
     }
 }
 
+/** The channel count limits (1 to 64). */
 static void testLimits()
 {
     CHECK (isValidChannelCount (1));
@@ -137,6 +150,7 @@ static void testLimits()
     CHECK (! isValidChannelCount (65));
 }
 
+/** Zero, one and two speakers give no or partial triangulations and sensible gains. */
 static void testDegenerateSpeakerCounts()
 {
     CHECK (computeGains (Triangulation(), { 0, 0 }).count == 0);
@@ -155,6 +169,7 @@ static void testDegenerateSpeakerCounts()
     CHECK (computeGains (t2, { std::nan (""), 0 }).count == 0);
 }
 
+/** Speakers on a line have no triangles; a source pans between its two neighbours along the line. */
 static void testCollinear()
 {
     // Unsorted on purpose: indices 0..3 at x = 3, 0, 2, 1.
@@ -171,6 +186,7 @@ static void testCollinear()
     CHECK (end.count == 1 && end.speaker[0] == 1);
 }
 
+/** A square (cocircular points) is triangulated consistently, with constant power everywhere. */
 static void testSquare()
 {
     // Four cocircular speakers: must yield exactly two consistent triangles.
@@ -187,6 +203,7 @@ static void testSquare()
     CHECK (isNear (gainFor (v, 2), 1.0) && isNear (sumSq (v), 1.0));
 }
 
+/** Grids and random layouts give valid Delaunay triangulations. */
 static void testGridsAndRandom()
 {
     std::vector<Vec2> grid;
@@ -212,6 +229,7 @@ static void testGridsAndRandom()
     checkStructure (ring, "ring16+centre");
 }
 
+/** Gains are constant power and only the three speakers of the containing triangle receive signal. */
 static void testConstantPowerAndLocality()
 {
     std::mt19937 rng (777);
@@ -235,6 +253,7 @@ static void testConstantPowerAndLocality()
     }
 }
 
+/** Gains change continuously when a source crosses triangle edges and the hull boundary. */
 static void testContinuity()
 {
     // Off-regular layout, sweep a source across and well beyond the hull.
@@ -263,6 +282,7 @@ static void testContinuity()
     CHECK (worst < 0.05);
 }
 
+/** Coincident and non-finite speakers never receive signal; the first of a coincident pair wins. */
 static void testDuplicatesAndNonFinite()
 {
     std::vector<Vec2> pts { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 0 }, { std::nan (""), 2 }, { 1, 1 } };
@@ -278,6 +298,7 @@ static void testDuplicatesAndNonFinite()
         }
 }
 
+/** Speakers on a circle of `radius` at the given azimuths (degrees, clockwise from the front). */
 static std::vector<Vec2> ring (std::initializer_list<double> azimuthsDegrees, double radius = 5.0)
 {
     std::vector<Vec2> pts;
@@ -286,6 +307,7 @@ static std::vector<Vec2> ring (std::initializer_list<double> azimuthsDegrees, do
     return pts;
 }
 
+/** findVirtualSpeakers() on 5.1, quad, rings, open layouts and degenerate input. */
 static void testFindVirtualSpeakers()
 {
     // 5.1: ring (centre speaker) plus the open back (a 140 degree gap between the surrounds).
@@ -346,6 +368,7 @@ static void testFindVirtualSpeakers()
     CHECK (findVirtualSpeakers (ring ({ 0, 120, 240 }), {}, o).size() == 2);
 }
 
+/** Gains with virtual speakers: constant power, redistribution to real neighbours, symmetry for a 5.1 source at the origin. */
 static void testVirtualSpeakerGains()
 {
     const auto fivePointOne = ring ({ -30, 30, 0, -110, 110 });         // L, R, C, Ls, Rs
@@ -419,6 +442,7 @@ static void testVirtualSpeakerGains()
     CHECK (computeGains (onlyVirtual, { 0.5, 0.2 }).count == 0);
 }
 
+/** The positions of a list of virtual speakers. */
 static std::vector<Vec2> positionsOf (const std::vector<VirtualSpeaker>& v)
 {
     std::vector<Vec2> out;
@@ -426,7 +450,7 @@ static std::vector<Vec2> positionsOf (const std::vector<VirtualSpeaker>& v)
     return out;
 }
 
-// The decisions are soft: strengths rise smoothly with the gap, the ring-ness and the enclosure.
+/** The decisions are soft: strengths rise smoothly with the gap, the ring-ness and the enclosure. */
 static void testVirtualSpeakerStrengths()
 {
     const auto backGapOf = [] (double surroundAzimuth) { return findVirtualSpeakers (ring ({ -30, 30, 0, -surroundAzimuth, surroundAzimuth })); };
@@ -479,7 +503,7 @@ static void testVirtualSpeakerStrengths()
         CHECK (std::abs (v.strength - 1.0) < 1e-12);
 }
 
-// SpeakerLayout blends nested layers with the strengths as weights.
+/** SpeakerLayout blends nested layers with the strengths as weights. */
 static void testSpeakerLayoutBlend()
 {
     const auto base = ring ({ -30, 30, 0, -110, 110 });
@@ -544,8 +568,7 @@ static void testSpeakerLayoutBlend()
     }
 }
 
-// The point of the soft decisions: while a speaker moves across a threshold, the gains of a source change
-// smoothly. With hard thresholds (the old behaviour) they jump.
+/** The point of the soft decisions: while a speaker moves across a threshold, the gains of a source change smoothly. With hard thresholds (the old behaviour) they jump. */
 static void testNoJumpsWhileSpeakersMove()
 {
     VirtualSpeakerOptions hard;
@@ -586,7 +609,7 @@ static void testNoJumpsWhileSpeakersMove()
     CHECK (jumpy > 0.1); // the hard version jumps, which is what the soft blend is for
 }
 
-// The share sent to a virtual speaker is split over its real neighbours in inverse proportion to distance.
+/** The share sent to a virtual speaker is split over its real neighbours in inverse proportion to distance. */
 static void testDistanceWeightedRedistribution()
 {
     const std::vector<Vec2> real { { 0.0, 4.0 }, { 5.0, -3.0 }, { -6.0, -2.0 } };
@@ -645,7 +668,7 @@ static void testDistanceWeightedRedistribution()
     CHECK (finite && closest > 0.99f);
 }
 
-// Per-source spread (MDAP-style): the source is panned from itself plus a ring of points around it.
+/** Per-source spread (MDAP-style): the source is panned from itself plus a ring of points around it. */
 static void testSpread()
 {
     const auto fivePointOne = ring ({ -30, 30, 0, -110, 110 });
@@ -741,6 +764,7 @@ static void testSpread()
     CHECK (computeGains (SpeakerLayout(), { 0.0, 0.0 }, 2.0).count == 0);
 }
 
+/** Runs all core tests. @return 0 if every check passed, otherwise 1. */
 int main()
 {
     testLimits();

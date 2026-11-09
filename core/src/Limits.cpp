@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file Limits.cpp
+    @brief Channel-count validation. */
+
 #include "tripan/Limits.h"
 
 namespace tripan

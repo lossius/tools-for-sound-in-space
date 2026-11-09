@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file Gains.cpp
+    @brief Barycentric gains, nearest-edge projection outside the hull, and virtual-speaker redistribution. */
+
 #include "tripan/Gains.h"
 
 #include <algorithm>
@@ -10,8 +13,10 @@ namespace tripan
 {
 namespace
 {
+/** Barycentric coordinates down to this value count as inside the triangle (absorbs rounding). */
 constexpr double kInsideTolerance = -1e-9;
 
+/** Twice the signed area of the triangle (o, a, b): positive if b is left of the ray o->a. */
 double cross (Vec2 o, Vec2 a, Vec2 b) noexcept
 {
     return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -20,9 +25,9 @@ double cross (Vec2 o, Vec2 a, Vec2 b) noexcept
 /** Up to three entries (indices into the triangulation's points, real or virtual) with unit L2 norm. */
 struct Raw
 {
-    int count = 0;
-    int index[3] { -1, -1, -1 };
-    double gain[3] { 0.0, 0.0, 0.0 };
+    int count = 0;                          ///< Number of valid entries.
+    int index[3] { -1, -1, -1 };            ///< Point indices.
+    double gain[3] { 0.0, 0.0, 0.0 };       ///< Gain of the point at the same index.
 };
 
 /** Normalises non-negative weights to unit L2 norm (constant power). */

@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file Triangulation.cpp
+    @brief Bowyer-Watson Delaunay triangulation and virtual-speaker redistribution weights. */
+
 #include "tripan/Triangulation.h"
 
 #include <algorithm>
@@ -14,6 +17,7 @@ namespace
     to the distance (amplitude), so the nearest neighbour gets the largest share. */
 constexpr double kDistanceExponent = 1.0;
 
+/** Twice the signed area of the triangle (o, a, b): positive if b is left of the ray o->a. */
 double cross (Vec2 o, Vec2 a, Vec2 b) noexcept
 {
     return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
@@ -43,6 +47,7 @@ bool inCircle (Vec2 a, Vec2 b, Vec2 c, Vec2 d) noexcept
     return det > 1e-12 * permanent;
 }
 
+/** True if `list` contains the edge b->a, i.e. the edge a->b has a neighbouring triangle. */
 bool hasReverse (const std::vector<Edge>& list, int a, int b)
 {
     return std::any_of (list.begin(), list.end(), [=] (const Edge& e) { return e.a == b && e.b == a; });

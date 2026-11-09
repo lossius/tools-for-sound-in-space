@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: 2026 Trond Lossius
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Doxygen configuration for TriPan. Run `doxygen` in the repository root; the HTML ends up in
+# build/doxygen/html (open index.html). Warnings are listed for everything left undocumented.
+
+PROJECT_NAME           = "TriPan"
+PROJECT_BRIEF          = "Triangulation-based panning of n sources to m speakers"
+OUTPUT_DIRECTORY       = build/doxygen
+INPUT                  = README.md Source core tests
+FILE_PATTERNS          = *.h *.cpp *.md
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */speaker?layouts/* */build/*
+USE_MDFILE_AS_MAINPAGE = README.md
+JAVADOC_AUTOBRIEF      = YES
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = YES
+EXTRACT_STATIC         = YES
+EXTRACT_ANON_NSPACES   = YES
+EXTRACT_LOCAL_CLASSES  = YES
+SOURCE_BROWSER         = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+PREDEFINED             = JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(x)= \
+                         JUCE_LEAK_DETECTOR(x)=

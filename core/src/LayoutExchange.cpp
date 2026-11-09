@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file LayoutExchange.cpp
+    @brief Hazard-pointer handover of SpeakerLayout objects between threads. */
+
 #include "tripan/LayoutExchange.h"
 
 #include <algorithm>

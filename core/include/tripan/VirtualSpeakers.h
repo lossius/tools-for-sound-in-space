@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file VirtualSpeakers.h
+    @brief Finds where virtual (imaginary) speakers should be placed for a given speaker layout. */
+
 #pragma once
 
 #include "tripan/Triangulation.h"
@@ -13,8 +16,8 @@ namespace tripan
     layout only partly calls for this speaker; SpeakerLayout fades it in and out smoothly. */
 struct VirtualSpeaker
 {
-    Vec2 position;
-    double strength = 1.0;
+    Vec2 position;           ///< Position in metres.
+    double strength = 1.0;   ///< 0 (not called for) to 1 (fully part of the layout).
 };
 
 /** Thresholds for findVirtualSpeakers(). Every decision is soft: instead of switching at a
@@ -26,7 +29,8 @@ struct VirtualSpeakerOptions
         ramps the strength from 0 at 90 degrees (a quad's gaps need nothing) to 1 at 110 degrees
         (the back of a 5.1 layout is 140 degrees). */
     double gapThresholdDegrees = 100.0;
-    double gapSoftnessDegrees = 10.0;        // strength 0 at threshold - softness, 1 at threshold + softness
+    /** Half the width of the ramp: strength 0 at threshold - softness, 1 at threshold + softness. */
+    double gapSoftnessDegrees = 10.0;
 
     /** The listener counts as enclosed if the largest angular gap is below this; the strength of
         everything fades to 0 between this and 180 degrees (listener outside the speakers). */
@@ -35,17 +39,17 @@ struct VirtualSpeakerOptions
     /** Speakers count as a ring around the listener if the difference between the largest and the
         smallest distance is at most this fraction of the mean distance. */
     double ringTolerance = 0.25;
-    double ringSoftness = 0.05;
+    double ringSoftness = 0.05;      ///< Half the width of the soft transition around #ringTolerance.
 
     /** No centre speaker if a real speaker is closer to the listener than this fraction of the mean distance. */
     double centreClearance = 0.25;
-    double centreSoftness = 0.05;
+    double centreSoftness = 0.05;    ///< Half the width of the soft transition around #centreClearance.
 
     /** Upper limit for the number of virtual speakers. */
     int maxCount = 16;
 
-    bool fillGaps = true;
-    bool addCentre = true;
+    bool fillGaps = true;   ///< Add virtual speakers in wide angular gaps.
+    bool addCentre = true;  ///< Add a virtual speaker at the listener for ring layouts.
 };
 
 /** Finds where virtual (imaginary) speakers are useful, for a listener at `listener`.
@@ -63,7 +67,12 @@ struct VirtualSpeakerOptions
     thresholds in `options`; speakers with no strength are not returned.
 
     Non-finite and coincident positions are ignored. The result depends only on the speaker
-    positions, so it is deterministic and has no memory. Layout changes only (allocates). */
+    positions, so it is deterministic and has no memory. Layout changes only (allocates).
+
+    @param speakers  Real speaker positions in metres.
+    @param listener  Listening position, normally the origin.
+    @param options   Thresholds and switches.
+    @return          The virtual speakers with strength > 0, at most `options.maxCount`. */
 std::vector<VirtualSpeaker> findVirtualSpeakers (std::span<const Vec2> speakers, Vec2 listener = {},
                                                  const VirtualSpeakerOptions& options = {});
 }

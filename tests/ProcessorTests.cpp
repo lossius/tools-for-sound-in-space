@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Offline tests of the TriPan processor (no DAW): energy conservation, locality, ramping,
-// speaker updates, state round-trip, large layouts.
+/** @file ProcessorTests.cpp
+    @brief Offline tests of the TriPan processor (no DAW): energy conservation, locality, ramping, speaker updates, state round-trip, large layouts, presets, spread, parameter order. */
+
 #include "../Source/Parameters.h"
 #include "../Source/PluginProcessor.h"
 #include "../Source/PositionIO.h"
@@ -15,8 +16,10 @@
 #include <cstdio>
 #include <random>
 
+/** Number of failed checks so far; the exit code of main(). */
 static int failures = 0;
 
+/** Counts and prints a failed condition, and carries on with the next check. */
 #define CHECK(cond)                                                          \
     do {                                                                     \
         if (! (cond)) {                                                      \
@@ -27,12 +30,14 @@ static int failures = 0;
 
 namespace
 {
+/** Sets a parameter to a real value (as a host would). */
 void setParam (TriPanAudioProcessor& p, const juce::String& id, float value)
 {
     auto* prm = p.getValueTreeState().getParameter (id);
     prm->setValueNotifyingHost (prm->convertTo0to1 (value));
 }
 
+/** Configures the processor for n inputs and m outputs and prepares it. @return false if the layout is refused. */
 bool configure (TriPanAudioProcessor& p, int n, int m, int blockSize)
 {
     juce::AudioProcessor::BusesLayout layout;
@@ -61,6 +66,7 @@ double fillNoise (juce::AudioBuffer<float>& b, int n, int active, std::mt19937& 
     return e;
 }
 
+/** Sum of the squared samples of channel `ch`. */
 double channelEnergy (const juce::AudioBuffer<float>& b, int ch)
 {
     double e = 0.0;
@@ -69,6 +75,7 @@ double channelEnergy (const juce::AudioBuffer<float>& b, int ch)
     return e;
 }
 
+/** True if the first `channels` channels contain only finite samples. */
 bool allFinite (const juce::AudioBuffer<float>& b, int channels)
 {
     for (int ch = 0; ch < channels; ++ch)
@@ -79,6 +86,7 @@ bool allFinite (const juce::AudioBuffer<float>& b, int channels)
 }
 }
 
+/** A stationary source keeps its energy, and only the speakers of its triangle receive signal. */
 static void testStationaryEnergyAndLocality()
 {
     TriPanAudioProcessor p;
@@ -108,6 +116,7 @@ static void testStationaryEnergyAndLocality()
         }
 }
 
+/** A moving source gives a smooth output without gain jumps between blocks. */
 static void testMovingSourceIsSmoothAndBounded()
 {
     TriPanAudioProcessor p;
@@ -133,6 +142,7 @@ static void testMovingSourceIsSmoothAndBounded()
     }
 }
 
+/** A source on a speaker feeds only that speaker, and moving the speaker updates the panning. */
 static void testSourceOnSpeakerAndSpeakerUpdate()
 {
     TriPanAudioProcessor p;
@@ -163,6 +173,7 @@ static void testSourceOnSpeakerAndSpeakerUpdate()
     }
 }
 
+/** Blocks larger than the size announced in prepareToPlay() are processed correctly. */
 static void testOversizedBlock()
 {
     TriPanAudioProcessor p;
@@ -183,6 +194,7 @@ static void testOversizedBlock()
     }
 }
 
+/** Saving and restoring the state reproduces parameters, edit modes, virtual speakers and editor width. */
 static void testStateRoundTrip()
 {
     TriPanAudioProcessor a;
@@ -220,6 +232,7 @@ static void testStateRoundTrip()
     }
 }
 
+/** 64 sources to 64 speakers runs and stays finite. */
 static void testFullSize64x64()
 {
     TriPanAudioProcessor p;
@@ -254,6 +267,7 @@ static void testFullSize64x64()
 }
 
 
+/** Total energy is conserved with 64 sources and 64 speakers. */
 static void testFullSizeEnergyConservation()
 {
     TriPanAudioProcessor p;
@@ -299,6 +313,7 @@ static void testFullSizeEnergyConservation()
     }
 }
 
+/** Automating parameters on one thread while another processes audio (run under ThreadSanitizer). */
 static void testParameterAutomationWhileProcessing()
 {
     TriPanAudioProcessor p;
@@ -359,6 +374,7 @@ static void testParameterAutomationWhileProcessing()
     CHECK (problems.load() == 0);
 }
 
+/** The counts of sources and speakers in use are clamped to the track and silence the rest. */
 static void testNumberOfSourcesAndSpeakersInUse()
 {
     TriPanAudioProcessor p;
@@ -424,6 +440,7 @@ static void testNumberOfSourcesAndSpeakersInUse()
     CHECK (p.getActiveSpeakers() == 8);
 }
 
+/** Speakers that are no longer in use go silent without clicks. */
 static void testUnusedSpeakersAreSilentImmediately()
 {
     TriPanAudioProcessor p;
@@ -477,7 +494,7 @@ static void testUnusedSpeakersAreSilentImmediately()
     CHECK (energy > 1.0);
 }
 
-// The speaker layouts in "speaker layouts/" must import cleanly and give a usable triangulation.
+/** The speaker layouts in "speaker layouts/" must import cleanly and give a usable triangulation. */
 static void testSpeakerPresets (const juce::File& dir)
 {
     struct Expected { const char* file; int count; };
@@ -607,7 +624,7 @@ static void testSpeakerPresets (const juce::File& dir)
     CHECK (std::abs (v[0].x + 5.0) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3 && std::abs (v[15].x - 5.0) < 1e-3 && std::abs (v[15].y + 5.0) < 1e-3);
 }
 
-// The virtual speakers of an 8-speaker ring fill in the centre, and the modes behave as described.
+/** The virtual speakers of an 8-speaker ring fill in the centre, and the modes behave as described. */
 static void testVirtualSpeakerModes()
 {
     TriPanAudioProcessor p;
@@ -682,8 +699,7 @@ static void testVirtualSpeakerModes()
     CHECK ((int) r.getManualVirtualSpeakers().size() == TriPanAudioProcessor::kMaxVirtualSpeakers);
 }
 
-// The reported 5.1 problem: a source at the origin must be treated symmetrically (L = R, Ls = Rs),
-// and so must every mirrored position, for every symmetric ring layout in the presets.
+/** The reported 5.1 problem: a source at the origin must be treated symmetrically (L = R, Ls = Rs), and so must every mirrored position, for every symmetric ring layout in the presets. */
 static void testMirrorSymmetryWithVirtualSpeakers (const juce::File& dir)
 {
     if (! dir.isDirectory())
@@ -754,7 +770,7 @@ static void testMirrorSymmetryWithVirtualSpeakers (const juce::File& dir)
     }
 }
 
-// Sources that have not moved reuse their gains, but must follow any change of the layout.
+/** Sources that have not moved reuse their gains, but must follow any change of the layout. */
 static void testUnchangedSourcesFollowLayoutChanges()
 {
     TriPanAudioProcessor p;
@@ -805,7 +821,7 @@ static void testUnchangedSourcesFollowLayoutChanges()
     CHECK (std::abs (outE - inE) < 1e-3 * inE);
 }
 
-// Per-source spread: a stationary source on a speaker feeds more speakers as its spread grows, with unchanged power.
+/** Per-source spread: a stationary source on a speaker feeds more speakers as its spread grows, with unchanged power. */
 static void testSourceSpread()
 {
     TriPanAudioProcessor p;
@@ -877,7 +893,7 @@ static void testSourceSpread()
     CHECK (q.getValueTreeState().getParameter (tripan::params::spreadId (63)) != nullptr);
 }
 
-// The order of the parameters as a host lists them: counts, then each source (x, y, spread), then each speaker (x, y).
+/** The order of the parameters as a host lists them: counts, then each source (x, y, spread), then each speaker (x, y). */
 static void testParameterOrder()
 {
     TriPanAudioProcessor p;
@@ -919,6 +935,7 @@ static void testParameterOrder()
     CHECK (parameters[parameters.size() - 1]->getName (64) == "Speaker 64 Y");
 }
 
+/** Runs all processor tests. @param argc,argv  argv[1] is the folder with the speaker layouts. @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;

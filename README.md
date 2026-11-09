@@ -6,6 +6,11 @@ with constant overall intensity.
 
 Status: early development (M1 skeleton).
 
+## API documentation
+
+The code is documented with Doxygen. Install it (`brew install doxygen`), run `doxygen Doxyfile` in the repository root and
+open `build/doxygen/html/index.html`.
+
 ## Build (macOS)
 ```
 git clone --recursive <repo-url>

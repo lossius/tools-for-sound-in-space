@@ -37,6 +37,11 @@ IDE layout (Xcode / Visual Studio): `source_group` calls in the CMake files give
 the compiled `.mm/.cpp` units and `include` = the module's headers, added to the `TriPan` target only so the IDE lists
 them). Headers must be listed in `target_sources` to show up; add new plugin files there and to the `source_group` lists.
 
+Documentation: every file has a Doxygen `@file`/`@brief` block and every class, function, member and constant has a
+`/** */` comment (also private ones and the test helpers; unnamed parameters in declarations should be named so that
+`@param` works). `doxygen Doxyfile` (brew install doxygen) writes HTML to `build/doxygen/html` and must report no
+warnings; keep it that way when adding code.
+
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.
 - Triangulation is computed off the audio thread (on parameter change) and handed over lock-free
