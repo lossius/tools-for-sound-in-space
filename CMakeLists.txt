@@ -21,6 +21,15 @@ set(TRIPAN_VST3_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3" CACHE PATH 
 option(TRIPAN_INSTALL_AU "Copy the built AudioUnit to TRIPAN_AU_INSTALL_DIR after building" ${APPLE})
 set(TRIPAN_AU_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/Components" CACHE PATH "Where TRIPAN_INSTALL_AU copies the AudioUnit")
 
+# Pro Tools only scans the system-wide folder, which is not writable by default (see README: AAX).
+if(APPLE)
+    set(TRIPAN_AAX_DEFAULT_DIR "/Library/Application Support/Avid/Audio/Plug-Ins")
+else()
+    set(TRIPAN_AAX_DEFAULT_DIR "$ENV{CommonProgramFiles}/Avid/Audio/Plug-Ins")
+endif()
+option(TRIPAN_INSTALL_AAX "Copy the built AAX plug-in to TRIPAN_AAX_INSTALL_DIR after building (only with TRIPAN_ENABLE_AAX)" ${TRIPAN_ENABLE_AAX})
+set(TRIPAN_AAX_INSTALL_DIR "${TRIPAN_AAX_DEFAULT_DIR}" CACHE PATH "Where TRIPAN_INSTALL_AAX copies the AAX plug-in")
+
 enable_testing()
 
 # IDE organisation: everything JUCE creates goes in a "JUCE" folder, our own code is grouped under
@@ -143,6 +152,17 @@ if(APPLE AND TRIPAN_INSTALL_AU)
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_AU_DEST}"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_AU_BUNDLE}" "${TRIPAN_AU_DEST}"
         COMMENT "Copying TriPan.component to ${TRIPAN_AU_INSTALL_DIR}"
+        VERBATIM)
+endif()
+
+if(TRIPAN_ENABLE_AAX AND TRIPAN_INSTALL_AAX)
+    set(TRIPAN_AAX_BUNDLE "$<GENEX_EVAL:$<TARGET_PROPERTY:TriPan_AAX,JUCE_PLUGIN_ARTEFACT_FILE>>")
+    set(TRIPAN_AAX_DEST "${TRIPAN_AAX_INSTALL_DIR}/$<TARGET_PROPERTY:TriPan,JUCE_PRODUCT_NAME>.aaxplugin")
+    add_custom_command(TARGET TriPan_AAX POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRIPAN_AAX_INSTALL_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_AAX_DEST}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_AAX_BUNDLE}" "${TRIPAN_AAX_DEST}"
+        COMMENT "Copying TriPan.aaxplugin to ${TRIPAN_AAX_INSTALL_DIR}"
         VERBATIM)
 endif()
 

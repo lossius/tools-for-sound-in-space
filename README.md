@@ -205,6 +205,11 @@ this repository, and check its current licence terms before publishing AAX build
 cmake -B build -G Xcode -DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK
 cmake --build build --config Release --target TriPan_AAX
 ```
+Every AAX build is copied to Pro Tools' system folder (`/Library/Application Support/Avid/Audio/Plug-Ins` on
+macOS, `%CommonProgramFiles%\Avid\Audio\Plug-Ins` on Windows). The folder must be writable by your user
+(on macOS it is writable by the `admin` group by default). Turn this off with `-DTRIPAN_INSTALL_AAX=OFF`
+or change the folder with `-DTRIPAN_AAX_INSTALL_DIR=...`.
+
 Pro Tools only loads AAX plugins that are signed through Avid's PACE process. Development builds
 need a Pro Tools Developer build; release builds need signing arranged with Avid. This path has not
 been tested in Pro Tools yet, and the channel/stem formats Pro Tools accepts for 64-channel layouts

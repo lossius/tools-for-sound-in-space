@@ -30,7 +30,7 @@ For threading checks, build `TriPanProcessorTests` in a separate dir with
 `-DCMAKE_CXX_FLAGS=-fsanitize=thread` (clean as of M5); it includes a test that automates parameters
 on one thread while another processes audio.
 
-AAX (optional): `-DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK`. The Avid AAX SDK is
+AAX (optional): `-DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK`; every `TriPan_AAX` build then copies the bundle to Avid's system plug-in folder (`-DTRIPAN_INSTALL_AAX=OFF`, `-DTRIPAN_AAX_INSTALL_DIR=...`). The Avid AAX SDK is
 not redistributable: keep it outside this repo. Check its current licence before publishing AAX builds (SDK 2.10.0 compiles; its LICENSE.txt offers Avid's licence or GPLv3).
 
 IDE layout (Xcode / Visual Studio): `source_group` calls in the CMake files give the project navigator the groups
