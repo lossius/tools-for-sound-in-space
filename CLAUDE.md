@@ -19,7 +19,8 @@ cmake -B build -G Xcode          # or: cmake -B build -G Ninja -DCMAKE_BUILD_TYP
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
-On macOS every build of `TriPan_VST3` also copies the bundle to `~/Library/Audio/Plug-Ins/VST3`
+On macOS every build of `TriPan_AU` likewise copies the bundle to `~/Library/Audio/Plug-Ins/Components`
+(`-DTRIPAN_INSTALL_AU=OFF`, `-DTRIPAN_AU_INSTALL_DIR=...`). On macOS every build of `TriPan_VST3` also copies the bundle to `~/Library/Audio/Plug-Ins/VST3`
 (`-DTRIPAN_INSTALL_VST3=OFF` disables it; `-DTRIPAN_VST3_INSTALL_DIR=...` changes the folder; CI and
 the signing script turn it off).
 

@@ -27,7 +27,7 @@ if [ -z "${DRY_RUN:-}" ] && [ -z "${NOTARY_PROFILE:-}" ] && [ -z "${APPLE_ID:-}"
 fi
 
 if [ -z "${NO_BUILD:-}" ]; then
-    cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DTRIPAN_INSTALL_VST3=OFF >/dev/null
+    cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DTRIPAN_INSTALL_VST3=OFF -DTRIPAN_INSTALL_AU=OFF >/dev/null
     cmake --build "$BUILD_DIR" --config Release --target TriPan_VST3 TriPan_AU TriPan_Standalone
 fi
 

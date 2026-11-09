@@ -25,7 +25,7 @@ jobs:
           submodules: recursive
 
       - name: Configure (universal binary)
-        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DTRIPAN_INSTALL_VST3=OFF
+        run: cmake -B build -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DTRIPAN_INSTALL_VST3=OFF -DTRIPAN_INSTALL_AU=OFF
 
       - name: Build
         run: >

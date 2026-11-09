@@ -19,8 +19,10 @@ cmake -B build -G Xcode
 cmake --build build --config Release
 ```
 
-On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` after each build. Use
-`-DTRIPAN_INSTALL_VST3=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` to change the location.
+On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` and the AudioUnit to
+`~/Library/Audio/Plug-Ins/Components` after each build. Use `-DTRIPAN_INSTALL_VST3=OFF` /
+`-DTRIPAN_INSTALL_AU=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` /
+`-DTRIPAN_AU_INSTALL_DIR=<folder>` to change the location.
 
 ## Source spread
 Each source has a **spread**: the radius, in metres, of a circle around it over which its sound is

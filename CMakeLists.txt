@@ -17,6 +17,9 @@ set(TRIPAN_AAX_SDK_PATH "" CACHE PATH "Path to the Avid AAX SDK (not redistribut
 # the Windows system VST3 folder needs administrator rights). CI turns this off.
 option(TRIPAN_INSTALL_VST3 "Copy the built VST3 to TRIPAN_VST3_INSTALL_DIR after building" ${APPLE})
 set(TRIPAN_VST3_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/VST3" CACHE PATH "Where TRIPAN_INSTALL_VST3 copies the VST3")
+# The same for the AudioUnit (macOS only).
+option(TRIPAN_INSTALL_AU "Copy the built AudioUnit to TRIPAN_AU_INSTALL_DIR after building" ${APPLE})
+set(TRIPAN_AU_INSTALL_DIR "$ENV{HOME}/Library/Audio/Plug-Ins/Components" CACHE PATH "Where TRIPAN_INSTALL_AU copies the AudioUnit")
 
 enable_testing()
 
@@ -129,6 +132,17 @@ if(TRIPAN_INSTALL_VST3)
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_VST3_DEST}"
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_VST3_BUNDLE}" "${TRIPAN_VST3_DEST}"
         COMMENT "Copying TriPan.vst3 to ${TRIPAN_VST3_INSTALL_DIR}"
+        VERBATIM)
+endif()
+
+if(APPLE AND TRIPAN_INSTALL_AU)
+    set(TRIPAN_AU_BUNDLE "$<GENEX_EVAL:$<TARGET_PROPERTY:TriPan_AU,JUCE_PLUGIN_ARTEFACT_FILE>>")
+    set(TRIPAN_AU_DEST "${TRIPAN_AU_INSTALL_DIR}/$<TARGET_PROPERTY:TriPan,JUCE_PRODUCT_NAME>.component")
+    add_custom_command(TARGET TriPan_AU POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRIPAN_AU_INSTALL_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_AU_DEST}"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_AU_BUNDLE}" "${TRIPAN_AU_DEST}"
+        COMMENT "Copying TriPan.component to ${TRIPAN_AU_INSTALL_DIR}"
         VERBATIM)
 endif()
 
