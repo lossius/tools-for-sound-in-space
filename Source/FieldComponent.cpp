@@ -396,9 +396,9 @@ void FieldComponent::paint (juce::Graphics& g)
 
     g.setColour (juce::Colours::white.withAlpha (0.45f));
     g.setFont (juce::FontOptions (12.0f));
-    g.drawText ("front", juce::Rectangle<float> (plane.getCentreX() - 30.0f, plane.getY() - 18.0f, 60.0f, 16.0f),
+    g.drawText ("Front", juce::Rectangle<float> (plane.getCentreX() - 30.0f, plane.getY() - 18.0f, 60.0f, 16.0f),
                 juce::Justification::centred);
-    g.drawText ("back", juce::Rectangle<float> (plane.getCentreX() - 30.0f, plane.getBottom() + 2.0f, 60.0f, 16.0f),
+    g.drawText ("Back", juce::Rectangle<float> (plane.getCentreX() - 30.0f, plane.getBottom() + 2.0f, 60.0f, 16.0f),
                 juce::Justification::centred);
 
     g.saveState();

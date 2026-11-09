@@ -113,7 +113,7 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     // Footer with links; small and quiet, as it is secondary to the plugin itself.
     for (auto* link : { &authorLink, &helpLink, &institutionLink })
     {
-        link->setFont (juce::FontOptions (11.0f), false);
+        link->setFont (juce::FontOptions (11.0f), false, juce::Justification::centred);
         link->setColour (juce::HyperlinkButton::textColourId, juce::Colours::white.withAlpha (0.55f));
         content.addAndMakeVisible (*link);
     }
@@ -418,7 +418,9 @@ void TriPanAudioProcessorEditor::layoutContent()
     };
     authorLink.setBounds (footer.removeFromLeft (fitted (authorLink)));
     institutionLink.setBounds (footer.removeFromRight (fitted (institutionLink)));
-    helpLink.setBounds (footer.withSizeKeepingCentre (fitted (helpLink), footer.getHeight()));
+    // Centred on the window, not on the space left between the other two links (which differ in width),
+    // so that it lines up with "Back" above the pad.
+    helpLink.setBounds (juce::Rectangle<int> (fitted (helpLink), footer.getHeight()).withCentre ({ content.getWidth() / 2, footer.getCentreY() }));
 
     field.setBounds (area);
 }
