@@ -33,9 +33,9 @@ AAX (optional): `-DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK`.
 not redistributable: keep it outside this repo. Check its current licence before publishing AAX builds.
 
 IDE layout (Xcode / Visual Studio): `source_group` calls in the CMake files give the project navigator the groups
-`Sources` (plugin code, headers included), `Core` (`src`, `include`), `Tests`, and `JUCE` (one subgroup per
-JUCE module; only the module `.mm/.cpp` units that are compiled, not every JUCE header). Headers must be listed
-in `target_sources` to show up; add new files there.
+`Sources`, `Core` (each with `src` and `include`), `Tests`, and `JUCE` (one subgroup per JUCE module, each with `src` =
+the compiled `.mm/.cpp` units and `include` = the module's headers, added to the `TriPan` target only so the IDE lists
+them). Headers must be listed in `target_sources` to show up; add new plugin files there and to the `source_group` lists.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.

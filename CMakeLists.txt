@@ -69,11 +69,17 @@ target_sources(TriPan PRIVATE
     Source/PositionIO.cpp
     Source/PositionIO.h
     Source/Parameters.h)
-source_group("Sources" FILES
-    Source/PluginProcessor.cpp Source/PluginProcessor.h
-    Source/PluginEditor.cpp Source/PluginEditor.h
-    Source/FieldComponent.cpp Source/FieldComponent.h
-    Source/PositionIO.cpp Source/PositionIO.h
+# In the IDE, sources and headers sit in separate subfolders, like in TriPanCore.
+source_group("Sources/src" FILES
+    Source/PluginProcessor.cpp
+    Source/PluginEditor.cpp
+    Source/FieldComponent.cpp
+    Source/PositionIO.cpp)
+source_group("Sources/include" FILES
+    Source/PluginProcessor.h
+    Source/PluginEditor.h
+    Source/FieldComponent.h
+    Source/PositionIO.h
     Source/Parameters.h)
 
 target_compile_definitions(TriPan PUBLIC
@@ -91,12 +97,20 @@ target_link_libraries(TriPan
         juce::juce_recommended_warning_flags)
 
 # JUCE's module sources are compiled into our targets (they are not separate Xcode targets). Put
-# them all in a "JUCE" group, with one subgroup per module. Later groups win over earlier ones.
+# them all in a "JUCE" group, with one subgroup per module and, as in TriPanCore, "src" (the
+# compiled .mm/.cpp/.c units) and "include" (the headers, only listed so that the IDE shows them;
+# they are not compiled). Later groups win over earlier ones; groups with FILES win over regexes.
 source_group("JUCE" REGULAR_EXPRESSION "/JUCE/")
-file(GLOB TRIPAN_JUCE_MODULE_DIRS LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/JUCE/modules/juce_*")
-foreach(module_dir IN LISTS TRIPAN_JUCE_MODULE_DIRS)
-    get_filename_component(module_name "${module_dir}" NAME)
-    source_group("JUCE/${module_name}" REGULAR_EXPRESSION "/JUCE/modules/${module_name}/")
+set(TRIPAN_JUCE_MODULES
+    juce_audio_basics juce_audio_devices juce_audio_formats juce_audio_plugin_client
+    juce_audio_processors juce_audio_processors_headless juce_audio_utils juce_core
+    juce_data_structures juce_events juce_graphics juce_gui_basics juce_gui_extra)
+foreach(module_name IN LISTS TRIPAN_JUCE_MODULES)
+    set(module_dir "${CMAKE_CURRENT_SOURCE_DIR}/JUCE/modules/${module_name}")
+    source_group("JUCE/${module_name}/src" REGULAR_EXPRESSION "/JUCE/modules/${module_name}/")
+    file(GLOB_RECURSE module_headers CONFIGURE_DEPENDS "${module_dir}/*.h" "${module_dir}/*.hpp")
+    target_sources(TriPan PRIVATE ${module_headers})
+    source_group(TREE "${module_dir}" PREFIX "JUCE/${module_name}/include" FILES ${module_headers})
 endforeach()
 source_group("Tests" REGULAR_EXPRESSION "/tests/")
 
