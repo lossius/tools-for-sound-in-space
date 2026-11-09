@@ -935,7 +935,6 @@ static void testParameterOrder()
     CHECK (parameters[parameters.size() - 1]->getName (64) == "Speaker 64 Y");
 }
 
-/** Runs all processor tests. @param argc,argv  argv[1] is the folder with the speaker layouts. @return 0 if every check passed. */
 /** The limit of 64 manual virtual speakers: with 64 sources and 64 speakers the output stays finite and keeps its power, and the cost of a block is reported. */
 static void testManyVirtualSpeakers()
 {
@@ -983,6 +982,7 @@ static void testManyVirtualSpeakers()
                  total / blocks, worst);
 }
 
+/** Runs all processor tests. @param argc,argv  argv[1] is the folder with the speaker layouts. @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
