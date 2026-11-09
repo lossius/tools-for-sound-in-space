@@ -694,7 +694,7 @@ static void testVirtualSpeakerModes()
     CHECK (r.getVirtualMode() == VirtualMode::Manual);
     const auto manual = r.getManualVirtualSpeakers();
     CHECK (manual.size() == 2 && std::abs (manual[0].x - 1.5) < 1e-3 && std::abs (manual[0].y + 2.25) < 1e-3 && std::abs (manual[1].x - 10.0) < 1e-3);
-    std::vector<tripan::Vec2> tooMany (40, tripan::Vec2 { 1.0, 1.0 });
+    std::vector<tripan::Vec2> tooMany (100, tripan::Vec2 { 1.0, 1.0 });
     r.setManualVirtualSpeakers (tooMany);
     CHECK ((int) r.getManualVirtualSpeakers().size() == TriPanAudioProcessor::kMaxVirtualSpeakers);
 }
@@ -936,11 +936,59 @@ static void testParameterOrder()
 }
 
 /** Runs all processor tests. @param argc,argv  argv[1] is the folder with the speaker layouts. @return 0 if every check passed. */
+/** The limit of 64 manual virtual speakers: with 64 sources and 64 speakers the output stays finite and keeps its power, and the cost of a block is reported. */
+static void testManyVirtualSpeakers()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 64, 64, 512));
+    std::vector<tripan::Vec2> list;
+    for (int i = 0; i < TriPanAudioProcessor::kMaxVirtualSpeakers; ++i)
+        list.push_back ({ 8.0 * std::sin (i * 2.399963), 8.0 * std::cos (i * 2.399963) * (0.3 + 0.7 * (i % 7) / 6.0) });
+    p.setVirtualLayout (VirtualMode::Manual, &list);
+    p.refreshTriangulation();
+    CHECK ((int) p.getManualVirtualSpeakers().size() == 64 && p.getVirtualSpeakers().size() == 64);
+
+    juce::AudioBuffer<float> buf (64, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (11);
+    std::uniform_real_distribution<float> u (-1.0f, 1.0f);
+
+    double worst = 0.0, total = 0.0;
+    const int blocks = 100;
+    for (int block = 0; block < blocks; ++block)
+    {
+        double inE = 0.0;
+        for (int s = 0; s < 64; ++s)
+        {
+            const float a = 0.05f * (float) block + (float) s;
+            setParam (p, tripan::params::sourceId (s, 'x'), 6.0f * std::sin (a));
+            setParam (p, tripan::params::sourceId (s, 'y'), 6.0f * std::cos (a));
+            for (int i = 0; i < 512; ++i) { const float v = u (rng); buf.setSample (s, i, v); inE += (double) v * v; }
+        }
+
+        const auto t0 = std::chrono::steady_clock::now();
+        p.processBlock (buf, midi);
+        const double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+        worst = std::max (worst, ms);
+        total += ms;
+
+        CHECK (allFinite (buf, 64));
+        double outE = 0.0;
+        for (int ch = 0; ch < 64; ++ch) outE += channelEnergy (buf, ch);
+        if (block > 2) // the first blocks ramp from the start gains
+            CHECK (outE > 0.5 * inE && outE < 1.5 * inE); // independent noise sources: power is roughly conserved
+    }
+
+    std::printf ("64x64 with 64 virtual speakers: %.3f ms average, %.3f ms worst per 512-sample block (budget at 48 kHz: 10.7 ms)\n",
+                 total / blocks, worst);
+}
+
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     testParameterOrder();
+    testManyVirtualSpeakers();
     testStationaryEnergyAndLocality();
     testNumberOfSourcesAndSpeakersInUse();
     testUnusedSpeakersAreSilentImmediately();

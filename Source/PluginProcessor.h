@@ -118,7 +118,7 @@ public:
     /** Message thread. Virtual speakers. They are not host parameters; the mode and the manual list
         are saved with the state. Switching from Auto to Manual with an empty manual list starts
         the manual list from the automatic speakers that are at least half in effect. */
-    static constexpr int kMaxVirtualSpeakers = 16;
+    static constexpr int kMaxVirtualSpeakers = 64;
 
     /** @return The current virtual speaker mode. */
     VirtualMode getVirtualMode() const;

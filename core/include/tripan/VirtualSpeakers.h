@@ -46,7 +46,7 @@ struct VirtualSpeakerOptions
     double centreSoftness = 0.05;    ///< Half the width of the soft transition around #centreClearance.
 
     /** Upper limit for the number of virtual speakers. */
-    int maxCount = 16;
+    int maxCount = 64;
 
     bool fillGaps = true;   ///< Add virtual speakers in wide angular gaps.
     bool addCentre = true;  ///< Add a virtual speaker at the listener for ring layouts.

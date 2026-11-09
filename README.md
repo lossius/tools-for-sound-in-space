@@ -76,7 +76,7 @@ menu on the fourth row selects where they come from:
   thresholds, a surround speaker moving across 100 degrees changed a source's gain by up to 0.12 in one
   step; with the blend the largest step is 0.0001.) Weak virtual speakers are drawn faded.
 * **Manual**: you place them. Set the speakers menu to Edit, then double-click empty space on the pad
-  to add one, drag to move, double-click one to delete it (at most 16). Switching from Auto to
+  to add one, drag to move, double-click one to delete it (at most 64). Switching from Auto to
   Manual starts from the current automatic set. Positions are saved with the session.
 * **Off**: real speakers only, as in the plain triangulation.
 
@@ -112,7 +112,7 @@ file dialog each time. Sources and speakers are separate files:
 (`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-10.
 
 A speaker file also records the virtual speaker setting in the optional `virtual` attribute (`auto`, `manual` or `off`). With `manual`
-the file lists your own virtual speakers as `<VirtualSpeaker>` entries (at most 16); with `auto` or `off`
+the file lists your own virtual speakers as `<VirtualSpeaker>` entries (at most 64); with `auto` or `off`
 there is nothing more to store, because automatic virtual speakers are recomputed from the real ones. Importing
 a speaker file restores the setting (and the manual list), replacing the current one. A file without the
 attribute, such as one written by an earlier version, leaves the virtual speaker setting alone.

@@ -84,7 +84,7 @@ warnings; keep it that way when adding code.
   (continuous in the speaker positions, no state; up to 17 triangulations, ~0.5 ms/block worst case for 64
   sources). `LayoutExchange` hands the immutable `SpeakerLayout` to the audio thread (hazard pointer). The audio
   thread skips sources whose position and layout `id()` are unchanged. Processor mode Auto/Manual/Off
-  (`virtualMode`, `manualVirtual` in the state, max 16, not host parameters; manual ones have strength 1);
+  (`virtualMode`, `manualVirtual` in the state, max 64, not host parameters; manual ones have strength 1);
   Manual ones are edited on the pad (double-click add/delete, drag) when speakers are set to Edit. Known limit:
   cocircular grid cells (3x3, 4x4) still have arbitrary diagonals.
 - Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-10 m
@@ -109,7 +109,7 @@ warnings; keep it that way when adding code.
   (`<TriPanSources version="1" count="n"><Source index="1" x=".." y=".."/>`) and speakers
   (`<TriPanSpeakers virtual="auto|manual|off">/<Speaker>`, plus `<VirtualSpeaker>` children when manual; an import
   without the `virtual` attribute leaves the virtual setting alone, an unknown value fails the import; manual lists are
-  capped at 16 and clamped; `setVirtualLayout` applies mode + list without copying the automatic speakers). Export writes the channels in use, coordinates rounded to 3 decimals and left-padded to a fixed width (columns align; import ignores the spaces); import validates the whole file
+  capped at 64 and clamped; `setVirtualLayout` applies mode + list without copying the automatic speakers). Export writes the channels in use, coordinates rounded to 3 decimals and left-padded to a fixed width (columns align; import ignores the spaces); import validates the whole file
   first, writes every valid entry (index 1..64, clamped to +-10 m). Speaker imports set `numSpeakers` to the highest
   index in the file if the track has that many outputs (else unchanged); source imports never change `numSources`.
   Import and export are always enabled, in Edit and in View (View only locks dragging and reset). The file dialogs

@@ -388,11 +388,11 @@ int main (int argc, char** argv)
             CHECK (badResult.failed() && badResult.getErrorMessage().contains ("banana"));
             CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - 2.0f) < 1e-3f && p.getVirtualMode() == VirtualMode::Manual);
 
-            // Limits: at most 16 entries (extra ones are skipped), bad entries skipped, positions clamped.
+            // Limits: at most 64 entries (extra ones are skipped), bad entries skipped, positions clamped.
             juce::String many = "<TriPanSpeakers version=\"1\" virtual=\"manual\"><Speaker index=\"1\" x=\"0\" y=\"5\"/>"
                                 "<Speaker index=\"2\" x=\"5\" y=\"0\"/><Speaker index=\"3\" x=\"-5\" y=\"0\"/>"
                                 "<VirtualSpeaker x=\"99\" y=\"-99\"/><VirtualSpeaker x=\"1\"/><VirtualSpeaker x=\"nan\" y=\"2\"/>";
-            for (int i = 0; i < 18; ++i)
+            for (int i = 0; i < 70; ++i)
                 many << "<VirtualSpeaker x=\"" << (i % 5) << "\" y=\"" << (i % 3) << "\"/>";
             many << "</TriPanSpeakers>";
             const auto manyFile = dir.getChildFile ("many.xml");
@@ -619,9 +619,9 @@ int main (int argc, char** argv)
         CHECK (field.removeVirtualSpeaker (0));
         CHECK (p.getManualVirtualSpeakers().size() == 1 && ! field.removeVirtualSpeaker (5) && ! field.removeVirtualSpeaker (-1));
 
-        // At most 16.
-        for (int i = 0; i < 30; ++i)
-            field.addVirtualSpeakerAt (field.toView (-5.0 + 0.3 * i, 7.0));
+        // At most 64.
+        for (int i = 0; i < 100; ++i)
+            field.addVirtualSpeakerAt (field.toView (-5.0 + 0.1 * i, 7.0));
         CHECK ((int) p.getManualVirtualSpeakers().size() == TriPanAudioProcessor::kMaxVirtualSpeakers);
         CHECK (! field.addVirtualSpeakerAt (field.toView (0.0, 0.0)));
 
