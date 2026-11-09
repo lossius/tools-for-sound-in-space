@@ -11,6 +11,7 @@
 #include "tripan/SpeakerLayout.h"
 
 #include <array>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -49,6 +50,48 @@ public:
         down past zero and back up increases the spread again at once. Option + double-click resets
         the spread to 0. Only Option is used (not Cmd). */
     static bool isSpreadModifier (const juce::ModifierKeys& mods) noexcept;
+
+    /** Group spread: hold Option and Shift and drag a source vertically. The same change is applied to the
+        spread of every source that moves with it, limited so that none leaves 0..10 m (the differences
+        between them are kept). Option + Shift + double-click resets all of them to 0. */
+    static bool isGroupSpreadModifier (const juce::ModifierKeys& mods) noexcept;
+
+    /** Move one source alone: hold Cmd (Ctrl on Windows) and drag a source that is in a group or a
+        selection. The others stay where they are, and the group stays a group (with a new shape). */
+    static bool isSingleSourceModifier (const juce::ModifierKeys& mods) noexcept;
+
+    /** @return The colour of group `id` (1 and up): from a fixed palette that repeats, so a group keeps its colour. */
+    static juce::Colour groupColour (int id);
+
+    /// @name Selection and groups
+    /// Clicking a source selects it and the rest of its group; Shift-click adds or removes a source (with
+    /// its group); dragging a rectangle on empty space selects what is inside it (Shift adds to the
+    /// selection). Dragging a selected source moves the whole selection. The selection is not saved;
+    /// the groups are (see TriPanAudioProcessor::getSourceGroups()).
+    /// @{
+    /** @return The selected sources (zero-based, ascending). */
+    const std::vector<int>& getSelection() const noexcept { return selection; }
+    /** Replaces the selection. Numbers outside the sources in use are dropped. */
+    void setSelection (std::vector<int> sources);
+    /** Selects nothing. */
+    void clearSelection() { setSelection ({}); }
+    /** @return The sources that move when `source` is dragged: the selection if it is part of it, otherwise
+        its group (just the source if it has none). Only sources in use are included. */
+    std::vector<int> movingSet (int source) const;
+    /** @return Whether Group would do something: sources are set to Edit and the selection holds at least
+        two sources that are not all in one group already. */
+    bool canGroupSelection() const;
+    /** @return Whether Ungroup would do something: sources are set to Edit and a selected source is in a group. */
+    bool canUngroupSelection() const;
+    /** Groups the selection (merging the groups it touches). @return false if nothing was done. */
+    bool groupSelection();
+    /** Dissolves the groups of the selected sources. @return false if nothing was done. */
+    bool ungroupSelection();
+    /** @return The rectangle of an ongoing selection drag in component coordinates, if there is one. */
+    std::optional<juce::Rectangle<float>> getMarquee() const { return marquee; }
+    /** Called whenever the selection or the groups changed (message thread). */
+    std::function<void()> onSelectionChanged;
+    /// @}
 
     /** @return The spread of a source in metres (0 to 10). */
     double getSpread (int source) const;
@@ -116,6 +159,10 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     /** Highlights the handle under the mouse. */
     void mouseMove (const juce::MouseEvent&) override;
+    /** Cmd+G groups the selection, Cmd+Shift+G ungroups it, Escape clears the selection. */
+    bool keyPressed (const juce::KeyPress&) override;
+    /** Adds the group of the hovered source to the tooltip. */
+    juce::String getTooltip() override;
 
     /** The square, in component coordinates, in which the visible part of the plane is drawn (the pad's border). */
     juce::Rectangle<float> planeBounds() const;
@@ -164,6 +211,23 @@ private:
     bool draggingSpread = false;        ///< The drag changes the spread of the source instead of moving it.
     float lastSpreadDragY = 0.0f;       ///< Mouse y at the previous step of a spread drag.
     std::optional<Handle> hovered;      ///< The handle under the mouse, if any.
+
+    std::vector<int> selection;                 ///< Selected sources, ascending.
+    tripan::SourceGroups groups;                ///< Source groups as last read from the processor.
+    std::vector<int> dragSources;               ///< Sources being moved or having their spread changed.
+    std::vector<tripan::Vec2> dragStart;        ///< Their positions (or, for spread, spreads in x) at the press.
+    tripan::Vec2 dragGrabStart;                 ///< Position of the grabbed source at the press.
+    std::optional<juce::Rectangle<float>> marquee; ///< Selection rectangle while dragging on empty space.
+    juce::Point<float> marqueeOrigin;           ///< Where the selection rectangle started.
+    std::vector<int> marqueeBase;               ///< Selection to extend (Shift) or empty.
+    juce::String baseTooltip;                   ///< Tooltip text without the group note.
+
+    /** Moves `dragSources` so that the grabbed source is at `p` (component coordinates), as far as the pad allows. */
+    void moveSelectionTo (juce::Point<float> p);
+    /** Selects what the rectangle holds (with the groups) in addition to marqueeBase. */
+    void updateMarqueeSelection();
+    /** Tells the owner that the selection or groups changed. */
+    void notifySelectionChanged();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FieldComponent)
 };

@@ -19,7 +19,11 @@
         </TriPanSources>
 
     The optional attribute spread (metres, 0 to 10) is the source's spread radius. An entry without it
-    leaves that source's spread unchanged.
+    leaves that source's spread unchanged. The optional attribute group (1 to 32) says which group the
+    source belongs to (0 or missing: none); sources with the same number move together. Export writes it
+    when any source is grouped. An import where at least one entry has the attribute replaces the
+    groups with the file's (sources not in the file end up ungrouped); a file without it leaves the
+    groups as they are.
 
         <TriPanSpeakers version="1" count="7" virtual="manual">
           <Speaker index="1" x="0.0" y="5.0"/> ...
@@ -56,6 +60,7 @@ struct ImportReport
     int clamped = 0;          ///< Entries whose coordinates were limited to the allowed range.
     int skipped = 0;          ///< Malformed entries that were ignored.
     int spreadApplied = 0;    ///< Source imports: entries that also set the spread.
+    int groupCount = 0;       ///< Source imports: number of groups the file defined (0 if it had no group information).
 
     std::optional<VirtualMode> virtualMode; ///< Speaker imports: set if the file specified the virtual speakers.
     int virtualCount = 0;                   ///< Manual virtual speakers applied from the file.

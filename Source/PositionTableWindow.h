@@ -37,13 +37,15 @@ public:
         indexColumn = 1,  ///< Row number (1-based), not editable.
         xColumn,          ///< X position in metres.
         yColumn,          ///< Y position in metres.
-        spreadColumn      ///< Spread in metres (sources only).
+        spreadColumn,     ///< Spread in metres (sources only).
+        groupColumn       ///< Group number of the source (sources only), not editable here: groups are made on the pad.
     };
 
     static constexpr int kRowHeight = 24;       ///< Height of a row in pixels.
     static constexpr int kHeaderHeight = 26;    ///< Height of the header in pixels.
     static constexpr int kCaptionHeight = 22;   ///< Height of the caption above the table in pixels.
     static constexpr int kScrollBarWidth = 12;  ///< Width of the vertical scroll bar in pixels.
+    static constexpr int kGroupColumnWidth = 70; ///< Width of the group column in pixels.
 
     /** Creates the table. @param processor  The processor whose parameters are shown and edited.
         @param content  Which positions the table shows. */

@@ -78,6 +78,7 @@ struct Entry
     float x;                ///< Position x in metres.
     float y;                ///< Position y in metres.
     float spread = -1.0f;   ///< Spread in metres; negative if the file has none.
+    int group = -1;         ///< Group number; negative if the file has none.
 };
 }
 
@@ -104,6 +105,8 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
         }
     }
 
+    const auto groups = kind == Kind::Sources ? p.getSourceGroups() : tripan::SourceGroups();
+
     for (int i = 0; i < count; ++i)
     {
         auto* e = root->createNewChildElement (entryTag (kind));
@@ -112,6 +115,8 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
         e->setAttribute ("y", formatCoordinate (readParam (p, idFor (kind, i, 'y'))));
         if (kind == Kind::Sources)
             e->setAttribute ("spread", formatCoordinate (readParam (p, params::spreadId (i))));
+        if (groups.any())
+            e->setAttribute ("group", groups.groupOf (i));
     }
 
     // The user's own virtual speakers belong to the layout. (Automatic ones are recomputed on import.)
@@ -197,6 +202,15 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
                 ++report.clamped;
         }
 
+        if (kind == Kind::Sources && e->hasAttribute ("group"))
+        {
+            double group = 0.0;
+            if (readNumber (*e, "group", group) && group >= 0.0 && group <= SourceGroups::kMaxGroupId && group == std::floor (group))
+                entry.group = (int) group;
+            else
+                ++report.skipped;
+        }
+
         entries[index] = entry;
     }
 
@@ -247,6 +261,20 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
             ++report.spreadApplied;
         }
         ++report.applied;
+    }
+
+    if (kind == Kind::Sources
+        && std::any_of (entries.begin(), entries.end(), [] (const auto& entry) { return entry.second.group >= 0; }))
+    {
+        SourceGroups::Ids ids {};
+        for (const auto& [index, pos] : entries)
+            ids[(size_t) index - 1] = std::max (pos.group, 0);
+
+        const SourceGroups imported (ids);
+        p.setSourceGroups (imported);
+        for (int id = 1; id <= SourceGroups::kMaxGroupId; ++id)
+            if (imported.sizeOf (id) > 0)
+                ++report.groupCount;
     }
 
     if (kind == Kind::Speakers)

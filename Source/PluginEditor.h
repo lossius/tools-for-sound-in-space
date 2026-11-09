@@ -53,6 +53,8 @@ public:
     juce::TextButton& getResetButton() noexcept { return resetButton; }                ///< "Reset layout".
     juce::TextButton& getZoomInButton() noexcept { return zoomInButton; }              ///< "Zoom In".
     juce::TextButton& getZoomOutButton() noexcept { return zoomOutButton; }            ///< "Zoom Out".
+    juce::TextButton& getGroupButton() noexcept { return groupButton; }                ///< "Group".
+    juce::TextButton& getUngroupButton() noexcept { return ungroupButton; }            ///< "Ungroup".
     juce::TextButton& getExportSourcesButton() noexcept { return exportSourcesButton; }   ///< "Export sources...".
     juce::TextButton& getImportSourcesButton() noexcept { return importSourcesButton; }   ///< "Import sources...".
     juce::TextButton& getExportSpeakersButton() noexcept { return exportSpeakersButton; } ///< "Export speakers...".
@@ -128,6 +130,8 @@ private:
     juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.
     juce::TextButton zoomInButton { "Zoom In" };         ///< Zooms the pad towards the speakers.
     juce::TextButton zoomOutButton { "Zoom Out" };       ///< Zooms the pad back out.
+    juce::TextButton groupButton { "Group" };            ///< Groups the selected sources.
+    juce::TextButton ungroupButton { "Ungroup" };        ///< Dissolves the groups of the selected sources.
     juce::TextButton exportSourcesButton  { "Export sources..." };   ///< Saves source positions.
     juce::TextButton importSourcesButton  { "Import sources..." };   ///< Loads source positions.
     juce::TextButton exportSpeakersButton { "Export speakers..." };  ///< Saves speaker positions.

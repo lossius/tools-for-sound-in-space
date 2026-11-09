@@ -55,6 +55,33 @@ block for 64 such sources in the worst case).
 The spread is saved in the source XML files as an optional `spread` attribute (metres); entries without
 it leave the spread unchanged.
 
+## Source groups
+Two or more sources can be grouped, so that they move together and keep their positions relative to each
+other. Several groups can exist side by side. The groups are saved with the plug-in state (and so with your
+project), but they are not host parameters: they only affect how you move sources in the editor. The sources'
+x and y positions stay ordinary parameters, so a move is recorded as automation of every member, and
+automation or table edits of one source do not need the group.
+
+* **Select:** click a source (the whole group is selected if it is in one); **Shift-click** adds or removes a
+  source (with its group); **drag a rectangle** on empty space to select what is inside it (Shift adds to the
+  current selection); click empty space to clear. Selected sources have a white ring.
+* **Group / Ungroup:** the buttons in the third row, or **Cmd+G** and **Cmd+Shift+G** (Ctrl on Windows) while
+  the pad has the keyboard focus. Grouping a selection that contains members of existing groups merges those
+  groups whole. Ungrouping dissolves the whole group of every selected source. A group of one source does not exist.
+* **Move:** drag any member (or any selected source) and everything that is selected or in its group moves rigidly.
+  The movement is limited so that every member stays inside the +-10 m pad: the group stops at the wall
+  (and slides along it) without changing its shape.
+* **Move one source alone:** **Cmd**-drag (Ctrl on Windows). The group stays a group, with a new shape.
+* **Spread:** Option-drag changes one source, **Option+Shift**-drag changes the whole group by the same
+  amount (limited so that no member goes below 0 or above 10 m). Option+Shift double-click resets the group's spread.
+* **Look:** each group has a colour (a ring around its members, a soft band around their outline) and a
+  number "G1", "G2", ... above it. Hovering a grouped source names its group in the tooltip. The table window for
+  sources has a Group column.
+* Groups need sources set to **Edit**. If you lower the number of sources, hidden members keep their group
+  but do not move.
+* The source XML files get an optional `group` attribute per source (1 to 32, 0 or missing = none). An import
+  where any source has it replaces the groups; a file without it leaves them alone.
+
 ## Virtual (imaginary) speakers
 Speakers that lie on a circle around the listener (5.1, quad, hexagon, octagon, ...) have no unique
 Delaunay triangulation. Triangulation then picks an arbitrary, asymmetric set of triangles: in a 5.1

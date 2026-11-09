@@ -5,6 +5,7 @@
     @brief Editable tables of source, speaker and virtual speaker positions, and the windows that hold them. */
 
 #include "PositionTableWindow.h"
+#include "FieldComponent.h"
 #include "Parameters.h"
 
 #include <cmath>
@@ -114,6 +115,8 @@ PositionTable::PositionTable (TriPanAudioProcessor& p, Content c)
     table.getHeader().addColumn ("Y (m)", yColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
     if (content == Content::Sources)
         table.getHeader().addColumn ("Spread (m)", spreadColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
+    if (content == Content::Sources)
+        table.getHeader().addColumn ("Group", groupColumn, kGroupColumnWidth, kGroupColumnWidth, kGroupColumnWidth, flags);
 
     addAndMakeVisible (table);
 
@@ -128,7 +131,8 @@ PositionTable::~PositionTable()
 int PositionTable::getPreferredWidth() const noexcept
 {
     const int valueColumns = content == Content::Sources ? 3 : 2;
-    return kIndexColumnWidth + valueColumns * kValueColumnWidth + kScrollBarWidth + 2;
+    const int groupWidth = content == Content::Sources ? kGroupColumnWidth : 0;
+    return kIndexColumnWidth + valueColumns * kValueColumnWidth + groupWidth + kScrollBarWidth + 2;
 }
 
 int PositionTable::getRowCount() const
@@ -229,6 +233,13 @@ size_t PositionTable::signature() const
         for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn })
             hashCombine (seed, getValue (row, column));
 
+    if (content == Content::Sources)
+    {
+        const auto groups = processor.getSourceGroups();
+        for (int row = 0; row < rows; ++row)
+            hashCombine (seed, (double) groups.groupOf (row));
+    }
+
     return seed;
 }
 
@@ -257,6 +268,22 @@ void PositionTable::paintRowBackground (juce::Graphics& g, int row, int, int, bo
 
 void PositionTable::paintCell (juce::Graphics& g, int row, int column, int width, int height, bool)
 {
+    if (column == groupColumn)
+    {
+        // The group's colour and number, or a dash for a source that is in no group.
+        const int id = processor.getSourceGroups().groupOf (row);
+        const auto text = id > 0 ? juce::String (id) : juce::String ("-");
+        if (id > 0)
+        {
+            g.setColour (FieldComponent::groupColour (id));
+            g.fillEllipse (14.0f, ((float) height - 10.0f) * 0.5f, 10.0f, 10.0f);
+        }
+        g.setColour (juce::Colours::white.withAlpha (id > 0 ? 0.9f : 0.4f));
+        g.setFont (juce::FontOptions (13.0f));
+        g.drawText (text, 0, 0, width - 8, height, juce::Justification::centredRight);
+        return;
+    }
+
     if (column != indexColumn)
         return;
 
@@ -267,7 +294,7 @@ void PositionTable::paintCell (juce::Graphics& g, int row, int column, int width
 
 juce::Component* PositionTable::refreshComponentForCell (int row, int column, bool, juce::Component* existing)
 {
-    if (column == indexColumn || row >= getRowCount())
+    if (column == indexColumn || column == groupColumn || row >= getRowCount())
     {
         delete existing;
         return nullptr;

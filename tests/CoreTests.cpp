@@ -5,6 +5,7 @@
     @brief Minimal dependency-free test runner for TriPanCore (no JUCE): triangulation, gains and virtual speakers. */
 
 #include "tripan/Gains.h"
+#include "tripan/Groups.h"
 #include "tripan/Limits.h"
 #include "tripan/SpeakerLayout.h"
 #include "tripan/Triangulation.h"
@@ -764,6 +765,102 @@ static void testSpread()
     CHECK (computeGains (SpeakerLayout(), { 0.0, 0.0 }, 2.0).count == 0);
 }
 
+/** Group bookkeeping: grouping, merging, ungrouping, dissolving single members, text round trip. */
+static void testSourceGroups()
+{
+    SourceGroups g;
+    CHECK (! g.any());
+    CHECK (g.group ({ 3 }) == 0);          // one source is no group
+    CHECK (g.group ({ 3, 3 }) == 0);       // neither is the same source twice
+    CHECK (g.group ({ -1, 99 }) == 0);
+
+    CHECK (g.group ({ 0, 1, 2 }) == 1);
+    CHECK (g.group ({ 5, 6 }) == 2);
+    CHECK (g.groupOf (1) == 1 && g.groupOf (6) == 2 && g.groupOf (4) == 0);
+    CHECK ((g.membersOf (1) == std::vector<int> { 0, 1, 2 }));
+    CHECK ((g.membersOf (4) == std::vector<int> { 4 }));
+    CHECK (g.membersOf (1, 2).size() == 2);               // only the active ones
+    CHECK ((g.membersOf (2, 2) == std::vector<int> { 2 })); // inactive source alone
+    CHECK (g.sizeOf (1) == 3 && g.sizeOf (1, 2) == 2 && g.sizeOf (0) == 0);
+
+    // Merging: a source from group 1 and one from group 2 pulls both groups in whole, keeping the smaller id.
+    CHECK (g.group ({ 2, 5, 9 }) == 1);
+    CHECK ((g.membersOf (6) == std::vector<int> { 0, 1, 2, 5, 6, 9 }));
+    CHECK (g.sizeOf (2) == 0);
+
+    // The freed id is reused for the next new group.
+    CHECK (g.group ({ 20, 21 }) == 2);
+
+    // Ungrouping any member dissolves the whole group.
+    CHECK (g.ungroup ({ 9, 20 }) == 2);
+    CHECK (! g.any());
+
+    // Groups of one are dissolved: from ids, and from text.
+    SourceGroups::Ids ids {};
+    ids[0] = 4; ids[1] = 4; ids[2] = 7; ids[3] = 99; ids[4] = -2;
+    const SourceGroups h (ids);
+    CHECK (h.groupOf (0) == 4 && h.groupOf (1) == 4);
+    CHECK (h.groupOf (2) == 0 && h.groupOf (3) == 0 && h.groupOf (4) == 0);
+
+    SourceGroups k;
+    k.group ({ 0, 63 });
+    k.group ({ 10, 11, 12 });
+    CHECK (SourceGroups::fromString (k.toString()) == k);
+    CHECK (! SourceGroups::fromString ("").any());
+    CHECK (! SourceGroups::fromString ("garbage 1 1").any());
+    CHECK (SourceGroups::fromString ("1 1 0 x 2 2").groupOf (1) == 1);
+}
+
+/** Rigid movement clamping, common spread change clamping and convex hull. */
+static void testGroupGeometry()
+{
+    const std::vector<Vec2> pts { { 0.0, 0.0 }, { 4.0, 1.0 }, { 2.0, -3.0 } };
+
+    // Free movement is passed on unchanged.
+    auto d = clampTranslation (pts, { 1.0, 2.0 }, 10.0);
+    CHECK (isNear (d.x, 1.0) && isNear (d.y, 2.0));
+
+    // Against the right wall: the rightmost point (x = 4) can move by 6.
+    d = clampTranslation (pts, { 50.0, 0.5 }, 10.0);
+    CHECK (isNear (d.x, 6.0) && isNear (d.y, 0.5));
+
+    // Pushed diagonally into a corner: each axis stops separately, so the group slides along the wall.
+    d = clampTranslation (pts, { -50.0, 50.0 }, 10.0);
+    CHECK (isNear (d.x, -10.0) && isNear (d.y, 9.0));
+
+    // Shape is preserved: applying the clamped movement keeps all distances.
+    std::vector<Vec2> moved;
+    for (const auto& p : pts) moved.push_back ({ p.x + d.x, p.y + d.y });
+    for (const auto& p : moved) CHECK (std::abs (p.x) <= 10.0 + 1e-9 && std::abs (p.y) <= 10.0 + 1e-9);
+    CHECK (isNear (moved[1].x - moved[0].x, 4.0) && isNear (moved[2].y - moved[0].y, -3.0));
+
+    // Degenerate input.
+    d = clampTranslation ({}, { 1.0, 1.0 }, 10.0);
+    CHECK (d.x == 0.0 && d.y == 0.0);
+    d = clampTranslation (pts, { std::nan (""), 1.0 }, 10.0);
+    CHECK (d.x == 0.0 && d.y == 0.0);
+
+    // Spread: the largest may rise by 10 - 3 = 7, the smallest may fall by 1.
+    const std::vector<double> sp { 1.0, 2.5, 3.0 };
+    CHECK (isNear (clampSpreadChange (sp, 0.5, 10.0), 0.5));
+    CHECK (isNear (clampSpreadChange (sp, 99.0, 10.0), 7.0));
+    CHECK (isNear (clampSpreadChange (sp, -99.0, 10.0), -1.0));
+    CHECK (clampSpreadChange ({}, 1.0, 10.0) == 0.0);
+
+    // Hull: the inner point and the point on an edge are dropped, order is counter-clockwise.
+    auto hull = convexHull ({ { 0, 0 }, { 4, 0 }, { 4, 4 }, { 0, 4 }, { 2, 2 }, { 2, 0 } });
+    CHECK (hull.size() == 4);
+    double area = 0.0;
+    for (size_t i = 0; i < hull.size(); ++i)
+    {
+        const auto a = hull[i], b = hull[(i + 1) % hull.size()];
+        area += a.x * b.y - b.x * a.y;
+    }
+    CHECK (isNear (area / 2.0, 16.0));
+    CHECK (convexHull ({ { 1, 1 }, { 1, 1 } }).size() == 1);
+    CHECK (convexHull ({ { 0, 0 }, { 1, 1 }, { 2, 2 } }).size() == 2);
+}
+
 /** Runs all core tests. @return 0 if every check passed, otherwise 1. */
 int main()
 {
@@ -782,6 +879,8 @@ int main()
     testVirtualSpeakerStrengths();
     testSpeakerLayoutBlend();
     testNoJumpsWhileSpeakersMove();
+    testSourceGroups();
+    testGroupGeometry();
 
     if (failures == 0)
         std::printf ("All tests passed\n");

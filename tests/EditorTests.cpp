@@ -36,6 +36,284 @@ static void setParam (TriPanAudioProcessor& p, const juce::String& id, float v)
     prm->setValueNotifyingHost (prm->convertTo0to1 (v));
 }
 
+/** Source groups on the pad: selection, grouping, rigid moves limited by the pad, single moves, group spread, persistence and files. */
+static void testGroups (const char* snapshotPath)
+{
+    TriPanAudioProcessor p;
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (6));
+    layout.outputBuses.add (juce::AudioChannelSet::discreteChannels (4));
+    CHECK (p.setBusesLayout (layout));
+    p.setPlayConfigDetails (6, 4, 48000.0, 512);
+    p.prepareToPlay (48000.0, 512);
+
+    const double sx[] { -2.0, 0.0, 3.0, -8.0, 8.0, 5.0 }, sy[] { -2.0, 1.0, 4.0, 8.0, -8.0, 5.0 };
+    const auto place = [&] (int i, double x, double y)
+    {
+        setParam (p, tripan::params::sourceId (i, 'x'), (float) x);
+        setParam (p, tripan::params::sourceId (i, 'y'), (float) y);
+    };
+    for (int i = 0; i < 6; ++i)
+        place (i, sx[i], sy[i]);
+    p.refreshTriangulation();
+
+    std::unique_ptr<juce::AudioProcessorEditor> base (p.createEditor());
+    auto* editor = dynamic_cast<TriPanAudioProcessorEditor*> (base.get());
+    CHECK (editor != nullptr);
+    editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
+    auto& field = editor->getField();
+
+    const auto x = [&] (int i) { return (double) value (p, tripan::params::sourceId (i, 'x')); };
+    const auto y = [&] (int i) { return (double) value (p, tripan::params::sourceId (i, 'y')); };
+    const auto at = [&] (int i) { return field.toView (x (i), y (i)); };
+    const auto spread = [&] (int i) { return (double) value (p, tripan::params::spreadId (i)); };
+    const juce::ModifierKeys none, shift (juce::ModifierKeys::shiftModifier), alt (juce::ModifierKeys::altModifier),
+                             altShift (juce::ModifierKeys::altModifier | juce::ModifierKeys::shiftModifier),
+                             cmd (juce::ModifierKeys::commandModifier);
+    const auto click = [&] (int i, const juce::ModifierKeys& mods)
+    {
+        field.pressAt (at (i), mods);
+        field.release();
+    };
+    const auto selected = [&] (std::vector<int> expected) { return field.getSelection() == expected; };
+    int notifications = 0;
+    field.onSelectionChanged = [&] { ++notifications; };
+
+    CHECK (FieldComponent::isGroupSpreadModifier (altShift) && ! FieldComponent::isGroupSpreadModifier (alt));
+    CHECK (FieldComponent::isSingleSourceModifier (cmd) && ! FieldComponent::isSingleSourceModifier (none));
+    CHECK (! editor->getGroupButton().isEnabled() && ! editor->getUngroupButton().isEnabled());
+
+    // Selecting: a click selects one source, Shift adds another, a click on empty space clears.
+    click (0, none);
+    CHECK (selected ({ 0 }) && notifications > 0 && ! field.canGroupSelection());
+    click (1, shift);
+    CHECK (selected ({ 0, 1 }) && field.canGroupSelection() && ! field.canUngroupSelection());
+    click (1, shift);                                  // Shift on a selected source removes it
+    CHECK (selected ({ 0 }));
+    click (1, shift);
+    field.pressAt (field.toView (-5.0, -5.0), none);   // empty space
+    field.release();
+    CHECK (selected ({}));
+
+    // Dragging a rectangle on empty space selects what is inside; Shift extends.
+    field.pressAt (field.toView (-3.0, 6.0), none);
+    field.dragTo (field.toView (4.0, 0.5));            // holds sources 2 and 4? no: only 1 (0,1) and 3 (3,4)
+    CHECK (field.getMarquee().has_value());
+    field.release();
+    CHECK (selected ({ 1, 2 }) && ! field.getMarquee().has_value());
+    field.pressAt (field.toView (4.0, 6.0), shift);
+    field.dragTo (field.toView (6.0, 4.0));            // source 5 at (5,5)
+    field.release();
+    CHECK (selected ({ 1, 2, 5 }));
+
+    // Group them (the button and Cmd+G do the same).
+    editor->syncControls();
+    CHECK (editor->getGroupButton().isEnabled());
+    CHECK (field.groupSelection());
+    CHECK (p.getSourceGroups().groupOf (1) == 1 && p.getSourceGroups().groupOf (2) == 1 && p.getSourceGroups().groupOf (5) == 1);
+    CHECK (! field.canGroupSelection() && field.canUngroupSelection());
+    editor->syncControls();
+    CHECK (! editor->getGroupButton().isEnabled() && editor->getUngroupButton().isEnabled());
+
+    // A second group by the keyboard shortcut.
+    click (3, none);
+    click (4, shift);
+    CHECK (field.keyPressed (juce::KeyPress ('g', juce::ModifierKeys::commandModifier, 'g')));
+    CHECK (p.getSourceGroups().groupOf (3) == 2 && p.getSourceGroups().groupOf (4) == 2 && p.getSourceGroups().groupOf (0) == 0);
+
+    // Clicking one member selects the whole group.
+    click (2, none);
+    CHECK (selected ({ 1, 2, 5 }));
+    CHECK (field.getTooltip().contains ("Group 1 (3 sources)") || ! field.getTooltip().isEmpty());
+
+    // Moving: the grabbed source follows the mouse, the rest of the group keeps its offsets.
+    const double x1 = x (1), y1 = y (1), x2 = x (2), y2 = y (2), x5 = x (5), y5 = y (5);
+    field.pressAt (at (2), none);
+    field.dragTo (field.toView (x2 - 1.0, y2 - 2.0));
+    field.release();
+    CHECK (std::abs (x (1) - (x1 - 1.0)) < 0.03 && std::abs (y (1) - (y1 - 2.0)) < 0.03);
+    CHECK (std::abs (x (5) - (x5 - 1.0)) < 0.03 && std::abs (y (5) - (y5 - 2.0)) < 0.03);
+    CHECK (std::abs (x (0) + 2.0) < 1e-3 && std::abs (y (0) + 2.0) < 1e-3);   // others untouched
+    place (1, x1, y1); place (2, x2, y2); place (5, x5, y5);
+
+    // Against the walls: pushing far to the upper right stops the group when its right-most (source 5, x = 5)
+    // and top-most (source 5, y = 5) members reach the edge, and the shape is intact.
+    field.pressAt (at (2), none);
+    field.dragTo (field.toView (400.0, 400.0));
+    field.release();
+    CHECK (std::abs (x (5) - 10.0) < 0.03 && std::abs (y (5) - 10.0) < 0.03);
+    CHECK (std::abs ((x (2) - x (1)) - (x2 - x1)) < 0.03 && std::abs ((y (2) - y (1)) - (y2 - y1)) < 0.03);
+    CHECK (std::abs ((x (5) - x (1)) - (x5 - x1)) < 0.03 && std::abs ((y (5) - y (1)) - (y5 - y1)) < 0.03);
+    // Diagonal push into the left wall while moving up: slides along it.
+    const double slideY = y (1);
+    field.pressAt (at (1), none);
+    field.dragTo (field.toView (-400.0, slideY + 0.0));
+    field.release();
+    CHECK (std::abs (x (1) + 10.0) < 0.03 && std::abs (y (1) - slideY) < 0.03);
+    CHECK (std::abs ((x (5) - x (1)) - (x5 - x1)) < 0.03);
+    place (1, x1, y1); place (2, x2, y2); place (5, x5, y5);
+
+    // Cmd-drag moves one member alone; it stays in its group.
+    field.pressAt (at (5), cmd);
+    field.dragTo (field.toView (7.0, 7.0));
+    field.release();
+    CHECK (std::abs (x (5) - 7.0) < 0.03 && std::abs (y (5) - 7.0) < 0.03);
+    CHECK (std::abs (x (1) - x1) < 1e-3 && std::abs (x (2) - x2) < 1e-3);
+    CHECK (p.getSourceGroups().groupOf (5) == 1);
+    place (5, x5, y5);
+
+    // A source outside the group is dragged on its own.
+    click (0, none);
+    CHECK (selected ({ 0 }));
+    field.pressAt (at (0), none);
+    field.dragTo (field.toView (-3.0, -3.0));
+    field.release();
+    CHECK (std::abs (x (0) + 3.0) < 0.03 && std::abs (x (1) - x1) < 1e-3);
+
+    // Moving a selection of ungrouped sources moves them together as well.
+    click (0, none);
+    click (4, shift);                                  // source 4 is in group 2, so source 3 joins
+    CHECK (selected ({ 0, 3, 4 }));
+    const double x0 = x (0), x3 = x (3), x4 = x (4);
+    field.pressAt (at (0), none);
+    field.dragTo (field.toView (x0 + 1.0, y (0)));
+    field.release();
+    CHECK (std::abs (x (3) - (x3 + 1.0)) < 0.03 && std::abs (x (4) - (x4 + 1.0)) < 0.03);
+    place (0, sx[0], sy[0]); place (3, sx[3], sy[3]); place (4, sx[4], sy[4]);
+
+    // Spread: Option changes one source, Option + Shift the whole group by the same amount.
+    setParam (p, tripan::params::spreadId (1), 2.0f);
+    setParam (p, tripan::params::spreadId (2), 4.0f);
+    setParam (p, tripan::params::spreadId (5), 6.0f);
+    field.refresh();
+    const float ppm = field.toView (1.0, 0.0).x - field.toView (0.0, 0.0).x;
+    const auto up = [&] (double metres) { return juce::Point<float> (0.0f, (float) (-metres * ppm)); };
+    field.pressAt (at (2), alt);
+    field.dragTo (at (2) + up (1.0));
+    field.release();
+    CHECK (std::abs (spread (2) - 5.0) < 0.03 && std::abs (spread (1) - 2.0) < 1e-3 && std::abs (spread (5) - 6.0) < 1e-3);
+    field.pressAt (at (2), altShift);
+    field.dragTo (at (2) + up (1.0));
+    field.release();
+    CHECK (std::abs (spread (1) - 3.0) < 0.03 && std::abs (spread (2) - 6.0) < 0.03 && std::abs (spread (5) - 7.0) < 0.03);
+    field.pressAt (at (2), altShift);                  // far up: all stop when the largest reaches 10
+    field.dragTo (at (2) + up (50.0));
+    field.release();
+    CHECK (std::abs (spread (5) - 10.0) < 0.03 && std::abs (spread (2) - 9.0) < 0.05 && std::abs (spread (1) - 6.0) < 0.05);
+    field.pressAt (at (2), altShift);                  // far down: all stop when the smallest reaches 0
+    field.dragTo (at (2) + up (-50.0));
+    field.release();
+    CHECK (spread (1) < 0.03 && std::abs (spread (2) - 3.0) < 0.05 && std::abs (spread (5) - 4.0) < 0.05);
+    field.doubleClickAt (at (2), altShift);            // resets the group
+    CHECK (spread (1) < 1e-6 && spread (2) < 1e-6 && spread (5) < 1e-6);
+    setParam (p, tripan::params::spreadId (3), 1.0f);
+    field.doubleClickAt (at (2), alt);                 // Option alone: one source only
+    CHECK (std::abs (spread (3) - 1.0) < 1e-3);
+    setParam (p, tripan::params::spreadId (3), 0.0f);
+
+    // The groups are saved with the state and come back in a new processor.
+    {
+        juce::MemoryBlock saved;
+        p.getStateInformation (saved);
+        TriPanAudioProcessor q;
+        CHECK (! q.getSourceGroups().any());
+        q.setStateInformation (saved.getData(), (int) saved.getSize());
+        CHECK (q.getSourceGroups() == p.getSourceGroups() && q.getSourceGroups().groupOf (4) == 2);
+    }
+
+    // Files: export writes the groups, import restores them; a file without groups leaves them alone.
+    {
+        const auto file = juce::File::createTempFile (".xml");
+        CHECK (editor->exportPositionsTo (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (file.loadFileAsString().contains ("group="));
+
+        const auto saved = p.getSourceGroups();
+        p.setSourceGroups ({});
+        CHECK (editor->importPositionsFrom (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (p.getSourceGroups() == saved);
+
+        file.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"0\"/></TriPanSources>");
+        CHECK (editor->importPositionsFrom (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (p.getSourceGroups() == saved);
+
+        file.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"0\" group=\"3\"/>"
+                              "<Source index=\"2\" x=\"1\" y=\"0\" group=\"3\"/><Source index=\"3\" x=\"2\" y=\"0\" group=\"4\"/></TriPanSources>");
+        CHECK (editor->importPositionsFrom (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (p.getSourceGroups().groupOf (0) == 3 && p.getSourceGroups().groupOf (1) == 3
+               && p.getSourceGroups().groupOf (2) == 0 && p.getSourceGroups().groupOf (4) == 0); // a group of one is dissolved
+        file.deleteFile();
+        p.setSourceGroups (saved);
+    }
+
+    // The table shows the group of each source.
+    {
+        auto& window = editor->showTableWindow (tripan::io::Kind::Sources);
+        CHECK (window.getContent().getMainTable().getTable().getHeader().getNumColumns (true) == 5);
+        window.setVisible (false);
+    }
+
+    // Fewer sources in use: a group keeps its members, but only the ones in use move.
+    {
+        setParam (p, tripan::params::kNumSourcesId, 2.0f);
+        field.refresh();
+        CHECK (field.movingSet (1) == std::vector<int> { 1 });   // 2 and 5 are not in use
+        setParam (p, tripan::params::kNumSourcesId, 6.0f);
+        field.refresh();
+        CHECK (field.movingSet (1).size() == 3);
+    }
+
+    // Sources set to View: nothing can be selected, grouped or moved.
+    {
+        editor->getSourcesModeBox().setSelectedId (2, juce::sendNotificationSync);
+        field.clearSelection();
+        const double before = x (1);
+        field.pressAt (at (1), none);
+        field.dragTo (at (1) + juce::Point<float> (30.0f, 0.0f));
+        field.release();
+        CHECK (std::abs (x (1) - before) < 1e-6 && field.getSelection().empty() && ! field.groupSelection());
+        editor->getSourcesModeBox().setSelectedId (1, juce::sendNotificationSync);
+    }
+
+    // Ungroup: dissolves the whole group of the selected source.
+    click (5, none);
+    CHECK (field.ungroupSelection());
+    CHECK (p.getSourceGroups().groupOf (1) == 0 && p.getSourceGroups().groupOf (3) == 2);
+    CHECK (! field.ungroupSelection());
+
+    // Merging: grouping a selection that touches group 2 pulls the whole group in.
+    click (0, none);
+    click (4, shift);                                  // selects 0, 3, 4
+    CHECK (field.groupSelection());
+    CHECK (p.getSourceGroups().groupOf (0) == 2 && p.getSourceGroups().groupOf (3) == 2 && p.getSourceGroups().groupOf (4) == 2);
+
+    if (snapshotPath != nullptr)
+    {
+        field.ungroupSelection();
+        const double picX[] { -4.0, -1.0, 2.0, -7.0, 6.0, 4.0 }, picY[] { -6.0, 3.0, 6.0, 4.0, -3.0, 2.0 };
+        for (int i = 0; i < 6; ++i)
+            place (i, picX[i], picY[i]);
+        field.clearSelection();
+        click (1, none);
+        click (2, shift);
+        click (5, shift);
+        field.groupSelection();
+        click (3, none);
+        click (4, shift);
+        field.groupSelection();
+        click (0, none);
+        click (3, shift);                              // select group 2 and one more for the picture
+        setParam (p, tripan::params::spreadId (2), 1.5f);
+        field.refresh();
+        auto image = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
+        juce::File out (snapshotPath);
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        CHECK (stream.openedOk() && png.writeImageToStream (image, stream));
+        std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+    }
+}
+
 /** Runs the editor tests; with argv[1] writes a PNG snapshot of the editor there (argv[2] optionally names a speaker file to load first). @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
@@ -690,8 +968,8 @@ int main (int argc, char** argv)
         CHECK (std::abs (spread (0) - 3.5f) < 0.03f);
         setParam (p, tripan::params::spreadId (0), 0.0f);
 
-        // Only Option does this: with Cmd (or Ctrl, or Shift) the drag moves the source as usual.
-        for (const auto& modifier : { cmd, juce::ModifierKeys (juce::ModifierKeys::ctrlModifier), juce::ModifierKeys (juce::ModifierKeys::shiftModifier) })
+        // Only Option does this: with Cmd (or Ctrl) the drag moves the source as usual.
+        for (const auto& modifier : { cmd, juce::ModifierKeys (juce::ModifierKeys::ctrlModifier) })
         {
             field.pressAt (p0, modifier);
             field.dragTo (field.toView (1.5, 1.5));
@@ -815,7 +1093,7 @@ int main (int argc, char** argv)
         CHECK (std::abs (sources.getMainTable().getValue (0, Col::xColumn) - value (p, tripan::params::sourceId (0, 'x'))) < 1e-4);
         CHECK (std::abs (sources.getMainTable().getValue (1, Col::yColumn) - value (p, tripan::params::sourceId (1, 'y'))) < 1e-4);
         CHECK (std::abs (speakers.getMainTable().getValue (2, Col::xColumn) - value (p, tripan::params::speakerId (2, 'x'))) < 1e-4);
-        CHECK (sources.getMainTable().getTable().getHeader().getNumColumns (true) == 4); // #, X, Y, Spread
+        CHECK (sources.getMainTable().getTable().getHeader().getNumColumns (true) == 5); // #, X, Y, Spread, Group
         CHECK (speakers.getMainTable().getTable().getHeader().getNumColumns (true) == 3); // #, X, Y
 
         // Editing: typed text goes to the parameters, limited to the range; rubbish is rejected.
@@ -1040,6 +1318,8 @@ int main (int argc, char** argv)
     }
 
     base.reset();
+
+    testGroups (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-groups.png").getFullPathName().toRawUTF8() : nullptr);
 
     if (failures == 0)
         std::printf ("All editor tests passed\n");

@@ -8,6 +8,7 @@
 #include "Parameters.h"
 
 #include "tripan/Gains.h"
+#include "tripan/Groups.h"
 
 #include <algorithm>
 #include <cmath>
@@ -32,6 +33,7 @@ juce::Colour sourceColour (int index)
     const float hue = std::fmod ((float) index * 0.61803398875f, 1.0f);
     return juce::Colour::fromHSV (hue, 0.55f, 0.98f, 1.0f);
 }
+
 }
 
 FieldComponent::FieldComponent (TriPanAudioProcessor& p)
@@ -47,8 +49,13 @@ FieldComponent::FieldComponent (TriPanAudioProcessor& p)
         spkYp[(size_t) i] = apvts.getParameter (tripan::params::speakerId (i, 'y'));
     }
 
-    setTooltip ("Drag a source (its inner circle) to move it. Hold Option and drag a source up or down to change its spread "
-                "(up = more, down = less, sideways does nothing). Option-double-click resets the spread to 0.");
+    baseTooltip = "Drag a source (its inner circle) to move it, with the rest of its group or selection. "
+                  "Shift-click adds to the selection; drag on empty space to select several. "
+                  "Cmd-drag moves one source alone. Cmd+G groups the selection, Cmd+Shift+G ungroups it.\n"
+                  "Option-drag a source up or down to change its spread (up = more, down = less); "
+                  "add Shift to change the whole group. Option-double-click resets the spread to 0.";
+    setTooltip (baseTooltip);
+    setWantsKeyboardFocus (true);
 
     timerCallback();
     startTimerHz (30);
@@ -161,6 +168,169 @@ void FieldComponent::setSpread (int source, double metres)
 
     auto* prm = srcSpreadP[(size_t) source];
     prm->setValueNotifyingHost (prm->convertTo0to1 (juce::jlimit (0.0f, tripan::params::kMaxSpread, (float) metres)));
+}
+
+juce::Colour FieldComponent::groupColour (int id)
+{
+    static const juce::uint32 palette[] { 0xffff9f43, 0xff48dbfb, 0xffff6bcb, 0xffa4de3c,
+                                          0xfff9ca24, 0xffa29bfe, 0xffff6b6b, 0xff1dd1a1 };
+    return juce::Colour (palette[(size_t) (std::max (id, 1) - 1) % std::size (palette)]);
+}
+
+bool FieldComponent::isGroupSpreadModifier (const juce::ModifierKeys& mods) noexcept
+{
+    return mods.isAltDown() && mods.isShiftDown();
+}
+
+bool FieldComponent::isSingleSourceModifier (const juce::ModifierKeys& mods) noexcept
+{
+    return mods.isCommandDown() && ! mods.isAltDown();
+}
+
+void FieldComponent::notifySelectionChanged()
+{
+    if (onSelectionChanged)
+        onSelectionChanged();
+}
+
+void FieldComponent::setSelection (std::vector<int> sources)
+{
+    const int n = activeSources();
+    sources.erase (std::remove_if (sources.begin(), sources.end(), [n] (int s) { return s < 0 || s >= n; }), sources.end());
+    std::sort (sources.begin(), sources.end());
+    sources.erase (std::unique (sources.begin(), sources.end()), sources.end());
+
+    if (sources == selection)
+        return;
+
+    selection = std::move (sources);
+    repaint();
+    notifySelectionChanged();
+}
+
+std::vector<int> FieldComponent::movingSet (int source) const
+{
+    if (std::binary_search (selection.begin(), selection.end(), source))
+        return selection;
+
+    return processor.getSourceGroups().membersOf (source, activeSources());
+}
+
+bool FieldComponent::canGroupSelection() const
+{
+    if (! processor.canEditSources() || selection.size() < 2)
+        return false;
+
+    auto g = processor.getSourceGroups();
+    const auto before = g;
+    g.group (selection);
+    return ! (g == before);
+}
+
+bool FieldComponent::canUngroupSelection() const
+{
+    if (! processor.canEditSources())
+        return false;
+
+    const auto g = processor.getSourceGroups();
+    return std::any_of (selection.begin(), selection.end(), [&] (int s) { return g.groupOf (s) > 0; });
+}
+
+bool FieldComponent::groupSelection()
+{
+    if (! canGroupSelection())
+        return false;
+
+    auto g = processor.getSourceGroups();
+    g.group (selection);
+    processor.setSourceGroups (g);
+    groups = g;
+    setSelection (g.membersOf (selection.front(), activeSources())); // the selection grows to the merged group
+    repaint();
+    notifySelectionChanged();
+    return true;
+}
+
+bool FieldComponent::ungroupSelection()
+{
+    if (! canUngroupSelection())
+        return false;
+
+    auto g = processor.getSourceGroups();
+    g.ungroup (selection);
+    processor.setSourceGroups (g);
+    groups = g;
+    repaint();
+    notifySelectionChanged();
+    return true;
+}
+
+bool FieldComponent::keyPressed (const juce::KeyPress& key)
+{
+    if (key.getModifiers().isCommandDown() && juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) key.getKeyCode()) == 'G')
+        return key.getModifiers().isShiftDown() ? ungroupSelection() : groupSelection();
+
+    if (key == juce::KeyPress::escapeKey && ! selection.empty())
+    {
+        clearSelection();
+        return true;
+    }
+
+    return false;
+}
+
+juce::String FieldComponent::getTooltip()
+{
+    if (hovered && hovered->isSource)
+    {
+        const int id = groups.groupOf (hovered->index);
+        if (id > 0)
+            return "Group " + juce::String (id) + " (" + juce::String (groups.sizeOf (id, activeSources())) + " sources)\n" + baseTooltip;
+    }
+
+    return baseTooltip;
+}
+
+void FieldComponent::moveSelectionTo (juce::Point<float> p)
+{
+    if (dragSources.empty() || ! processor.canEditSources())
+        return;
+
+    // The grabbed source goes to the pointer and the others keep their offsets to it; the movement is
+    // limited as a whole, so that the shape never changes when a member would leave the pad.
+    const auto pos = fromView (p);
+    const auto delta = tripan::clampTranslation (dragStart, { pos.x - dragGrabStart.x, pos.y - dragGrabStart.y },
+                                                 (double) tripan::params::kCoordRange);
+
+    for (size_t i = 0; i < dragSources.size(); ++i)
+    {
+        const auto set = [] (juce::RangedAudioParameter* prm, double v)
+        {
+            const float clamped = juce::jlimit (-tripan::params::kCoordRange, tripan::params::kCoordRange, (float) v);
+            prm->setValueNotifyingHost (prm->convertTo0to1 (clamped));
+        };
+
+        const auto src = (size_t) dragSources[i];
+        set (srcXp[src], dragStart[i].x + delta.x);
+        set (srcYp[src], dragStart[i].y + delta.y);
+    }
+}
+
+void FieldComponent::updateMarqueeSelection()
+{
+    if (! marquee)
+        return;
+
+    std::vector<int> picked = marqueeBase;
+    const auto inside = marquee->expanded (0.0f);
+    for (int s = 0; s < activeSources(); ++s)
+    {
+        const auto pos = position ({ true, s });
+        if (inside.contains (toView (pos.x, pos.y)))
+            for (const int member : groups.membersOf (s, activeSources()))
+                picked.push_back (member);
+    }
+    setSelection (std::move (picked));
 }
 
 bool FieldComponent::canEditVirtualSpeakers() const
@@ -306,6 +476,23 @@ void FieldComponent::timerCallback()
         mix (getSpread (i));
     }
 
+    const auto currentGroups = processor.getSourceGroups();
+    if (! (currentGroups == groups))
+    {
+        groups = currentGroups;
+        notifySelectionChanged();
+    }
+    for (int i = 0; i < n; ++i)
+        mix ((double) groups.groupOf (i));
+    for (const int s : selection)
+        mix (1000.0 + s);
+    if (marquee)
+        mix (marquee->getWidth() + marquee->getHeight());
+
+    // Sources that are no longer in use can not stay selected.
+    if (! selection.empty() && selection.back() >= n)
+        setSelection (selection);
+
     virtualSpeakers = processor.getVirtualSpeakers();
     mix ((double) processor.getVirtualMode());
     for (const auto& v : virtualSpeakers)
@@ -426,6 +613,48 @@ void FieldComponent::paint (juce::Graphics& g)
         }
     }
 
+    // Groups: a soft band around the members of each group (the outline of the convex hull, widened), in the
+    // group's colour, with its number above the top member.
+    for (int id = 1; id <= tripan::SourceGroups::kMaxGroupId; ++id)
+    {
+        if (groups.sizeOf (id, n) < 2)
+            continue;
+
+        std::vector<tripan::Vec2> pts;
+        for (int s = 0; s < n; ++s)
+            if (groups.groupOf (s) == id)
+            {
+                const auto pos = position ({ true, s });
+                pts.push_back ({ pos.x, pos.y });
+            }
+
+        const auto hull = tripan::convexHull (pts);
+        juce::Path path;
+        for (size_t i = 0; i < hull.size(); ++i)
+        {
+            const auto v = toView (hull[i].x, hull[i].y);
+            if (i == 0) path.startNewSubPath (v); else path.lineTo (v);
+        }
+        if (hull.size() >= 3)
+        {
+            path.closeSubPath();
+            g.setColour (groupColour (id).withAlpha (0.08f));
+            g.fillPath (path);
+        }
+        g.setColour (groupColour (id).withAlpha (0.2f));
+        g.strokePath (path, juce::PathStrokeType (30.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        auto top = toView (hull.front().x, hull.front().y);
+        for (const auto& h : hull)
+        {
+            const auto v = toView (h.x, h.y);
+            if (v.y < top.y) top = v;
+        }
+        g.setColour (groupColour (id).withAlpha (0.95f));
+        g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+        g.drawText ("G" + juce::String (id), juce::Rectangle<float> (30.0f, 12.0f).withCentre ({ top.x, top.y - 27.0f }), juce::Justification::centred);
+    }
+
     // Spread: a semi-transparent circle around each source whose radius is its spread (in metres).
     // It is display only; mouse interaction happens in the inner circle of the source.
     {
@@ -503,6 +732,16 @@ void FieldComponent::paint (juce::Graphics& g)
         const auto c = toView (pos.x, pos.y);
         const bool hot = (hovered && hovered->isSource && hovered->index == s) || (dragging && dragging->isSource && dragging->index == s);
         const auto r = juce::Rectangle<float> (18.0f, 18.0f).withCentre (c);
+        if (const int id = groups.groupOf (s); id > 0) // ring in the colour of the group
+        {
+            g.setColour (groupColour (id));
+            g.drawEllipse (r.expanded (3.0f), 2.0f);
+        }
+        if (std::binary_search (selection.begin(), selection.end(), s)) // selected
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.9f));
+            g.drawEllipse (r.expanded (7.0f), 1.5f);
+        }
         g.setColour (sourceColour (s));
         g.fillEllipse (r);
         g.setColour (hot ? juce::Colours::white : juce::Colours::black.withAlpha (0.6f));
@@ -526,6 +765,14 @@ void FieldComponent::paint (juce::Graphics& g)
         g.drawText ("spread " + juce::String (getSpread (dragging->index), 2) + " m", label, juce::Justification::centred);
     }
 
+    if (marquee)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.fillRect (*marquee);
+        g.setColour (juce::Colours::white.withAlpha (0.6f));
+        g.drawRect (*marquee, 1.0f);
+    }
+
     g.restoreState();
 
     g.setColour (juce::Colours::white.withAlpha (0.35f));
@@ -536,17 +783,80 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
 {
     dragging = findHandleAt (p);
     draggingSpread = false;
+    dragSources.clear();
+    dragStart.clear();
+    marquee.reset();
+    groups = processor.getSourceGroups();
+    if (isShowing())
+        grabKeyboardFocus();
 
     if (! dragging)
-        return;
-
-    if (dragging->isSource && isSpreadModifier (mods))
     {
-        // The spread keeps its value at the press and then follows the vertical movement of the mouse.
-        draggingSpread = true;
-        lastSpreadDragY = p.y;
-        srcSpreadP[(size_t) dragging->index]->beginChangeGesture();
-        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+        // Empty space: start a selection rectangle (sources must be editable). Shift extends the selection.
+        if (processor.canEditSources() && planeBounds().contains (p))
+        {
+            marqueeBase = mods.isShiftDown() ? selection : std::vector<int>();
+            marqueeOrigin = p;
+            marquee = juce::Rectangle<float> (p, p);
+            if (! mods.isShiftDown())
+                clearSelection();
+        }
+        return;
+    }
+
+    if (dragging->isSource)
+    {
+        const int s = dragging->index;
+        const bool spreadDrag = isSpreadModifier (mods);
+
+        if (! spreadDrag && ! isSingleSourceModifier (mods))
+        {
+            const auto members = groups.membersOf (s, activeSources());
+            if (mods.isShiftDown()) // add or remove the source together with its group
+            {
+                auto next = selection;
+                if (std::binary_search (selection.begin(), selection.end(), s))
+                    next.erase (std::remove_if (next.begin(), next.end(), [&] (int v) { return std::find (members.begin(), members.end(), v) != members.end(); }), next.end());
+                else
+                    next.insert (next.end(), members.begin(), members.end());
+                setSelection (std::move (next));
+
+                if (! std::binary_search (selection.begin(), selection.end(), s))
+                {
+                    dragging.reset(); // removed from the selection: nothing to drag
+                    return;
+                }
+            }
+            else if (! std::binary_search (selection.begin(), selection.end(), s))
+            {
+                setSelection (members);
+            }
+        }
+
+        if (spreadDrag)
+        {
+            // The spread keeps its value at the press and then follows the vertical movement of the mouse.
+            draggingSpread = true;
+            lastSpreadDragY = p.y;
+            dragSources = isGroupSpreadModifier (mods) ? movingSet (s) : std::vector<int> { s };
+            for (const int member : dragSources)
+                srcSpreadP[(size_t) member]->beginChangeGesture();
+            setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+            repaint();
+            return;
+        }
+
+        dragSources = isSingleSourceModifier (mods) ? std::vector<int> { s } : movingSet (s);
+        for (const int member : dragSources)
+        {
+            const auto pos = position ({ true, member });
+            dragStart.push_back ({ pos.x, pos.y });
+            srcXp[(size_t) member]->beginChangeGesture();
+            srcYp[(size_t) member]->beginChangeGesture();
+        }
+        const auto grabbed = position (*dragging);
+        dragGrabStart = { grabbed.x, grabbed.y };
+        moveSelectionTo (p);
         repaint();
         return;
     }
@@ -562,6 +872,14 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
 
 void FieldComponent::dragTo (juce::Point<float> p)
 {
+    if (marquee)
+    {
+        marquee = juce::Rectangle<float> (marqueeOrigin, p);
+        updateMarqueeSelection();
+        repaint();
+        return;
+    }
+
     if (! dragging)
         return;
 
@@ -569,11 +887,23 @@ void FieldComponent::dragTo (juce::Point<float> p)
     {
         // Up = more spread, down = less; one pixel is the same distance as on the pad (so the top of the
         // circle follows the mouse). Applied step by step and limited at every step, which means there is
-        // no "dead zone" after dragging beyond 0 or the maximum.
+        // no "dead zone" after dragging beyond 0 or the maximum. A group changes by the same amount, as far
+        // as every member can follow.
         const double metresPerPixel = 2.0 * viewHalf / (double) planeBounds().getWidth();
-        const double change = (double) (lastSpreadDragY - p.y) * metresPerPixel;
+        const double wanted = (double) (lastSpreadDragY - p.y) * metresPerPixel;
         lastSpreadDragY = p.y;
-        setSpread (dragging->index, getSpread (dragging->index) + change);
+
+        std::vector<double> current;
+        for (const int member : dragSources)
+            current.push_back (getSpread (member));
+
+        const double change = tripan::clampSpreadChange (current, wanted, (double) tripan::params::kMaxSpread);
+        for (size_t i = 0; i < dragSources.size(); ++i)
+            setSpread (dragSources[i], current[i] + change);
+    }
+    else if (dragging->isSource)
+    {
+        moveSelectionTo (p);
     }
     else
     {
@@ -583,12 +913,28 @@ void FieldComponent::dragTo (juce::Point<float> p)
 
 void FieldComponent::release()
 {
+    if (marquee)
+    {
+        marquee.reset();
+        marqueeBase.clear();
+        repaint();
+    }
+
     if (! dragging)
         return;
 
     if (draggingSpread)
     {
-        srcSpreadP[(size_t) dragging->index]->endChangeGesture();
+        for (const int member : dragSources)
+            srcSpreadP[(size_t) member]->endChangeGesture();
+    }
+    else if (dragging->isSource)
+    {
+        for (const int member : dragSources)
+        {
+            srcXp[(size_t) member]->endChangeGesture();
+            srcYp[(size_t) member]->endChangeGesture();
+        }
     }
     else if (! dragging->isVirtual)
     {
@@ -598,6 +944,8 @@ void FieldComponent::release()
 
     dragging.reset();
     draggingSpread = false;
+    dragSources.clear();
+    dragStart.clear();
     repaint();
 }
 
@@ -609,9 +957,14 @@ void FieldComponent::doubleClickAt (juce::Point<float> p, const juce::ModifierKe
         const auto h = findHandleAt (p);
         if (h && h->isSource)
         {
-            srcSpreadP[(size_t) h->index]->beginChangeGesture();
-            setSpread (h->index, 0.0);
-            srcSpreadP[(size_t) h->index]->endChangeGesture();
+            // With Shift: everything that moves with the source.
+            const auto set = isGroupSpreadModifier (mods) ? movingSet (h->index) : std::vector<int> { h->index };
+            for (const int member : set)
+            {
+                srcSpreadP[(size_t) member]->beginChangeGesture();
+                setSpread (member, 0.0);
+                srcSpreadP[(size_t) member]->endChangeGesture();
+            }
         }
         return;
     }

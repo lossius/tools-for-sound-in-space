@@ -84,6 +84,16 @@ TriPanAudioProcessorEditor::TriPanAudioProcessorEditor (TriPanAudioProcessor& p)
     zoomOutButton.onClick = [this] { field.zoomOut(); syncControls(); };
     content.addAndMakeVisible (zoomOutButton);
 
+    groupButton.setTooltip ("Group the selected sources, so that they move together (Cmd+G). Select with Shift-click or by dragging a rectangle on the pad.");
+    groupButton.onClick = [this] { field.groupSelection(); syncControls(); };
+    content.addAndMakeVisible (groupButton);
+
+    ungroupButton.setTooltip ("Dissolve the groups of the selected sources (Cmd+Shift+G)");
+    ungroupButton.onClick = [this] { field.ungroupSelection(); syncControls(); };
+    content.addAndMakeVisible (ungroupButton);
+
+    field.onSelectionChanged = [this] { syncControls(); };
+
     const auto setUpFileButton = [this] (juce::TextButton& b, tripan::io::Kind kind, bool isExport, const juce::String& tip)
     {
         b.setTooltip (tip);
@@ -229,6 +239,8 @@ void TriPanAudioProcessorEditor::syncControls()
         virtualModeBox.setSelectedId ((int) owner.getVirtualMode(), juce::dontSendNotification);
     zoomInButton.setEnabled (field.canZoomIn());
     zoomOutButton.setEnabled (field.canZoomOut());
+    groupButton.setEnabled (field.canGroupSelection());
+    ungroupButton.setEnabled (field.canUngroupSelection());
 
     const bool showingStatus = statusText.isNotEmpty() && juce::Time::getMillisecondCounter() < statusUntil;
     infoLabel.setText (showingStatus ? statusText
@@ -271,6 +283,8 @@ juce::Result TriPanAudioProcessorEditor::importPositionsFrom (tripan::io::Kind k
             text << " (" << report.inUse << " in use)";
         if (report.spreadApplied > 0)
             text << ", spread for " << report.spreadApplied;
+        if (report.groupCount > 0)
+            text << ", " << report.groupCount << (report.groupCount == 1 ? " group" : " groups");
         if (report.virtualMode)
         {
             switch (*report.virtualMode)
@@ -399,6 +413,10 @@ void TriPanAudioProcessorEditor::layoutContent()
     zoomInButton.setBounds (bar.removeFromLeft (74));
     bar.removeFromLeft (4);
     zoomOutButton.setBounds (bar.removeFromLeft (74));
+    bar.removeFromLeft (16);
+    groupButton.setBounds (bar.removeFromLeft (70));
+    bar.removeFromLeft (4);
+    ungroupButton.setBounds (bar.removeFromLeft (80));
 
     // Fourth row: virtual speakers, and the line of text (track channels, import/export results).
     auto last = area.removeFromTop (32).reduced (10, 5);

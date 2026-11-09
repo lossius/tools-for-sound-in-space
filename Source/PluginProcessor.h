@@ -7,6 +7,7 @@
 #pragma once
 
 #include "tripan/Gains.h"
+#include "tripan/Groups.h"
 #include "tripan/Limits.h"
 #include "tripan/LayoutExchange.h"
 #include "tripan/VirtualSpeakers.h"
@@ -139,6 +140,13 @@ public:
         ones have strength 1; automatic ones have a strength between 0 and 1 that follows the layout
         smoothly (see tripan::SpeakerLayout). */
     std::vector<tripan::VirtualSpeaker> getVirtualSpeakers() const;
+
+    /** Message thread. Source groups: sources in a group are moved together in the editor. They are not
+        host parameters; the assignment is saved with the state (and so survives closing the project).
+        @return Which sources are grouped. */
+    tripan::SourceGroups getSourceGroups() const;
+    /** Replaces the source groups (saved with the state). */
+    void setSourceGroups (const tripan::SourceGroups&);
 
     /** Message thread. Width of the editor window in pixels (0 if never set); saved with the state
         so that the chosen GUI size is restored. */

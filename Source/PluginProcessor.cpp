@@ -28,6 +28,9 @@ const juce::Identifier kVirtualMode { "virtualMode" };
 /// State property: manual virtual speakers as text, "x1 y1 x2 y2 ...".
 const juce::Identifier kManualVirtual { "manualVirtual" };
 
+/// State property: group id per source as text, "0 0 1 1 ..." (see tripan::SourceGroups).
+const juce::Identifier kSourceGroups { "sourceGroups" };
+
 /** k-th of `count` positions on a ring; k = 0 at the front (+y), going clockwise. */
 juce::Point<float> ringPosition (int k, int count, float radius)
 {
@@ -313,6 +316,19 @@ std::vector<tripan::VirtualSpeaker> TriPanAudioProcessor::getVirtualSpeakers() c
         speakers.push_back ({ (double) spkX[(size_t) i]->load(), (double) spkY[(size_t) i]->load() });
 
     return tripan::findVirtualSpeakers (speakers);
+}
+
+tripan::SourceGroups TriPanAudioProcessor::getSourceGroups() const
+{
+    return tripan::SourceGroups::fromString (apvts.state.getProperty (kSourceGroups, juce::String()).toString().toStdString());
+}
+
+void TriPanAudioProcessor::setSourceGroups (const tripan::SourceGroups& groups)
+{
+    if (groups.any())
+        apvts.state.setProperty (kSourceGroups, juce::String (groups.toString()), nullptr);
+    else
+        apvts.state.removeProperty (kSourceGroups, nullptr);
 }
 
 void TriPanAudioProcessor::prepareToPlay (double, int samplesPerBlock)

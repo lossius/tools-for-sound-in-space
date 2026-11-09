@@ -88,6 +88,18 @@ warnings; keep it that way when adding code.
   (`virtualMode`, `manualVirtual` in the state, max 64, not host parameters; manual ones have strength 1);
   Manual ones are edited on the pad (double-click add/delete, drag) when speakers are set to Edit. Known limit:
   cocircular grid cells (3x3, 4x4) still have arbitrary diagonals.
+- Source groups: `tripan::SourceGroups` (core/Groups: group id per source, 0 = none, 1..32; groups of one are dissolved;
+  `group()` merges touched groups whole and keeps the smallest id, `ungroup()` dissolves whole groups, `membersOf(source, activeCount)`;
+  text form "0 0 1 1 ..." (64 numbers)) plus `clampTranslation` (rigid move limited to +-10 m per axis, so the group slides along a wall),
+  `clampSpreadChange` (common spread change limited to 0..10) and `convexHull` (for drawing). The assignment is saved in the plugin
+  state as `sourceGroups` (not a host parameter; `getSourceGroups/setSourceGroups`). On the pad (`FieldComponent`): the selection is
+  GUI state only (not saved). Click = select the source and its group; Shift-click toggles (with group); rectangle on empty space
+  selects (Shift extends); dragging a selected source moves `movingSet()` (the selection, else its group) with offsets taken from
+  the positions at the press (nothing stored, so automation/table edits/imports never desync a group). Cmd-drag moves one source
+  only; Option-drag spread of one, Option+Shift of `movingSet` (also Option+Shift double-click reset). Cmd+G / Cmd+Shift+G (pad has
+  keyboard focus; `keyPressed`), Group/Ungroup buttons in row 3, Group column in the sources table, optional `group` attribute in source
+  XML (an import where any entry has it replaces all groups). Groups and moving need sources on Edit; members above `numSources` keep
+  their group but are ignored when moving. Drawing: palette colour per id (`FieldComponent::groupColour`), ring, widened hull band, "G<n>" tag.
 - Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-10 m
   centred on 0. Zoom In steps by 1.5x towards `fittedView()` (bounding box of the speakers in use, min +-2 m) and
   stops there; Zoom Out steps back to the full view. The view is fixed once set (it doesn't follow dragged
@@ -133,7 +145,7 @@ warnings; keep it that way when adding code.
 - First run only (flag `layoutInitialised` in saved state): active channels get default rings.
 - Editor: `Source/FieldComponent.*` draws the plane (±10 m), triangulation, source-to-speaker links
   and drags handles through the parameters (with change gestures). `tests/EditorTests.cpp` tests
-  hit-testing/dragging and, given a path argument, writes a PNG snapshot Claude can look at:
+  hit-testing/dragging/groups and, given a path argument, writes a PNG snapshot Claude can look at:
   `build/Debug/TriPanEditorTests /path/out.png`.
 - `tests/ProcessorTests.cpp` drives the processor offline (energy conservation, locality, state, 64x64).
 - Edge cases handled and tested in M2: source outside the convex hull (project to nearest hull edge),

@@ -6,6 +6,7 @@ add_library(TriPanCore STATIC
     src/Limits.cpp
     src/Triangulation.cpp
     src/Gains.cpp
+    src/Groups.cpp
     src/VirtualSpeakers.cpp
     src/SpeakerLayout.cpp
     src/LayoutExchange.cpp)
