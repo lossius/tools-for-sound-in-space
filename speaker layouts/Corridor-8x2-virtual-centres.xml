@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<TriPanSpeakers version="1" count="16" virtual="manual">
+  <!-- 8x2 corridor with virtual speakers at the cell centres: 16 speakers in 2 rows of 8, x spanning +-5 m, rows at y = +-1.5 m (every cell is a 1.43 m x 3 m rectangle), numbered row by row from the front-left, plus 7 manual virtual speakers at the centres of the 7 rectangles -->
+  <Speaker index=" 1" x=" -5.000" y="  1.500"/>
+  <Speaker index=" 2" x=" -3.571" y="  1.500"/>
+  <Speaker index=" 3" x=" -2.143" y="  1.500"/>
+  <Speaker index=" 4" x=" -0.714" y="  1.500"/>
+  <Speaker index=" 5" x="  0.714" y="  1.500"/>
+  <Speaker index=" 6" x="  2.143" y="  1.500"/>
+  <Speaker index=" 7" x="  3.571" y="  1.500"/>
+  <Speaker index=" 8" x="  5.000" y="  1.500"/>
+  <Speaker index=" 9" x=" -5.000" y=" -1.500"/>
+  <Speaker index="10" x=" -3.571" y=" -1.500"/>
+  <Speaker index="11" x=" -2.143" y=" -1.500"/>
+  <Speaker index="12" x=" -0.714" y=" -1.500"/>
+  <Speaker index="13" x="  0.714" y=" -1.500"/>
+  <Speaker index="14" x="  2.143" y=" -1.500"/>
+  <Speaker index="15" x="  3.571" y=" -1.500"/>
+  <Speaker index="16" x="  5.000" y=" -1.500"/>
+  <VirtualSpeaker index=" 1" x=" -4.286" y="  0.000"/>
+  <VirtualSpeaker index=" 2" x=" -2.857" y="  0.000"/>
+  <VirtualSpeaker index=" 3" x=" -1.429" y="  0.000"/>
+  <VirtualSpeaker index=" 4" x="  0.000" y="  0.000"/>
+  <VirtualSpeaker index=" 5" x="  1.429" y="  0.000"/>
+  <VirtualSpeaker index=" 6" x="  2.857" y="  0.000"/>
+  <VirtualSpeaker index=" 7" x="  4.286" y="  0.000"/>
+</TriPanSpeakers>

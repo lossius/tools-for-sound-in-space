@@ -497,11 +497,14 @@ static void testUnusedSpeakersAreSilentImmediately()
 /** The speaker layouts in "speaker layouts/" must import cleanly and give a usable triangulation. */
 static void testSpeakerPresets (const juce::File& dir)
 {
-    struct Expected { const char* file; int count; };
-    const Expected expected[] = { { "Quad.xml", 4 }, { "5.1.xml", 5 }, { "7.1.xml", 7 },
-                                  { "Hexagon-front-centre.xml", 6 }, { "Hexagon-symmetric.xml", 6 },
-                                  { "Octagon-front-centre.xml", 8 }, { "Octagon-symmetric.xml", 8 },
-                                  { "Grid-3x3.xml", 9 }, { "Grid-4x4.xml", 16 }, { "Random-16.xml", 16 } };
+    struct Expected { const char* file; int count; int manualVirtual; }; // manualVirtual 0: the file says virtual="auto"
+    const Expected expected[] = { { "Quad.xml", 4, 0 }, { "5.1.xml", 5, 0 }, { "7.1.xml", 7, 0 },
+                                  { "Hexagon-front-centre.xml", 6, 0 }, { "Hexagon-symmetric.xml", 6, 0 },
+                                  { "Octagon-front-centre.xml", 8, 0 }, { "Octagon-symmetric.xml", 8, 0 },
+                                  { "Grid-3x3.xml", 9, 0 }, { "Grid-4x4.xml", 16, 0 }, { "Random-16.xml", 16, 0 },
+                                  { "Grid-3x3-virtual-centres.xml", 9, 4 }, { "Grid-4x4-virtual-centres.xml", 16, 9 },
+                                  { "Corridor-8x2.xml", 16, 0 }, { "Corridor-8x2-virtual-centres.xml", 16, 7 },
+                                  { "Grid-8x8.xml", 64, 0 }, { "Grid-8x8-virtual-centres.xml", 64, 49 } };
 
     CHECK (dir.isDirectory());
     CHECK (dir.findChildFiles (juce::File::findFiles, false, "*.xml").size() == (int) std::size (expected));
@@ -509,7 +512,7 @@ static void testSpeakerPresets (const juce::File& dir)
     for (const auto& e : expected)
     {
         TriPanAudioProcessor p;
-        CHECK (configure (p, 2, 16, 256));
+        CHECK (configure (p, 2, 64, 256));
 
         tripan::io::ImportReport report;
         const auto result = tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (e.file), report);
@@ -518,9 +521,10 @@ static void testSpeakerPresets (const juce::File& dir)
         CHECK (result.wasOk());
         CHECK (report.applied == e.count && report.skipped == 0 && report.clamped == 0);
 
-        // Importing a speaker setup adjusts Number of Speakers (the track has 16 outputs).
+        // Importing a speaker setup adjusts Number of Speakers (the track has 64 outputs).
         CHECK (report.fileCount == e.count && report.speakersSetTo == e.count && report.inUse == e.count);
-        CHECK (report.virtualMode && *report.virtualMode == VirtualMode::Auto); // the presets switch to automatic virtual speakers
+        CHECK (report.virtualMode && *report.virtualMode == (e.manualVirtual == 0 ? VirtualMode::Auto : VirtualMode::Manual)); // automatic, or the file's own virtual speakers
+        CHECK (report.virtualCount == e.manualVirtual && (int) p.getManualVirtualSpeakers().size() == e.manualVirtual);
         CHECK (p.getActiveSpeakers() == e.count);
 
         std::vector<tripan::Vec2> pts;
@@ -540,6 +544,38 @@ static void testSpeakerPresets (const juce::File& dir)
 
         const tripan::Triangulation tri (pts);
         CHECK (! tri.triangles().empty());
+
+        // A virtual speaker at the centre of a cell: its four nearest real speakers (the corners) are equally far away.
+        for (const auto& v : p.getManualVirtualSpeakers())
+        {
+            std::vector<double> distances;
+            for (const auto& s : pts)
+                distances.push_back (std::hypot (s.x - v.x, s.y - v.y));
+            std::sort (distances.begin(), distances.end());
+            CHECK (distances.size() >= 5 && distances[3] - distances[0] < 5e-3 && distances[4] - distances[3] > 0.1); // equal up to the 3-decimal rounding of the file
+        }
+
+        // With them, a source at the centre of a cell is panned equally to its four corners.
+        if (e.manualVirtual > 0)
+        {
+            std::vector<tripan::VirtualSpeaker> virtuals;
+            for (const auto& v : p.getManualVirtualSpeakers())
+                virtuals.push_back ({ v, 1.0 });
+
+            const tripan::SpeakerLayout layout (pts, virtuals);
+            for (const auto& v : virtuals)
+            {
+                const auto g = tripan::computeGains (layout, v.position);
+                int audible = 0;
+                for (int k = 0; k < g.count; ++k)
+                    if (g.gain[(size_t) k] > 1e-4f)
+                    {
+                        ++audible;
+                        CHECK (std::abs (g.gain[(size_t) k] - 0.5f) < 0.01f);
+                    }
+                CHECK (audible == 4);
+            }
+        }
 
         // Constant power everywhere on a coarse sweep, including outside the speakers.
         for (double x = -9.0; x <= 9.0; x += 1.5)
@@ -587,7 +623,7 @@ static void testSpeakerPresets (const juce::File& dir)
     const auto load = [&] (const char* file, std::vector<tripan::Vec2>& out)
     {
         TriPanAudioProcessor p;
-        configure (p, 2, 16, 256);
+        configure (p, 2, 64, 256);
         tripan::io::ImportReport r;
         CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
         out.clear();
@@ -622,6 +658,29 @@ static void testSpeakerPresets (const juce::File& dir)
     CHECK (std::abs (v[4].x) < 1e-3 && std::abs (v[4].y) < 1e-3);                        // centre of the grid
     load ("Grid-4x4.xml", v);
     CHECK (std::abs (v[0].x + 5.0) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3 && std::abs (v[15].x - 5.0) < 1e-3 && std::abs (v[15].y + 5.0) < 1e-3);
+
+    // Corridor: 2 rows of 8, every cell a rectangle (all rows share their y, all columns their x).
+    for (const char* file : { "Corridor-8x2.xml", "Corridor-8x2-virtual-centres.xml" })
+    {
+        load (file, v);
+        CHECK (v.size() == 16);
+        for (int c = 0; c < 8; ++c)
+        {
+            CHECK (std::abs (v[(size_t) c].y - 1.5) < 1e-3 && std::abs (v[(size_t) (8 + c)].y + 1.5) < 1e-3); // two rows, front then back
+            CHECK (std::abs (v[(size_t) c].x - v[(size_t) (8 + c)].x) < 1e-3);                                 // columns line up
+            if (c > 0)
+                CHECK (std::abs ((v[(size_t) c].x - v[(size_t) (c - 1)].x) - 10.0 / 7.0) < 1e-3);             // equal spacing
+        }
+    }
+
+    // 8x8 grids: 64 speakers, equal spacing in both directions.
+    for (const char* file : { "Grid-8x8.xml", "Grid-8x8-virtual-centres.xml" })
+    {
+        load (file, v);
+        CHECK (v.size() == 64);
+        CHECK (std::abs (v[0].x + 5.0) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3 && std::abs (v[63].x - 5.0) < 1e-3 && std::abs (v[63].y + 5.0) < 1e-3);
+        CHECK (std::abs (v[1].x - v[0].x - 10.0 / 7.0) < 1e-3 && std::abs (v[0].y - v[8].y - 10.0 / 7.0) < 1e-3);
+    }
 }
 
 /** The virtual speakers of an 8-speaker ring fill in the centre, and the modes behave as described. */

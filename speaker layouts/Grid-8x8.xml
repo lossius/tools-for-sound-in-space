@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<TriPanSpeakers version="1" count="64" virtual="auto">
+  <!-- 8x8 grid: 64 speakers on a square grid spanning +-5 m, numbered row by row from the front-left -->
+  <Speaker index=" 1" x=" -5.000" y="  5.000"/>
+  <Speaker index=" 2" x=" -3.571" y="  5.000"/>
+  <Speaker index=" 3" x=" -2.143" y="  5.000"/>
+  <Speaker index=" 4" x=" -0.714" y="  5.000"/>
+  <Speaker index=" 5" x="  0.714" y="  5.000"/>
+  <Speaker index=" 6" x="  2.143" y="  5.000"/>
+  <Speaker index=" 7" x="  3.571" y="  5.000"/>
+  <Speaker index=" 8" x="  5.000" y="  5.000"/>
+  <Speaker index=" 9" x=" -5.000" y="  3.571"/>
+  <Speaker index="10" x=" -3.571" y="  3.571"/>
+  <Speaker index="11" x=" -2.143" y="  3.571"/>
+  <Speaker index="12" x=" -0.714" y="  3.571"/>
+  <Speaker index="13" x="  0.714" y="  3.571"/>
+  <Speaker index="14" x="  2.143" y="  3.571"/>
+  <Speaker index="15" x="  3.571" y="  3.571"/>
+  <Speaker index="16" x="  5.000" y="  3.571"/>
+  <Speaker index="17" x=" -5.000" y="  2.143"/>
+  <Speaker index="18" x=" -3.571" y="  2.143"/>
+  <Speaker index="19" x=" -2.143" y="  2.143"/>
+  <Speaker index="20" x=" -0.714" y="  2.143"/>
+  <Speaker index="21" x="  0.714" y="  2.143"/>
+  <Speaker index="22" x="  2.143" y="  2.143"/>
+  <Speaker index="23" x="  3.571" y="  2.143"/>
+  <Speaker index="24" x="  5.000" y="  2.143"/>
+  <Speaker index="25" x=" -5.000" y="  0.714"/>
+  <Speaker index="26" x=" -3.571" y="  0.714"/>
+  <Speaker index="27" x=" -2.143" y="  0.714"/>
+  <Speaker index="28" x=" -0.714" y="  0.714"/>
+  <Speaker index="29" x="  0.714" y="  0.714"/>
+  <Speaker index="30" x="  2.143" y="  0.714"/>
+  <Speaker index="31" x="  3.571" y="  0.714"/>
+  <Speaker index="32" x="  5.000" y="  0.714"/>
+  <Speaker index="33" x=" -5.000" y=" -0.714"/>
+  <Speaker index="34" x=" -3.571" y=" -0.714"/>
+  <Speaker index="35" x=" -2.143" y=" -0.714"/>
+  <Speaker index="36" x=" -0.714" y=" -0.714"/>
+  <Speaker index="37" x="  0.714" y=" -0.714"/>
+  <Speaker index="38" x="  2.143" y=" -0.714"/>
+  <Speaker index="39" x="  3.571" y=" -0.714"/>
+  <Speaker index="40" x="  5.000" y=" -0.714"/>
+  <Speaker index="41" x=" -5.000" y=" -2.143"/>
+  <Speaker index="42" x=" -3.571" y=" -2.143"/>
+  <Speaker index="43" x=" -2.143" y=" -2.143"/>
+  <Speaker index="44" x=" -0.714" y=" -2.143"/>
+  <Speaker index="45" x="  0.714" y=" -2.143"/>
+  <Speaker index="46" x="  2.143" y=" -2.143"/>
+  <Speaker index="47" x="  3.571" y=" -2.143"/>
+  <Speaker index="48" x="  5.000" y=" -2.143"/>
+  <Speaker index="49" x=" -5.000" y=" -3.571"/>
+  <Speaker index="50" x=" -3.571" y=" -3.571"/>
+  <Speaker index="51" x=" -2.143" y=" -3.571"/>
+  <Speaker index="52" x=" -0.714" y=" -3.571"/>
+  <Speaker index="53" x="  0.714" y=" -3.571"/>
+  <Speaker index="54" x="  2.143" y=" -3.571"/>
+  <Speaker index="55" x="  3.571" y=" -3.571"/>
+  <Speaker index="56" x="  5.000" y=" -3.571"/>
+  <Speaker index="57" x=" -5.000" y=" -5.000"/>
+  <Speaker index="58" x=" -3.571" y=" -5.000"/>
+  <Speaker index="59" x=" -2.143" y=" -5.000"/>
+  <Speaker index="60" x=" -0.714" y=" -5.000"/>
+  <Speaker index="61" x="  0.714" y=" -5.000"/>
+  <Speaker index="62" x="  2.143" y=" -5.000"/>
+  <Speaker index="63" x="  3.571" y=" -5.000"/>
+  <Speaker index="64" x="  5.000" y=" -5.000"/>
+</TriPanSpeakers>

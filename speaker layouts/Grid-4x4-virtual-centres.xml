@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<TriPanSpeakers version="1" count="16" virtual="manual">
+  <!-- 4x4 grid with virtual speakers at the cell centres: 16 speakers as in Grid-4x4, plus 9 manual virtual speakers at the centres of the 9 squares -->
+  <Speaker index=" 1" x=" -5.000" y="  5.000"/>
+  <Speaker index=" 2" x=" -1.667" y="  5.000"/>
+  <Speaker index=" 3" x="  1.667" y="  5.000"/>
+  <Speaker index=" 4" x="  5.000" y="  5.000"/>
+  <Speaker index=" 5" x=" -5.000" y="  1.667"/>
+  <Speaker index=" 6" x=" -1.667" y="  1.667"/>
+  <Speaker index=" 7" x="  1.667" y="  1.667"/>
+  <Speaker index=" 8" x="  5.000" y="  1.667"/>
+  <Speaker index=" 9" x=" -5.000" y=" -1.667"/>
+  <Speaker index="10" x=" -1.667" y=" -1.667"/>
+  <Speaker index="11" x="  1.667" y=" -1.667"/>
+  <Speaker index="12" x="  5.000" y=" -1.667"/>
+  <Speaker index="13" x=" -5.000" y=" -5.000"/>
+  <Speaker index="14" x=" -1.667" y=" -5.000"/>
+  <Speaker index="15" x="  1.667" y=" -5.000"/>
+  <Speaker index="16" x="  5.000" y=" -5.000"/>
+  <VirtualSpeaker index=" 1" x=" -3.333" y="  3.333"/>
+  <VirtualSpeaker index=" 2" x="  0.000" y="  3.333"/>
+  <VirtualSpeaker index=" 3" x="  3.333" y="  3.333"/>
+  <VirtualSpeaker index=" 4" x=" -3.333" y="  0.000"/>
+  <VirtualSpeaker index=" 5" x="  0.000" y="  0.000"/>
+  <VirtualSpeaker index=" 6" x="  3.333" y="  0.000"/>
+  <VirtualSpeaker index=" 7" x=" -3.333" y=" -3.333"/>
+  <VirtualSpeaker index=" 8" x="  0.000" y=" -3.333"/>
+  <VirtualSpeaker index=" 9" x="  3.333" y=" -3.333"/>
+</TriPanSpeakers>

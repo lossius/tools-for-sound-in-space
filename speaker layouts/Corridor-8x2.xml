@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<TriPanSpeakers version="1" count="16" virtual="auto">
+  <!-- 8x2 corridor: 16 speakers in 2 rows of 8, x spanning +-5 m, rows at y = +-1.5 m (every cell is a 1.43 m x 3 m rectangle), numbered row by row from the front-left -->
+  <Speaker index=" 1" x=" -5.000" y="  1.500"/>
+  <Speaker index=" 2" x=" -3.571" y="  1.500"/>
+  <Speaker index=" 3" x=" -2.143" y="  1.500"/>
+  <Speaker index=" 4" x=" -0.714" y="  1.500"/>
+  <Speaker index=" 5" x="  0.714" y="  1.500"/>
+  <Speaker index=" 6" x="  2.143" y="  1.500"/>
+  <Speaker index=" 7" x="  3.571" y="  1.500"/>
+  <Speaker index=" 8" x="  5.000" y="  1.500"/>
+  <Speaker index=" 9" x=" -5.000" y=" -1.500"/>
+  <Speaker index="10" x=" -3.571" y=" -1.500"/>
+  <Speaker index="11" x=" -2.143" y=" -1.500"/>
+  <Speaker index="12" x=" -0.714" y=" -1.500"/>
+  <Speaker index="13" x="  0.714" y=" -1.500"/>
+  <Speaker index="14" x="  2.143" y=" -1.500"/>
+  <Speaker index="15" x="  3.571" y=" -1.500"/>
+  <Speaker index="16" x="  5.000" y=" -1.500"/>
+</TriPanSpeakers>
