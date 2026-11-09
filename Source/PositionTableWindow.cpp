@@ -511,12 +511,53 @@ void PositionTableWindow::applyLimits (bool initial)
     setSize (width, juce::jlimit (minHeight, maxHeight, wanted));
 }
 
+std::optional<juce::Point<int>> PositionTableWindow::chooseBesidePosition (juce::Rectangle<int> mainWindow, juce::Rectangle<int> available,
+                                                                          juce::Rectangle<int> size, juce::BorderSize<int> frame, int gap)
+{
+    const int totalWidth = size.getWidth() + frame.getLeftAndRight();
+    const int totalHeight = size.getHeight() + frame.getTopAndBottom();
+
+    // Level with the top of the main window, moved as little as needed to stay on the screen.
+    const int minY = available.getY() + frame.getTop();
+    const int maxY = available.getBottom() - size.getHeight() - frame.getBottom();
+    if (maxY < minY || totalWidth > available.getWidth() || totalHeight > available.getHeight())
+        return std::nullopt;
+
+    const int y = juce::jlimit (minY, maxY, mainWindow.getY());
+
+    const int rightX = mainWindow.getRight() + gap + frame.getLeft();
+    if (rightX + size.getWidth() + frame.getRight() <= available.getRight())
+        return juce::Point<int> (rightX, y);
+
+    const int leftX = mainWindow.getX() - gap - frame.getRight() - size.getWidth();
+    if (leftX - frame.getLeft() >= available.getX())
+        return juce::Point<int> (leftX, y);
+
+    return std::nullopt;
+}
+
 void PositionTableWindow::show (juce::Component* around)
 {
-    if (! shownBefore && around != nullptr)
-        centreAroundComponent (around, getWidth(), getHeight());
+    if (! isVisible() && around != nullptr)
+    {
+        // Beside the plug-in window if the screen has room, otherwise over it.
+        const auto mainBounds = around->getTopLevelComponent()->getScreenBounds();
+        juce::Rectangle<int> available = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay() != nullptr
+                                             ? juce::Desktop::getInstance().getDisplays().getPrimaryDisplay()->userBounds.toNearestInt()
+                                             : juce::Rectangle<int>();
+        if (const auto* display = juce::Desktop::getInstance().getDisplays().getDisplayForRect (mainBounds))
+            available = display->userBounds.toNearestInt();
 
-    shownBefore = true;
+        juce::BorderSize<int> frame;
+        if (auto* peer = getPeer())
+            frame = peer->getFrameSize();
+
+        if (const auto position = chooseBesidePosition (mainBounds, available, getLocalBounds(), frame, 8))
+            setTopLeftPosition (*position);
+        else
+            centreAroundComponent (around, getWidth(), getHeight());
+    }
+
     setAlwaysOnTop (true);
     setVisible (true);
     applyLimits(); // the native frame size is known once the window is shown

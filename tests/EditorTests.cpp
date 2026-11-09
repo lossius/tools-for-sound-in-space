@@ -894,6 +894,39 @@ int main (int argc, char** argv)
         CHECK (speakersWindow->getConstrainer()->getMinimumWidth() == speakersWindow->getConstrainer()->getMaximumWidth());
         CHECK (speakers.getMinimumHeight() == speakers.getHeightForRows (PositionTableContent::kMinVisibleRows));
 
+        // Placement beside the main window: right if there is room, otherwise left, otherwise nowhere (then it is centred over it).
+        {
+            const juce::Rectangle<int> screen (0, 0, 1920, 1080), tableSize (0, 0, 360, 300);
+            const juce::BorderSize<int> frame (28, 0, 0, 0); // a title bar
+            const auto place = [&] (juce::Rectangle<int> main, juce::Rectangle<int> avail, juce::Rectangle<int> size)
+            {
+                return PositionTableWindow::chooseBesidePosition (main, avail, size, frame, 8);
+            };
+
+            auto right = place ({ 100, 100, 700, 830 }, screen, tableSize);
+            CHECK (right.has_value() && right->x == 808 && right->y == 100);                  // right of the main window, tops level
+
+            auto left = place ({ 1300, 100, 700, 830 }, screen, tableSize);
+            CHECK (left.has_value() && left->x == 1300 - 8 - 360 && left->y == 100);         // no room on the right: left
+
+            CHECK (! place ({ 100, 100, 700, 830 }, { 0, 0, 1000, 1080 }, tableSize).has_value()); // room on neither side
+            CHECK (! place ({ 100, 100, 700, 830 }, screen, { 0, 0, 2000, 300 }).has_value());    // larger than the screen
+
+            CHECK (place ({ 100, 900, 700, 830 }, screen, tableSize)->y == 1080 - 300);          // kept on the screen at the bottom
+            CHECK (place ({ 100, -10, 700, 830 }, screen, tableSize)->y == 28);                  // and at the top (title bar visible)
+
+            for (const auto* w : { sourcesWindow, speakersWindow })                               // the opened windows do not overlap the main window
+            {
+                const auto mainBounds = editor->getTopLevelComponent()->getScreenBounds();
+                const auto displays = juce::Desktop::getInstance().getDisplays();
+                const bool roomBeside = displays.getDisplayForRect (mainBounds) != nullptr
+                    && PositionTableWindow::chooseBesidePosition (mainBounds, displays.getDisplayForRect (mainBounds)->userBounds.toNearestInt(),
+                                                                  w->getLocalBounds(), {}, 8).has_value();
+                if (roomBeside)
+                    CHECK (! w->getBounds().intersects (mainBounds));
+            }
+        }
+
         // Closing only hides; the button brings the same window back.
         speakersWindow->closeButtonPressed();
         CHECK (! speakersWindow->isVisible());

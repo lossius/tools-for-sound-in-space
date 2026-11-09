@@ -11,6 +11,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 
 /** A table of positions with a caption and a header that stays visible while the rows scroll.
 
@@ -207,9 +208,23 @@ public:
     /** Hides the window. */
     void closeButtonPressed() override { setVisible (false); }
 
-    /** Shows the window in front of the plug-in window, the first time centred over `around`.
-        @param around  Component to centre over on first use; may be null. */
+    /** Shows the window in front of the plug-in window. A window that is not showing yet is placed beside
+        `around` (to the right, otherwise to the left) when the screen has room, so that both can be seen at
+        once, and otherwise centred over it. A window that is already showing is only brought to the front.
+        @param around  The plug-in window; may be null (then the window stays where it is). */
     void show (juce::Component* around);
+
+    /** Where to put a window of the given size so that it sits beside the main window without covering it.
+        Prefers the right side, then the left; its top is level with the main window's, moved up or down as
+        far as needed to stay on the screen.
+        @param mainWindow  Screen bounds of the main window.
+        @param available   Usable screen area (without menu bar and dock).
+        @param size        Size of the window to place (without frame).
+        @param frame       Size of the window frame (native title bar and borders), around `size`.
+        @param gap         Space between the two windows.
+        @return            The top-left of the window (its content area), or nothing if it fits on neither side. */
+    static std::optional<juce::Point<int>> chooseBesidePosition (juce::Rectangle<int> mainWindow, juce::Rectangle<int> available,
+                                                                 juce::Rectangle<int> size, juce::BorderSize<int> frame, int gap);
 
     /** @return The content, for the tests. */
     PositionTableContent& getContent() noexcept { return *content; }
@@ -221,7 +236,6 @@ public:
 
 private:
     PositionTableContent* content = nullptr;   ///< Owned by the window (set as its content component).
-    bool shownBefore = false;                  ///< Whether show() has positioned the window already.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PositionTableWindow)
 };
