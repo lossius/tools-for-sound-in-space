@@ -1,4 +1,8 @@
-# TriPan
+# Tools for Sound in Space
+
+A collection of free, open-source (AGPLv3) plugins for spatial audio. The first plugin is **TriPan**.
+
+## TriPan
 
 A free, open-source (AGPLv3) spatial audio plugin that distributes n sound sources to m speakers in a
 2D plane. Each source is panned to the three speakers of the Delaunay triangle that contains it,
