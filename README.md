@@ -10,6 +10,18 @@ with constant overall intensity.
 
 Status: early development (M1 skeleton).
 
+## Repository layout
+
+| Folder | Contents |
+|---|---|
+| `shared/core` | `TlosCore`: JUCE-free code every plugin uses (geometry types, channel limits, source groups, lock-free hand-over) |
+| `shared/ui` | `TlosUI`: the processor base class, host parameters, the XY pad, the editor window, table windows and position import/export |
+| `TriPan/` | TriPan itself: `core/` (triangulation and gains, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
+| `speaker layouts/` | Ready-made speaker layouts (XML) that any plugin of the family can import |
+
+More plugins (DBAP, VBAP, ViMiC) are planned and will sit next to `TriPan/`, reusing `shared/`, so that they all look and work alike.
+The built plug-ins end up in `<build folder>/TriPan/TriPan_artefacts/`.
+
 ## API documentation
 
 The code is documented with Doxygen. Install it (`brew install doxygen`), run `doxygen Doxyfile` in the repository root and

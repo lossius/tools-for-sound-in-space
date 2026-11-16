@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /** @file Limits.h
-    @brief Compile-time limits shared by the core and the plugin. */
+    @brief Compile-time limits shared by all plugins. */
 
 #pragma once
 
-namespace tripan
+namespace tlos
 {
 /** Maximum number of input (source) and output (speaker) channels.
     64 = 7th-order ambisonic channel count, used here only as a channel-count ceiling. */

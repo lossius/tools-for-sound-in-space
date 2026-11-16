@@ -39,4 +39,5 @@ set(CMAKE_FOLDER "JUCE")
 add_subdirectory(JUCE)
 set(CMAKE_FOLDER "")
 
+add_subdirectory(shared)
 add_subdirectory(TriPan)

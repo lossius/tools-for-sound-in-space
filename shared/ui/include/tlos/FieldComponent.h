@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /** @file FieldComponent.h
-    @brief The XY pad: draws sources, speakers, triangulation and links, and edits positions by mouse. */
+    @brief The XY pad: draws sources, speakers, an optional plugin overlay and links, and edits positions by mouse. */
 
 #pragma once
 
-#include "PluginProcessor.h"
-#include "Parameters.h"
-#include "tripan/SpeakerLayout.h"
+#include "tlos/SpatialProcessor.h"
+#include "tlos/Parameters.h"
+#include "tlos/SourceGains.h"
 
 #include <array>
 #include <functional>
@@ -16,15 +16,23 @@
 #include <optional>
 #include <vector>
 
-/** Top-down view of the plane: speakers (squares), sources (circles), the Delaunay triangulation,
-    and the links from each source to the speakers it feeds. Handles can be dragged. */
-class FieldComponent final : public juce::Component,
-                             public juce::SettableTooltipClient,
-                             private juce::Timer
+namespace tlos
+{
+
+/** Top-down view of the plane: speakers (squares), sources (circles), the links from each source to the
+    speakers it feeds, and whatever the plugin draws underneath (TriPan: the triangulation). Handles can be dragged.
+
+    What is specific to a panning method is left to the plugin's subclass through three hooks:
+    updateOverlay() (follow the layout), paintOverlay() (draw under the sources) and getLinkGains()
+    (which speakers a source feeds, and how much). Everything else (dragging, groups, selection,
+    spread, scale, rotate, zoom, grid) is the same for all plugins. */
+class FieldComponent : public juce::Component,
+                       public juce::SettableTooltipClient,
+                       private juce::Timer
 {
 public:
     /** Creates the pad and starts a 30 Hz timer that follows the parameters. */
-    explicit FieldComponent (TriPanAudioProcessor& processor);
+    explicit FieldComponent (SpatialProcessor& processor);
 
     /** Stops the timer. */
     ~FieldComponent() override;
@@ -37,8 +45,11 @@ public:
         bool isVirtual = false;  ///< True for a manual virtual speaker (then isSource is false).
     };
 
-    /** Shows or hides the triangles. */
-    void setShowTriangulation (bool shouldShow);
+    /** Shows or hides what the plugin draws under the sources (see paintOverlay()). */
+    void setShowOverlay (bool shouldShow);
+
+    /** @return Whether the plugin's overlay is drawn. */
+    bool getShowOverlay() const noexcept { return showOverlay; }
 
     /** Shows or hides the lines from each source to the speakers it feeds (thickness and brightness follow the gain). */
     void setShowLinks (bool shouldShow);
@@ -92,13 +103,13 @@ public:
 
     /** @return The colour of a source: its own colour, or, if it is in a group, the own colour of the member
         with the lowest number, so that a group is drawn in one colour and ungrouping gives the individual colours back. */
-    static juce::Colour sourceColour (int source, const tripan::SourceGroups& groups);
+    static juce::Colour sourceColour (int source, const tlos::SourceGroups& groups);
 
     /// @name Selection and groups
     /// Clicking a source selects it and the rest of its group; Shift-click adds or removes a source (with
     /// its group); dragging a rectangle on empty space selects what is inside it (Shift adds to the
     /// selection). Dragging a selected source moves the whole selection. The selection is not saved;
-    /// the groups are (see TriPanAudioProcessor::getSourceGroups()).
+    /// the groups are (see SpatialProcessor::getSourceGroups()).
     /// @{
     /** @return The selected sources (zero-based, ascending). */
     const std::vector<int>& getSelection() const noexcept { return selection; }
@@ -162,6 +173,9 @@ public:
     /** Re-reads the parameters and repaints if anything changed (also called by a 30 Hz timer). */
     void refresh() { timerCallback(); }
 
+    /** Current position of a handle in metres. */
+    juce::Point<double> position (const Handle& handle) const;
+
     /** Plane coordinates (metres) -> component coordinates. */
     juce::Point<float> toView (double x, double y) const;
     /** Topmost handle within grab distance of p (component coordinates), sources before speakers. */
@@ -178,7 +192,7 @@ public:
     /** Deletes manual virtual speaker `index`. @return false if not possible. */
     bool removeVirtualSpeaker (int index);
 
-    /** Draws grid, triangulation, spread circles, links, speakers and sources. */
+    /** Draws grid, overlay, group bands, spread circles, links, speakers and sources. */
     void paint (juce::Graphics&) override;
     /** Forwards to pressAt(). */
     void mouseDown (const juce::MouseEvent&) override;
@@ -198,11 +212,25 @@ public:
     /** The square, in component coordinates, in which the visible part of the plane is drawn (the pad's border). */
     juce::Rectangle<float> planeBounds() const;
 
+protected:
+    /** Hook, called by the timer (and refresh()) with the speakers in use and the virtual speakers in
+        effect: follow them, for example by rebuilding a drawn layout when they changed. The default does nothing.
+        Not called during construction; a subclass calls refresh() at the end of its own constructor. */
+    virtual void updateOverlay (const std::vector<Vec2>& speakers, const std::vector<VirtualSpeaker>& virtualSpeakers);
+
+    /** Hook: draws what lies under the group bands and spread circles, if the overlay is switched on
+        (setShowOverlay()). Clipped to the plane; use toView() for coordinates. The default draws nothing. */
+    virtual void paintOverlay (juce::Graphics& g);
+
+    /** Hook: the speakers a source at `position` with the given spread feeds and their gains, drawn as
+        links when "Show links" is on. The default returns no speakers (no links). */
+    virtual SourceGains getLinkGains (int source, Vec2 position, double spread) const;
+
+    SpatialProcessor& processor; ///< The processor whose parameters are shown and edited.
+
 private:
     /** Component coordinates -> plane coordinates (metres). */
     juce::Point<double> fromView (juce::Point<float> p) const;
-    /** Current position of a handle in metres. */
-    juce::Point<double> position (const Handle& handle) const;
     /** The x or y (`axis`) parameter of a source or speaker handle. */
     juce::RangedAudioParameter* parameter (const Handle& handle, char axis) const;
 
@@ -221,45 +249,40 @@ private:
     /** Timer callback: rebuilds the drawn layout when positions, counts or virtual speakers changed. */
     void timerCallback() override;
 
-    TriPanAudioProcessor& processor; ///< The processor whose parameters are shown and edited.
+    std::array<juce::RangedAudioParameter*, tlos::kMaxChannels> srcXp {};      ///< Source x parameters.
+    std::array<juce::RangedAudioParameter*, tlos::kMaxChannels> srcYp {};      ///< Source y parameters.
+    std::array<juce::RangedAudioParameter*, tlos::kMaxChannels> srcSpreadP {}; ///< Source spread parameters.
+    std::array<juce::RangedAudioParameter*, tlos::kMaxChannels> spkXp {};      ///< Speaker x parameters.
+    std::array<juce::RangedAudioParameter*, tlos::kMaxChannels> spkYp {};      ///< Speaker y parameters.
 
-    std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> srcXp {};      ///< Source x parameters.
-    std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> srcYp {};      ///< Source y parameters.
-    std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> srcSpreadP {}; ///< Source spread parameters.
-    std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> spkXp {};      ///< Speaker x parameters.
-    std::array<juce::RangedAudioParameter*, tripan::kMaxChannels> spkYp {};      ///< Speaker y parameters.
-
-    std::vector<tripan::Vec2> triangulatedSpeakers;            ///< Speakers the drawn layout was built from.
-    std::vector<tripan::VirtualSpeaker> triangulatedVirtual;   ///< Virtual speakers the drawn layout was built from.
-    std::vector<tripan::VirtualSpeaker> virtualSpeakers;       ///< Virtual speakers in effect, refreshed by the timer.
-    std::unique_ptr<tripan::SpeakerLayout> triangulation;      ///< The layout that is drawn.
+    std::vector<VirtualSpeaker> virtualSpeakers;               ///< Virtual speakers in effect, refreshed by the timer.
     size_t lastStateHash = 0;                                  ///< Hash of what was last drawn, to skip repaints.
-    bool showTriangulation = true;                             ///< Whether the triangles are drawn.
+    bool showOverlay = true;                                   ///< Whether the plugin's overlay is drawn.
     bool showLinks = true;                                     ///< Whether the source-to-speaker lines are drawn.
-    double viewHalf = (double) tripan::params::kCoordRange;    ///< Half extent of the view in metres, see zoomIn().
+    double viewHalf = (double) params::kCoordRange;    ///< Half extent of the view in metres, see zoomIn().
     juce::Point<double> viewCentre;                            ///< Centre of the view in metres.
 
     std::optional<Handle> dragging;     ///< The handle being dragged, if any.
     bool draggingSpread = false;        ///< The drag changes spreads instead of moving sources.
     DragMode dragMode = DragMode::Move; ///< What the drag in progress does.
     float lastSpreadDragY = 0.0f;       ///< Mouse y at the previous step of a vertical drag (spread, scale, rotate).
-    tripan::Vec2 dragCentre;            ///< Centre of gravity of the dragged sources at the press (scale, rotate).
+    tlos::Vec2 dragCentre;            ///< Centre of gravity of the dragged sources at the press (scale, rotate).
     double dragScale = 1.0;             ///< Scale factor of the drag in progress.
     double dragAngle = 0.0;             ///< Rotation in radians of the drag in progress (counter-clockwise positive).
     std::optional<Handle> hovered;      ///< The handle under the mouse, if any.
 
     std::vector<int> selection;                 ///< Selected sources, ascending.
-    tripan::SourceGroups groups;                ///< Source groups as last read from the processor.
+    tlos::SourceGroups groups;                ///< Source groups as last read from the processor.
     std::vector<int> dragSources;               ///< Sources being moved or having their spread changed.
-    std::vector<tripan::Vec2> dragStart;        ///< Their positions (or, for spread, spreads in x) at the press.
-    tripan::Vec2 dragGrabStart;                 ///< Position of the grabbed source at the press.
+    std::vector<tlos::Vec2> dragStart;        ///< Their positions (or, for spread, spreads in x) at the press.
+    tlos::Vec2 dragGrabStart;                 ///< Position of the grabbed source at the press.
     std::optional<juce::Rectangle<float>> marquee; ///< Selection rectangle while dragging on empty space.
     juce::Point<float> marqueeOrigin;           ///< Where the selection rectangle started.
     std::vector<int> marqueeBase;               ///< Selection to extend (Shift) or empty.
     juce::String baseTooltip;                   ///< Tooltip text without the group note.
 
     /** Sets the x and y parameters of `dragSources` to `positions` (same order). */
-    void writeDragPositions (const std::vector<tripan::Vec2>& positions);
+    void writeDragPositions (const std::vector<tlos::Vec2>& positions);
     /** Moves `dragSources` so that the grabbed source is at `p` (component coordinates), as far as the pad allows. */
     void moveSelectionTo (juce::Point<float> p);
     /** Selects what the rectangle holds (with the groups) in addition to marqueeBase. */
@@ -269,3 +292,4 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FieldComponent)
 };
+}

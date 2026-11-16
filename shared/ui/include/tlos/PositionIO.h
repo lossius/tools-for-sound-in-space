@@ -6,13 +6,15 @@
 
 #pragma once
 
-#include "PluginProcessor.h"
+#include "tlos/SpatialProcessor.h"
 
 #include <optional>
 
 /** Export and import of source or speaker positions as XML files.
 
-    Sources and speakers use separate files:
+    Sources and speakers use separate files. The root element is named after the plugin that writes the
+    file (TriPan: TriPanSources and TriPanSpeakers); an import accepts the files of any plugin of this
+    family, so layouts can be moved between them.
 
         <TriPanSources version="1" count="3">
           <Source index="1" x="0.5" y="1.0" spread="0.0"/> ...
@@ -40,7 +42,7 @@
     number of speakers in the file (its highest index), but only if the track has that many
     outputs; otherwise the setting is left alone. Importing sources never changes "Number of Sources".
     Message thread only. */
-namespace tripan::io
+namespace tlos::io
 {
 /** Which positions a file holds. */
 enum class Kind
@@ -67,11 +69,11 @@ struct ImportReport
 };
 
 /** Builds the XML document for the sources or speakers currently in use. */
-std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& processor, Kind kind);
+std::unique_ptr<juce::XmlElement> toXml (const SpatialProcessor& processor, Kind kind);
 
 /** Writes toXml() to a file (coordinates rounded to 3 decimals and padded to a fixed width).
     @return Success, or an error message if the file could not be written. */
-juce::Result save (const TriPanAudioProcessor& processor, Kind kind, const juce::File& file);
+juce::Result save (const SpatialProcessor& processor, Kind kind, const juce::File& file);
 
 /** Reads and validates the whole file first; nothing is changed if it fails.
     @param processor  The processor whose parameters are written.
@@ -79,7 +81,7 @@ juce::Result save (const TriPanAudioProcessor& processor, Kind kind, const juce:
     @param file       The file to read.
     @param report     Filled in with what was done (only valid on success).
     @return           Success, or an error message describing what is wrong with the file. */
-juce::Result load (TriPanAudioProcessor& processor, Kind kind, const juce::File& file, ImportReport& report);
+juce::Result load (SpatialProcessor& processor, Kind kind, const juce::File& file, ImportReport& report);
 
 /** @return The singular word used for the kind in messages ("source" or "speaker"). */
 juce::String describe (Kind);

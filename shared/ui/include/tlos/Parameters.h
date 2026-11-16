@@ -1,13 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+/** @file Parameters.h
+    @brief The host parameters every plugin of this repository has: positions, spreads and channel counts. */
+
 #pragma once
 
-#include "tripan/Limits.h"
+#include "tlos/Limits.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
-namespace tripan::params
+namespace tlos::params
 {
 /** Coordinates are in metres, in the range [-kCoordRange, kCoordRange]. +y is front, +x is right. */
 inline constexpr float kCoordRange = 10.0f;
@@ -20,12 +23,18 @@ inline constexpr float kMaxSpread = 10.0f;
     is fixed at 1..kMaxChannels (hosts cannot change it per track); the effective value is clamped to
     the channel count of the track the plugin sits on. The default uses every channel. */
 inline const juce::String kNumSourcesId  { "numSources" };
+/** ID of the "Number of Speakers" parameter (see kNumSourcesId). */
 inline const juce::String kNumSpeakersId { "numSpeakers" };
 
+/** @return The parameter ID of the x or y (`axis`) coordinate of source `index` (zero-based), for example "src1x". */
 inline juce::String sourceId  (int index, char axis) { return "src" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
+/** @return The parameter ID of the spread of source `index` (zero-based), for example "src1spread". */
 inline juce::String spreadId (int index) { return "src" + juce::String (index + 1) + "spread"; }
+/** @return The parameter ID of the x or y (`axis`) coordinate of speaker `index` (zero-based), for example "spk1x". */
 inline juce::String speakerId (int index, char axis) { return "spk" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
 
+/** @return All host parameters, in the order a host lists them: the two counts, then x, y and spread of
+    every source, then x and y of every speaker. The IDs are part of the saved sessions: never change them. */
 inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     using juce::AudioParameterFloat;

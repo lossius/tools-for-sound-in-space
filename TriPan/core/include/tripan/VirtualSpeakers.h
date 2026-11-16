@@ -12,13 +12,7 @@
 
 namespace tripan
 {
-/** A virtual (imaginary) speaker with a strength between 0 and 1. A strength below 1 means the
-    layout only partly calls for this speaker; SpeakerLayout fades it in and out smoothly. */
-struct VirtualSpeaker
-{
-    Vec2 position;           ///< Position in metres.
-    double strength = 1.0;   ///< 0 (not called for) to 1 (fully part of the layout).
-};
+using tlos::VirtualSpeaker;
 
 /** Thresholds for findVirtualSpeakers(). Every decision is soft: instead of switching at a
     threshold, the strength of the virtual speaker rises smoothly from 0 to 1 over the width given

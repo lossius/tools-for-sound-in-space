@@ -7,7 +7,8 @@ set -e
 cd "$(dirname "$0")/.."
 
 PLUGINVAL="${PLUGINVAL:-/Applications/pluginval.app/Contents/MacOS/pluginval}"
+BUILD_DIR="${BUILD_DIR:-build}"   # an Xcode build folder; use another one if build/ was made with a different generator
 
-cmake -B build -G Xcode >/dev/null
-cmake --build build --config Release --target TriPan_VST3
-"$PLUGINVAL" --strictness-level 10 --timeout-ms 120000 build/TriPan/TriPan_artefacts/Release/VST3/TriPan.vst3
+cmake -B "$BUILD_DIR" -G Xcode >/dev/null
+cmake --build "$BUILD_DIR" --config Release --target TriPan_VST3
+"$PLUGINVAL" --strictness-level 10 --timeout-ms 120000 "$BUILD_DIR/TriPan/TriPan_artefacts/Release/VST3/TriPan.vst3"

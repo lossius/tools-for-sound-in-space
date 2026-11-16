@@ -6,31 +6,13 @@
 
 #pragma once
 
+#include "tlos/SourceGains.h"
 #include "tripan/Triangulation.h"
-
-#include <array>
 
 namespace tripan
 {
-/** Capacity of SourceGains: at most one entry per real speaker. */
-inline constexpr int kMaxGainEntries = 64;
-
-/** Gains for one source. Without virtual speakers at most three speakers receive signal; with
-    virtual speakers the share sent to them is redistributed over their real neighbours, so more
-    speakers can be involved. Always constant power (sum of squared gains = 1). */
-struct SourceGains
-{
-    /** Creates an empty result (no speakers, all gains zero). */
-    SourceGains()
-    {
-        speaker.fill (-1);
-        gain.fill (0.0f);
-    }
-
-    int count = 0;                                  ///< Number of valid entries in #speaker and #gain.
-    std::array<int, kMaxGainEntries> speaker;       ///< Real speaker indices (-1 for unused entries).
-    std::array<float, kMaxGainEntries> gain;        ///< Linear gain for the speaker at the same index.
-};
+using tlos::SourceGains;
+using tlos::kMaxGainEntries;
 
 /** Computes the speaker gains for a source at the given position.
 

@@ -4,7 +4,7 @@
 /** @file EditorTests.cpp
     @brief Editor tests: hit-testing, dragging through the parameters, and an optional PNG snapshot (pass an output path as argv[1]). */
 
-#include "../Source/Parameters.h"
+#include "tlos/Parameters.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/PluginProcessor.h"
 
@@ -50,12 +50,12 @@ static void testGroups (const char* snapshotPath)
     const double sx[] { -2.0, 0.0, 3.0, -8.0, 8.0, 5.0 }, sy[] { -2.0, 1.0, 4.0, 8.0, -8.0, 5.0 };
     const auto place = [&] (int i, double x, double y)
     {
-        setParam (p, tripan::params::sourceId (i, 'x'), (float) x);
-        setParam (p, tripan::params::sourceId (i, 'y'), (float) y);
+        setParam (p, tlos::params::sourceId (i, 'x'), (float) x);
+        setParam (p, tlos::params::sourceId (i, 'y'), (float) y);
     };
     for (int i = 0; i < 6; ++i)
         place (i, sx[i], sy[i]);
-    p.refreshTriangulation();
+    p.refreshLayout();
 
     std::unique_ptr<juce::AudioProcessorEditor> base (p.createEditor());
     auto* editor = dynamic_cast<TriPanAudioProcessorEditor*> (base.get());
@@ -63,10 +63,10 @@ static void testGroups (const char* snapshotPath)
     editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
     auto& field = editor->getField();
 
-    const auto x = [&] (int i) { return (double) value (p, tripan::params::sourceId (i, 'x')); };
-    const auto y = [&] (int i) { return (double) value (p, tripan::params::sourceId (i, 'y')); };
+    const auto x = [&] (int i) { return (double) value (p, tlos::params::sourceId (i, 'x')); };
+    const auto y = [&] (int i) { return (double) value (p, tlos::params::sourceId (i, 'y')); };
     const auto at = [&] (int i) { return field.toView (x (i), y (i)); };
-    const auto spread = [&] (int i) { return (double) value (p, tripan::params::spreadId (i)); };
+    const auto spread = [&] (int i) { return (double) value (p, tlos::params::spreadId (i)); };
     const juce::ModifierKeys none, shift (juce::ModifierKeys::shiftModifier), alt (juce::ModifierKeys::altModifier),
                              altShift (juce::ModifierKeys::altModifier | juce::ModifierKeys::shiftModifier),
                              cmd (juce::ModifierKeys::commandModifier);
@@ -94,16 +94,16 @@ static void testGroups (const char* snapshotPath)
         CHECK (editor->getSourceCountSlider().getX() > plane.getX());
     }
 
-    using Mode = FieldComponent::DragMode;
+    using Mode = tlos::FieldComponent::DragMode;
     const juce::ModifierKeys cmdShift (juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier),
                              altCmd (juce::ModifierKeys::altModifier | juce::ModifierKeys::commandModifier),
                              allThree (juce::ModifierKeys::altModifier | juce::ModifierKeys::commandModifier | juce::ModifierKeys::shiftModifier);
-    CHECK (FieldComponent::dragModeFor (none) == Mode::Move && FieldComponent::dragModeFor (shift) == Mode::Move);
-    CHECK (FieldComponent::dragModeFor (cmd) == Mode::MoveOne && FieldComponent::dragModeFor (alt) == Mode::SpreadGroup);
-    CHECK (FieldComponent::dragModeFor (altCmd) == Mode::SpreadOne && FieldComponent::dragModeFor (allThree) == Mode::SpreadOne);
-    CHECK (FieldComponent::dragModeFor (altShift) == Mode::Scale && FieldComponent::dragModeFor (cmdShift) == Mode::Rotate);
-    CHECK (FieldComponent::isSingleSourceModifier (cmd) && ! FieldComponent::isSingleSourceModifier (none) && ! FieldComponent::isSingleSourceModifier (cmdShift));
-    CHECK (FieldComponent::isSpreadModifier (alt) && FieldComponent::isSpreadModifier (altCmd) && ! FieldComponent::isSpreadModifier (altShift));
+    CHECK (tlos::FieldComponent::dragModeFor (none) == Mode::Move && tlos::FieldComponent::dragModeFor (shift) == Mode::Move);
+    CHECK (tlos::FieldComponent::dragModeFor (cmd) == Mode::MoveOne && tlos::FieldComponent::dragModeFor (alt) == Mode::SpreadGroup);
+    CHECK (tlos::FieldComponent::dragModeFor (altCmd) == Mode::SpreadOne && tlos::FieldComponent::dragModeFor (allThree) == Mode::SpreadOne);
+    CHECK (tlos::FieldComponent::dragModeFor (altShift) == Mode::Scale && tlos::FieldComponent::dragModeFor (cmdShift) == Mode::Rotate);
+    CHECK (tlos::FieldComponent::isSingleSourceModifier (cmd) && ! tlos::FieldComponent::isSingleSourceModifier (none) && ! tlos::FieldComponent::isSingleSourceModifier (cmdShift));
+    CHECK (tlos::FieldComponent::isSpreadModifier (alt) && tlos::FieldComponent::isSpreadModifier (altCmd) && ! tlos::FieldComponent::isSpreadModifier (altShift));
     CHECK (! editor->getGroupButton().isEnabled() && ! editor->getUngroupButton().isEnabled());
 
     // Selecting: a click selects one source, Shift adds another, a click on empty space clears.
@@ -155,9 +155,9 @@ static void testGroups (const char* snapshotPath)
     // Colours: members of a group share the colour of the lowest-numbered member; others keep their own.
     {
         const auto groups = p.getSourceGroups();
-        const auto own = [&] (int i) { return FieldComponent::sourceColour (i, tripan::SourceGroups()); };
-        CHECK (FieldComponent::sourceColour (2, groups) == own (1) && FieldComponent::sourceColour (5, groups) == own (1));
-        CHECK (FieldComponent::sourceColour (4, groups) == own (3) && FieldComponent::sourceColour (0, groups) == own (0));
+        const auto own = [&] (int i) { return tlos::FieldComponent::sourceColour (i, tlos::SourceGroups()); };
+        CHECK (tlos::FieldComponent::sourceColour (2, groups) == own (1) && tlos::FieldComponent::sourceColour (5, groups) == own (1));
+        CHECK (tlos::FieldComponent::sourceColour (4, groups) == own (3) && tlos::FieldComponent::sourceColour (0, groups) == own (0));
         CHECK (own (1) != own (2) && own (0) != own (1));   // individual colours differ again when ungrouped
     }
 
@@ -222,9 +222,9 @@ static void testGroups (const char* snapshotPath)
     place (0, sx[0], sy[0]); place (3, sx[3], sy[3]); place (4, sx[4], sy[4]);
 
     // Spread: Option changes the whole group by the same amount, Option + Cmd one source only.
-    setParam (p, tripan::params::spreadId (1), 2.0f);
-    setParam (p, tripan::params::spreadId (2), 4.0f);
-    setParam (p, tripan::params::spreadId (5), 6.0f);
+    setParam (p, tlos::params::spreadId (1), 2.0f);
+    setParam (p, tlos::params::spreadId (2), 4.0f);
+    setParam (p, tlos::params::spreadId (5), 6.0f);
     field.refresh();
     const float ppm = field.toView (1.0, 0.0).x - field.toView (0.0, 0.0).x;
     const auto up = [&] (double metres) { return juce::Point<float> (0.0f, (float) (-metres * ppm)); };
@@ -245,12 +245,12 @@ static void testGroups (const char* snapshotPath)
     field.release();
     CHECK (spread (1) < 0.03 && std::abs (spread (2) - 3.0) < 0.05 && std::abs (spread (5) - 4.0) < 0.05);
     CHECK (selected ({ 1, 2, 5 }) || true);            // spread drags leave the selection alone
-    setParam (p, tripan::params::spreadId (1), 1.0f);
+    setParam (p, tlos::params::spreadId (1), 1.0f);
     field.doubleClickAt (at (2), altCmd);              // Option + Cmd: one source only
     CHECK (spread (2) < 1e-6 && std::abs (spread (1) - 1.0) < 1e-3);
     field.doubleClickAt (at (2), alt);                 // Option: the whole group
     CHECK (spread (1) < 1e-6 && spread (2) < 1e-6 && spread (5) < 1e-6);
-    setParam (p, tripan::params::spreadId (3), 1.0f);
+    setParam (p, tlos::params::spreadId (3), 1.0f);
     field.doubleClickAt (at (4), alt);                 // another group: source 3 is in it, so it is reset too
     CHECK (spread (3) < 1e-6);
 
@@ -352,21 +352,21 @@ static void testGroups (const char* snapshotPath)
     // Files: export writes the groups, import restores them; a file without groups leaves them alone.
     {
         const auto file = juce::File::createTempFile (".xml");
-        CHECK (editor->exportPositionsTo (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (editor->exportPositionsTo (tlos::io::Kind::Sources, file).wasOk());
         CHECK (file.loadFileAsString().contains ("group="));
 
         const auto saved = p.getSourceGroups();
         p.setSourceGroups ({});
-        CHECK (editor->importPositionsFrom (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (editor->importPositionsFrom (tlos::io::Kind::Sources, file).wasOk());
         CHECK (p.getSourceGroups() == saved);
 
         file.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"0\"/></TriPanSources>");
-        CHECK (editor->importPositionsFrom (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (editor->importPositionsFrom (tlos::io::Kind::Sources, file).wasOk());
         CHECK (p.getSourceGroups() == saved);
 
         file.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"0\" group=\"3\"/>"
                               "<Source index=\"2\" x=\"1\" y=\"0\" group=\"3\"/><Source index=\"3\" x=\"2\" y=\"0\" group=\"4\"/></TriPanSources>");
-        CHECK (editor->importPositionsFrom (tripan::io::Kind::Sources, file).wasOk());
+        CHECK (editor->importPositionsFrom (tlos::io::Kind::Sources, file).wasOk());
         CHECK (p.getSourceGroups().groupOf (0) == 3 && p.getSourceGroups().groupOf (1) == 3
                && p.getSourceGroups().groupOf (2) == 0 && p.getSourceGroups().groupOf (4) == 0); // a group of one is dissolved
         file.deleteFile();
@@ -375,7 +375,7 @@ static void testGroups (const char* snapshotPath)
 
     // The table shows the group of each source.
     {
-        auto& window = editor->showTableWindow (tripan::io::Kind::Sources);
+        auto& window = editor->showTableWindow (tlos::io::Kind::Sources);
         CHECK (window.getContent().getMainTable().getTable().getHeader().getNumColumns (true) == 5);
         window.setVisible (false);
     }
@@ -383,10 +383,10 @@ static void testGroups (const char* snapshotPath)
     // Fewer sources in use: a group keeps its members, but only the ones in use move.
     {
         field.clearSelection();
-        setParam (p, tripan::params::kNumSourcesId, 2.0f);
+        setParam (p, tlos::params::kNumSourcesId, 2.0f);
         field.refresh();
         CHECK (field.movingSet (1) == std::vector<int> { 1 });   // 2 and 5 are not in use
-        setParam (p, tripan::params::kNumSourcesId, 6.0f);
+        setParam (p, tlos::params::kNumSourcesId, 6.0f);
         field.refresh();
         CHECK (field.movingSet (1).size() == 3);
     }
@@ -431,7 +431,7 @@ static void testGroups (const char* snapshotPath)
         field.groupSelection();
         click (0, none);
         click (3, shift);                              // select group 2 and one more for the picture
-        setParam (p, tripan::params::spreadId (2), 1.5f);
+        setParam (p, tlos::params::spreadId (2), 1.5f);
         field.refresh();
         field.pressAt (at (2), cmdShift);              // the picture shows a rotation in progress, with its readout
         field.dragTo (at (2) + juce::Point<float> (0.0f, -25.0f));
@@ -460,17 +460,17 @@ int main (int argc, char** argv)
     p.prepareToPlay (48000.0, 512);
 
     // Make the layout a little irregular so the picture is more interesting.
-    setParam (p, tripan::params::speakerId (2, 'x'), 6.5f);
-    setParam (p, tripan::params::speakerId (2, 'y'), -1.0f);
-    setParam (p, tripan::params::speakerId (5, 'x'), -3.0f);
-    setParam (p, tripan::params::speakerId (5, 'y'), -2.0f);
-    setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
-    setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
-    setParam (p, tripan::params::sourceId (1, 'x'), -6.5f);
-    setParam (p, tripan::params::sourceId (1, 'y'), 8.5f); // outside the hull
-    setParam (p, tripan::params::sourceId (2, 'x'), 3.0f);
-    setParam (p, tripan::params::sourceId (2, 'y'), -3.5f);
-    p.refreshTriangulation();
+    setParam (p, tlos::params::speakerId (2, 'x'), 6.5f);
+    setParam (p, tlos::params::speakerId (2, 'y'), -1.0f);
+    setParam (p, tlos::params::speakerId (5, 'x'), -3.0f);
+    setParam (p, tlos::params::speakerId (5, 'y'), -2.0f);
+    setParam (p, tlos::params::sourceId (0, 'x'), 0.5f);
+    setParam (p, tlos::params::sourceId (0, 'y'), 1.0f);
+    setParam (p, tlos::params::sourceId (1, 'x'), -6.5f);
+    setParam (p, tlos::params::sourceId (1, 'y'), 8.5f); // outside the hull
+    setParam (p, tlos::params::sourceId (2, 'x'), 3.0f);
+    setParam (p, tlos::params::sourceId (2, 'y'), -3.5f);
+    p.refreshLayout();
 
     CHECK (p.canEditSources() && ! p.canEditSpeakers()); // defaults: sources can be edited, speakers are view only
 
@@ -487,13 +487,13 @@ int main (int argc, char** argv)
         auto& spkSlider = editor->getSpeakerCountSlider();
         CHECK (srcSlider.getMinimum() == 1.0 && srcSlider.getMaximum() == 3.0 && srcSlider.getValue() == 3.0);
         CHECK (spkSlider.getMinimum() == 1.0 && spkSlider.getMaximum() == 7.0 && spkSlider.getValue() == 7.0);
-        CHECK (std::abs (value (p, tripan::params::kNumSpeakersId) - 64.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::kNumSpeakersId) - 64.0f) < 1e-3f);
 
         spkSlider.setValue (5.0, juce::sendNotificationSync); // as if the user changed it
-        CHECK (std::abs (value (p, tripan::params::kNumSpeakersId) - 5.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::kNumSpeakersId) - 5.0f) < 1e-3f);
         CHECK (p.getActiveSpeakers() == 5);
 
-        setParam (p, tripan::params::kNumSourcesId, 2.0f); // as if automation changed it
+        setParam (p, tlos::params::kNumSourcesId, 2.0f); // as if automation changed it
         editor->syncControls();
         CHECK (srcSlider.getValue() == 2.0 && p.getActiveSources() == 2);
 
@@ -530,15 +530,15 @@ int main (int argc, char** argv)
             CHECK (field.findHandleAt (spkPos).has_value() == editSpeakers);
 
             field.moveHandle ({ true, 0 }, field.toView (2.0, 2.0));
-            CHECK ((std::abs (value (p, tripan::params::sourceId (0, 'x')) - 2.0f) < 0.02f) == editSources);
+            CHECK ((std::abs (value (p, tlos::params::sourceId (0, 'x')) - 2.0f) < 0.02f) == editSources);
             field.moveHandle ({ false, 2 }, field.toView (-2.0, -2.0));
-            CHECK ((std::abs (value (p, tripan::params::speakerId (2, 'x')) + 2.0f) < 0.02f) == editSpeakers);
+            CHECK ((std::abs (value (p, tlos::params::speakerId (2, 'x')) + 2.0f) < 0.02f) == editSpeakers);
 
             // restore
-            setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
-            setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
-            setParam (p, tripan::params::speakerId (2, 'x'), 6.5f);
-            setParam (p, tripan::params::speakerId (2, 'y'), -1.0f);
+            setParam (p, tlos::params::sourceId (0, 'x'), 0.5f);
+            setParam (p, tlos::params::sourceId (0, 'y'), 1.0f);
+            setParam (p, tlos::params::speakerId (2, 'x'), 6.5f);
+            setParam (p, tlos::params::speakerId (2, 'y'), -1.0f);
 
             CHECK (editor->getResetButton().isEnabled() == (editSources || editSpeakers));
         }
@@ -546,11 +546,11 @@ int main (int argc, char** argv)
         // Reset layout only touches what is set to Edit.
         srcBox.setSelectedId (1, juce::sendNotificationSync); // sources: Edit
         spkBox.setSelectedId (2, juce::sendNotificationSync); // speakers: View
-        setParam (p, tripan::params::speakerId (0, 'x'), 1.234f);
-        setParam (p, tripan::params::sourceId (0, 'x'), 7.0f);
+        setParam (p, tlos::params::speakerId (0, 'x'), 1.234f);
+        setParam (p, tlos::params::sourceId (0, 'x'), 7.0f);
         editor->getResetButton().onClick(); // (triggerClick needs a visible button)
-        CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - 1.234f) < 1e-3f); // untouched
-        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 7.0f) > 0.5f);     // reset
+        CHECK (std::abs (value (p, tlos::params::speakerId (0, 'x')) - 1.234f) < 1e-3f); // untouched
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 7.0f) > 0.5f);     // reset
 
         // A change made elsewhere (state restore, another editor) shows up in the menus.
         p.setSpeakersEditable (true);
@@ -558,16 +558,16 @@ int main (int argc, char** argv)
         CHECK (spkBox.getSelectedId() == 1);
 
         // Restore the picture and leave both set to Edit for the checks below.
-        setParam (p, tripan::params::speakerId (0, 'x'), 0.0f);
-        setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
-        setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+        setParam (p, tlos::params::speakerId (0, 'x'), 0.0f);
+        setParam (p, tlos::params::sourceId (0, 'x'), 0.5f);
+        setParam (p, tlos::params::sourceId (0, 'y'), 1.0f);
         srcBox.setSelectedId (1, juce::sendNotificationSync);
         spkBox.setSelectedId (1, juce::sendNotificationSync);
     }
 
     // Export / import of positions as XML (both kinds are set to Edit here).
     {
-        using tripan::io::Kind;
+        using tlos::io::Kind;
         auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("tripan_io_test");
         dir.deleteRecursively();
         dir.createDirectory();
@@ -585,9 +585,9 @@ int main (int argc, char** argv)
 
         // Positions are exported rounded to 3 decimal places (and never as "-0.000").
         {
-            const float keepX = value (p, tripan::params::sourceId (0, 'x')), keepY = value (p, tripan::params::sourceId (0, 'y'));
-            setParam (p, tripan::params::sourceId (0, 'x'), 1.23456f);
-            setParam (p, tripan::params::sourceId (0, 'y'), -0.0004f);
+            const float keepX = value (p, tlos::params::sourceId (0, 'x')), keepY = value (p, tlos::params::sourceId (0, 'y'));
+            setParam (p, tlos::params::sourceId (0, 'x'), 1.23456f);
+            setParam (p, tlos::params::sourceId (0, 'y'), -0.0004f);
             const auto rounded = dir.getChildFile ("rounded.xml");
             CHECK (editor->exportPositionsTo (Kind::Sources, rounded).wasOk());
             const auto doc = juce::XmlDocument::parse (rounded);
@@ -624,37 +624,37 @@ int main (int argc, char** argv)
                 CHECK (same);
             }
 
-            setParam (p, tripan::params::sourceId (0, 'x'), keepX);
-            setParam (p, tripan::params::sourceId (0, 'y'), keepY);
+            setParam (p, tlos::params::sourceId (0, 'x'), keepX);
+            setParam (p, tlos::params::sourceId (0, 'y'), keepY);
             CHECK (editor->exportPositionsTo (Kind::Sources, srcFile).wasOk()); // re-export the original positions
         }
 
         // Round trip: remember, scramble, import, compare.
         float srcX[3], srcY[3], spkX[7], spkY[7];
-        for (int i = 0; i < 3; ++i) { srcX[i] = value (p, tripan::params::sourceId (i, 'x'));  srcY[i] = value (p, tripan::params::sourceId (i, 'y')); }
-        for (int i = 0; i < 7; ++i) { spkX[i] = value (p, tripan::params::speakerId (i, 'x')); spkY[i] = value (p, tripan::params::speakerId (i, 'y')); }
+        for (int i = 0; i < 3; ++i) { srcX[i] = value (p, tlos::params::sourceId (i, 'x'));  srcY[i] = value (p, tlos::params::sourceId (i, 'y')); }
+        for (int i = 0; i < 7; ++i) { spkX[i] = value (p, tlos::params::speakerId (i, 'x')); spkY[i] = value (p, tlos::params::speakerId (i, 'y')); }
 
-        for (int i = 0; i < 3; ++i) { setParam (p, tripan::params::sourceId (i, 'x'), -9.0f);  setParam (p, tripan::params::sourceId (i, 'y'), 9.0f); }
-        for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), -9.0f); setParam (p, tripan::params::speakerId (i, 'y'), 9.0f); }
+        for (int i = 0; i < 3; ++i) { setParam (p, tlos::params::sourceId (i, 'x'), -9.0f);  setParam (p, tlos::params::sourceId (i, 'y'), 9.0f); }
+        for (int i = 0; i < 7; ++i) { setParam (p, tlos::params::speakerId (i, 'x'), -9.0f); setParam (p, tlos::params::speakerId (i, 'y'), 9.0f); }
 
         CHECK (editor->importPositionsFrom (Kind::Sources, srcFile).wasOk());
         for (int i = 0; i < 3; ++i)
         {
-            CHECK (std::abs (value (p, tripan::params::sourceId (i, 'x')) - srcX[i]) < 1e-3f);
-            CHECK (std::abs (value (p, tripan::params::sourceId (i, 'y')) - srcY[i]) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::sourceId (i, 'x')) - srcX[i]) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::sourceId (i, 'y')) - srcY[i]) < 1e-3f);
         }
         // Importing sources did not touch the speakers.
-        CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) + 9.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (0, 'x')) + 9.0f) < 1e-3f);
 
         CHECK (editor->importPositionsFrom (Kind::Speakers, spkFile).wasOk());
         for (int i = 0; i < 7; ++i)
         {
-            CHECK (std::abs (value (p, tripan::params::speakerId (i, 'x')) - spkX[i]) < 1e-3f);
-            CHECK (std::abs (value (p, tripan::params::speakerId (i, 'y')) - spkY[i]) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::speakerId (i, 'x')) - spkX[i]) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::speakerId (i, 'y')) - spkY[i]) < 1e-3f);
         }
 
         // A file of the other kind, a missing file and garbage are rejected without changing anything.
-        setParam (p, tripan::params::speakerId (0, 'x'), 3.0f);
+        setParam (p, tlos::params::speakerId (0, 'x'), 3.0f);
         const auto wrongKind = editor->importPositionsFrom (Kind::Speakers, srcFile);
         CHECK (wrongKind.failed() && wrongKind.getErrorMessage().containsIgnoreCase ("source"));
         CHECK (editor->importPositionsFrom (Kind::Sources, spkFile).failed());
@@ -665,7 +665,7 @@ int main (int argc, char** argv)
         const auto empty = dir.getChildFile ("empty.xml");
         empty.replaceWithText ("<TriPanSpeakers version=\"1\"><Speaker index=\"1\" x=\"1\"/></TriPanSpeakers>");
         CHECK (editor->importPositionsFrom (Kind::Speakers, empty).failed());
-        CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - 3.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (0, 'x')) - 3.0f) < 1e-3f);
 
         // Partial files: valid, out-of-range (clamped), malformed (skipped), and more entries than the
         // 7 speakers in use (applied, but not counted as in use). The count setting is untouched.
@@ -674,12 +674,12 @@ int main (int argc, char** argv)
                             "<Speaker index=\"3\" x=\"99\" y=\"0\"/><Speaker index=\"4\" x=\"1\"/>"
                             "<Speaker index=\"12\" x=\"4\" y=\"4\"/></TriPanSpeakers>";
         mixed.replaceWithText (text);
-        tripan::io::ImportReport report;
-        CHECK (tripan::io::load (p, Kind::Speakers, mixed, report).wasOk());
+        tlos::io::ImportReport report;
+        CHECK (tlos::io::load (p, Kind::Speakers, mixed, report).wasOk());
         CHECK (report.applied == 3 && report.inUse == 2 && report.clamped == 1 && report.skipped == 1);
-        CHECK (std::abs (value (p, tripan::params::speakerId (1, 'x')) - 1.5f) < 1e-3f);
-        CHECK (std::abs (value (p, tripan::params::speakerId (2, 'x')) - 10.0f) < 1e-3f);
-        CHECK (std::abs (value (p, tripan::params::speakerId (11, 'y')) - 4.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (1, 'x')) - 1.5f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (2, 'x')) - 10.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (11, 'y')) - 4.0f) < 1e-3f);
         CHECK (p.getActiveSpeakers() == 7);
 
         // Importing a speaker file with 3 speakers sets Number of Speakers to 3 (the track has 7 outputs)
@@ -690,14 +690,14 @@ int main (int argc, char** argv)
         CHECK (editor->importPositionsFrom (Kind::Speakers, three).wasOk());
         CHECK (p.getActiveSpeakers() == 3);
         CHECK (editor->getSpeakerCountSlider().getValue() == 3.0);
-        setParam (p, tripan::params::kNumSpeakersId, 7.0f); // back to all 7
+        setParam (p, tlos::params::kNumSpeakersId, 7.0f); // back to all 7
         editor->syncControls();
         CHECK (editor->getSpeakerCountSlider().getValue() == 7.0);
 
         // The spread of a source is saved with it (optional attribute; entries without it leave the spread alone).
         {
-            setParam (p, tripan::params::spreadId (0), 1.25f);
-            setParam (p, tripan::params::spreadId (2), 4.0f);
+            setParam (p, tlos::params::spreadId (0), 1.25f);
+            setParam (p, tlos::params::spreadId (2), 4.0f);
             const auto spreadFile = dir.getChildFile ("spread.xml");
             CHECK (editor->exportPositionsTo (Kind::Sources, spreadFile).wasOk());
             {
@@ -706,39 +706,39 @@ int main (int argc, char** argv)
                 CHECK (first != nullptr && first->getStringAttribute ("spread").trim() == "1.250" && first->getStringAttribute ("spread").length() == 7);
             }
 
-            setParam (p, tripan::params::spreadId (0), 0.0f);
-            setParam (p, tripan::params::spreadId (2), 0.0f);
-            tripan::io::ImportReport spreadReport;
-            CHECK (tripan::io::load (p, Kind::Sources, spreadFile, spreadReport).wasOk() && spreadReport.spreadApplied == 3);
-            CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 1.25f) < 1e-3f && std::abs (value (p, tripan::params::spreadId (2)) - 4.0f) < 1e-3f);
+            setParam (p, tlos::params::spreadId (0), 0.0f);
+            setParam (p, tlos::params::spreadId (2), 0.0f);
+            tlos::io::ImportReport spreadReport;
+            CHECK (tlos::io::load (p, Kind::Sources, spreadFile, spreadReport).wasOk() && spreadReport.spreadApplied == 3);
+            CHECK (std::abs (value (p, tlos::params::spreadId (0)) - 1.25f) < 1e-3f && std::abs (value (p, tlos::params::spreadId (2)) - 4.0f) < 1e-3f);
 
             // No attribute: unchanged. Out of range: limited. Not a number: ignored.
-            setParam (p, tripan::params::spreadId (0), 7.0f);
+            setParam (p, tlos::params::spreadId (0), 7.0f);
             const auto plain = dir.getChildFile ("no-spread.xml");
             plain.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"1\"/></TriPanSources>");
-            CHECK (tripan::io::load (p, Kind::Sources, plain, spreadReport).wasOk() && spreadReport.spreadApplied == 0);
-            CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 7.0f) < 1e-3f);
+            CHECK (tlos::io::load (p, Kind::Sources, plain, spreadReport).wasOk() && spreadReport.spreadApplied == 0);
+            CHECK (std::abs (value (p, tlos::params::spreadId (0)) - 7.0f) < 1e-3f);
 
             const auto odd = dir.getChildFile ("odd-spread.xml");
             odd.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"0\" y=\"1\" spread=\"99\"/><Source index=\"2\" x=\"1\" y=\"1\" spread=\"-3\"/>"
                                  "<Source index=\"3\" x=\"2\" y=\"1\" spread=\"abc\"/></TriPanSources>");
-            setParam (p, tripan::params::spreadId (2), 5.0f);
-            CHECK (tripan::io::load (p, Kind::Sources, odd, spreadReport).wasOk());
-            CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 10.0f) < 1e-3f && std::abs (value (p, tripan::params::spreadId (1))) < 1e-3f);
-            CHECK (std::abs (value (p, tripan::params::spreadId (2)) - 5.0f) < 1e-3f && spreadReport.clamped == 2 && spreadReport.spreadApplied == 2);
+            setParam (p, tlos::params::spreadId (2), 5.0f);
+            CHECK (tlos::io::load (p, Kind::Sources, odd, spreadReport).wasOk());
+            CHECK (std::abs (value (p, tlos::params::spreadId (0)) - 10.0f) < 1e-3f && std::abs (value (p, tlos::params::spreadId (1))) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::spreadId (2)) - 5.0f) < 1e-3f && spreadReport.clamped == 2 && spreadReport.spreadApplied == 2);
 
-            for (int i = 0; i < 3; ++i) setParam (p, tripan::params::spreadId (i), 0.0f);
-            setParam (p, tripan::params::sourceId (0, 'x'), srcX[0]);   // the import moved sources 1-3
-            setParam (p, tripan::params::sourceId (0, 'y'), srcY[0]);
-            setParam (p, tripan::params::sourceId (1, 'x'), srcX[1]);
-            setParam (p, tripan::params::sourceId (1, 'y'), srcY[1]);
-            setParam (p, tripan::params::sourceId (2, 'x'), srcX[2]);
-            setParam (p, tripan::params::sourceId (2, 'y'), srcY[2]);
+            for (int i = 0; i < 3; ++i) setParam (p, tlos::params::spreadId (i), 0.0f);
+            setParam (p, tlos::params::sourceId (0, 'x'), srcX[0]);   // the import moved sources 1-3
+            setParam (p, tlos::params::sourceId (0, 'y'), srcY[0]);
+            setParam (p, tlos::params::sourceId (1, 'x'), srcX[1]);
+            setParam (p, tlos::params::sourceId (1, 'y'), srcY[1]);
+            setParam (p, tlos::params::sourceId (2, 'x'), srcX[2]);
+            setParam (p, tlos::params::sourceId (2, 'y'), srcY[2]);
         }
 
         // Virtual speakers are part of a speaker layout file.
         {
-            CHECK (p.getVirtualMode() == VirtualMode::Auto && p.getManualVirtualSpeakers().empty());
+            CHECK (p.getVirtualMode() == tlos::VirtualMode::Auto && p.getManualVirtualSpeakers().empty());
             const auto countChildren = [] (const juce::XmlElement& xml, const char* tag) { int n = 0; for (auto* e : xml.getChildWithTagNameIterator (tag)) { (void) e; ++n; } return n; };
 
             // Auto: only the setting is recorded (the speakers are recomputed on import).
@@ -750,7 +750,7 @@ int main (int argc, char** argv)
             }
 
             // Manual: the user's own virtual speakers are written, formatted like the others.
-            p.setVirtualMode (VirtualMode::Manual);
+            p.setVirtualMode (tlos::VirtualMode::Manual);
             p.setManualVirtualSpeakers ({ { 1.5, -2.25 }, { -3.0, 4.0 } });
             const auto manualFile = dir.getChildFile ("virtual-manual.xml");
             CHECK (editor->exportPositionsTo (Kind::Speakers, manualFile).wasOk());
@@ -762,7 +762,7 @@ int main (int argc, char** argv)
             }
 
             // Off: only the setting.
-            p.setVirtualMode (VirtualMode::Off);
+            p.setVirtualMode (tlos::VirtualMode::Off);
             const auto offFile = dir.getChildFile ("virtual-off.xml");
             CHECK (editor->exportPositionsTo (Kind::Speakers, offFile).wasOk());
             CHECK (juce::XmlDocument::parse (offFile)->getStringAttribute ("virtual") == "off");
@@ -770,33 +770,33 @@ int main (int argc, char** argv)
 
             // Importing restores the setting and, for manual, the list.
             p.setManualVirtualSpeakers ({});
-            tripan::io::ImportReport r;
-            CHECK (tripan::io::load (p, Kind::Speakers, manualFile, r).wasOk());
-            CHECK (r.virtualMode && *r.virtualMode == VirtualMode::Manual && r.virtualCount == 2);
-            CHECK (p.getVirtualMode() == VirtualMode::Manual);
+            tlos::io::ImportReport r;
+            CHECK (tlos::io::load (p, Kind::Speakers, manualFile, r).wasOk());
+            CHECK (r.virtualMode && *r.virtualMode == tlos::VirtualMode::Manual && r.virtualCount == 2);
+            CHECK (p.getVirtualMode() == tlos::VirtualMode::Manual);
             auto list = p.getManualVirtualSpeakers();
             CHECK (list.size() == 2 && std::abs (list[0].x - 1.5) < 1e-3 && std::abs (list[0].y + 2.25) < 1e-3 && std::abs (list[1].x + 3.0) < 1e-3 && std::abs (list[1].y - 4.0) < 1e-3);
 
-            CHECK (tripan::io::load (p, Kind::Speakers, autoFile, r).wasOk() && p.getVirtualMode() == VirtualMode::Auto);
+            CHECK (tlos::io::load (p, Kind::Speakers, autoFile, r).wasOk() && p.getVirtualMode() == tlos::VirtualMode::Auto);
             CHECK (p.getManualVirtualSpeakers().size() == 2); // the stored manual list is kept for later
-            CHECK (tripan::io::load (p, Kind::Speakers, offFile, r).wasOk() && p.getVirtualMode() == VirtualMode::Off);
+            CHECK (tlos::io::load (p, Kind::Speakers, offFile, r).wasOk() && p.getVirtualMode() == tlos::VirtualMode::Off);
 
             // A file without the attribute (an older file) leaves the virtual speaker setting alone.
-            p.setVirtualLayout (VirtualMode::Manual, &list);
+            p.setVirtualLayout (tlos::VirtualMode::Manual, &list);
             const auto oldFile = dir.getChildFile ("old.xml");
             oldFile.replaceWithText ("<TriPanSpeakers version=\"1\"><Speaker index=\"1\" x=\"-3\" y=\"3\"/><Speaker index=\"2\" x=\"3\" y=\"3\"/>"
                                      "<Speaker index=\"3\" x=\"0\" y=\"-4\"/></TriPanSpeakers>");
-            CHECK (tripan::io::load (p, Kind::Speakers, oldFile, r).wasOk());
-            CHECK (! r.virtualMode.has_value() && p.getVirtualMode() == VirtualMode::Manual && p.getManualVirtualSpeakers().size() == 2);
-            setParam (p, tripan::params::kNumSpeakersId, 7.0f); // the old file set the count to 3
+            CHECK (tlos::io::load (p, Kind::Speakers, oldFile, r).wasOk());
+            CHECK (! r.virtualMode.has_value() && p.getVirtualMode() == tlos::VirtualMode::Manual && p.getManualVirtualSpeakers().size() == 2);
+            setParam (p, tlos::params::kNumSpeakersId, 7.0f); // the old file set the count to 3
 
             // An unknown setting is rejected, and nothing at all is changed.
-            setParam (p, tripan::params::speakerId (0, 'x'), 2.0f);
+            setParam (p, tlos::params::speakerId (0, 'x'), 2.0f);
             const auto bad = dir.getChildFile ("bad-virtual.xml");
             bad.replaceWithText ("<TriPanSpeakers version=\"1\" virtual=\"banana\"><Speaker index=\"1\" x=\"-9\" y=\"9\"/></TriPanSpeakers>");
-            const auto badResult = tripan::io::load (p, Kind::Speakers, bad, r);
+            const auto badResult = tlos::io::load (p, Kind::Speakers, bad, r);
             CHECK (badResult.failed() && badResult.getErrorMessage().contains ("banana"));
-            CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - 2.0f) < 1e-3f && p.getVirtualMode() == VirtualMode::Manual);
+            CHECK (std::abs (value (p, tlos::params::speakerId (0, 'x')) - 2.0f) < 1e-3f && p.getVirtualMode() == tlos::VirtualMode::Manual);
 
             // Limits: at most 64 entries (extra ones are skipped), bad entries skipped, positions clamped.
             juce::String many = "<TriPanSpeakers version=\"1\" virtual=\"manual\"><Speaker index=\"1\" x=\"0\" y=\"5\"/>"
@@ -807,31 +807,31 @@ int main (int argc, char** argv)
             many << "</TriPanSpeakers>";
             const auto manyFile = dir.getChildFile ("many.xml");
             manyFile.replaceWithText (many);
-            CHECK (tripan::io::load (p, Kind::Speakers, manyFile, r).wasOk());
+            CHECK (tlos::io::load (p, Kind::Speakers, manyFile, r).wasOk());
             CHECK (r.virtualCount == TriPanAudioProcessor::kMaxVirtualSpeakers && r.skipped >= 2 + 3 && r.clamped == 1);
             list = p.getManualVirtualSpeakers();
             CHECK ((int) list.size() == TriPanAudioProcessor::kMaxVirtualSpeakers && std::abs (list[0].x - 10.0) < 1e-3 && std::abs (list[0].y + 10.0) < 1e-3);
-            setParam (p, tripan::params::kNumSpeakersId, 7.0f);
+            setParam (p, tlos::params::kNumSpeakersId, 7.0f);
 
             // "manual" with no entries means no virtual speakers (not a copy of the automatic ones).
             const auto none = dir.getChildFile ("none.xml");
             none.replaceWithText ("<TriPanSpeakers version=\"1\" virtual=\"manual\"><Speaker index=\"1\" x=\"0\" y=\"5\"/>"
                                   "<Speaker index=\"2\" x=\"5\" y=\"-5\"/><Speaker index=\"3\" x=\"-5\" y=\"-5\"/></TriPanSpeakers>");
-            CHECK (tripan::io::load (p, Kind::Speakers, none, r).wasOk());
-            CHECK (p.getVirtualMode() == VirtualMode::Manual && p.getManualVirtualSpeakers().empty() && p.getVirtualSpeakers().empty());
-            setParam (p, tripan::params::kNumSpeakersId, 7.0f);
+            CHECK (tlos::io::load (p, Kind::Speakers, none, r).wasOk());
+            CHECK (p.getVirtualMode() == tlos::VirtualMode::Manual && p.getManualVirtualSpeakers().empty() && p.getVirtualSpeakers().empty());
+            setParam (p, tlos::params::kNumSpeakersId, 7.0f);
 
             // Back to the defaults for the rest of the test.
             const std::vector<tripan::Vec2> noManual;
-            p.setVirtualLayout (VirtualMode::Auto, &noManual);
-            for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), spkX[i]); setParam (p, tripan::params::speakerId (i, 'y'), spkY[i]); }
+            p.setVirtualLayout (tlos::VirtualMode::Auto, &noManual);
+            for (int i = 0; i < 7; ++i) { setParam (p, tlos::params::speakerId (i, 'x'), spkX[i]); setParam (p, tlos::params::speakerId (i, 'y'), spkY[i]); }
             editor->syncControls();
         }
 
         // Restore the picture.
-        for (int i = 0; i < 7; ++i) { setParam (p, tripan::params::speakerId (i, 'x'), spkX[i]); setParam (p, tripan::params::speakerId (i, 'y'), spkY[i]); }
-        setParam (p, tripan::params::speakerId (11, 'y'), 0.0f);
-        setParam (p, tripan::params::speakerId (11, 'x'), 0.0f);
+        for (int i = 0; i < 7; ++i) { setParam (p, tlos::params::speakerId (i, 'x'), spkX[i]); setParam (p, tlos::params::speakerId (i, 'y'), spkY[i]); }
+        setParam (p, tlos::params::speakerId (11, 'y'), 0.0f);
+        setParam (p, tlos::params::speakerId (11, 'x'), 0.0f);
 
         // Import and export are available whether a kind is set to Edit or View (View only locks dragging and reset).
         for (int combination = 0; combination < 4; ++combination)
@@ -843,12 +843,12 @@ int main (int argc, char** argv)
             CHECK (editor->getExportSourcesButton().isEnabled() && editor->getExportSpeakersButton().isEnabled());
 
             // Importing really changes the positions, even for a kind that is set to View.
-            setParam (p, tripan::params::sourceId (0, 'x'), -9.0f);
-            setParam (p, tripan::params::speakerId (0, 'x'), -9.0f);
+            setParam (p, tlos::params::sourceId (0, 'x'), -9.0f);
+            setParam (p, tlos::params::speakerId (0, 'x'), -9.0f);
             CHECK (editor->importPositionsFrom (Kind::Sources, srcFile).wasOk());
             CHECK (editor->importPositionsFrom (Kind::Speakers, spkFile).wasOk());
-            CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - srcX[0]) < 1e-3f);
-            CHECK (std::abs (value (p, tripan::params::speakerId (0, 'x')) - spkX[0]) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - srcX[0]) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::speakerId (0, 'x')) - spkX[0]) < 1e-3f);
         }
         editor->getSourcesModeBox().setSelectedId (1, juce::sendNotificationSync);
         editor->getSpeakersModeBox().setSelectedId (1, juce::sendNotificationSync);
@@ -917,7 +917,7 @@ int main (int argc, char** argv)
         double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
         for (int i = 0; i < p.getActiveSpeakers(); ++i)
         {
-            const double x = value (p, tripan::params::speakerId (i, 'x')), y = value (p, tripan::params::speakerId (i, 'y'));
+            const double x = value (p, tlos::params::speakerId (i, 'x')), y = value (p, tlos::params::speakerId (i, 'y'));
             minX = std::min (minX, x); maxX = std::max (maxX, x); minY = std::min (minY, y); maxY = std::max (maxY, y);
         }
         const double centreX = 0.5 * (minX + maxX), centreY = 0.5 * (minY + maxY);
@@ -926,7 +926,7 @@ int main (int argc, char** argv)
         {
             const auto plane = field.getLocalBounds().toFloat();
             for (int i = 0; i < p.getActiveSpeakers(); ++i)
-                if (! plane.contains (field.toView (value (p, tripan::params::speakerId (i, 'x')), value (p, tripan::params::speakerId (i, 'y')))))
+                if (! plane.contains (field.toView (value (p, tlos::params::speakerId (i, 'x')), value (p, tlos::params::speakerId (i, 'y')))))
                     return false;
             return true;
         };
@@ -950,11 +950,11 @@ int main (int argc, char** argv)
         // Dragging works through the zoomed mapping, and hit testing too.
         CHECK (field.toView (field.getViewCentre().x, field.getViewCentre().y).getDistanceFrom (field.getLocalBounds().toFloat().getCentre()) < 1.0f);
         field.moveHandle ({ true, 0 }, field.toView (1.25, 0.75));
-        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 1.25f) < 0.02f && std::abs (value (p, tripan::params::sourceId (0, 'y')) - 0.75f) < 0.02f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 1.25f) < 0.02f && std::abs (value (p, tlos::params::sourceId (0, 'y')) - 0.75f) < 0.02f);
         const auto grabbed = field.findHandleAt (field.toView (1.25, 0.75));
         CHECK (grabbed && grabbed->isSource && grabbed->index == 0);
-        setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
-        setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+        setParam (p, tlos::params::sourceId (0, 'x'), 0.5f);
+        setParam (p, tlos::params::sourceId (0, 'y'), 1.0f);
 
         // Zoom out again, step by step, back to the entire area.
         previousHalf = field.getViewHalfExtent();
@@ -973,12 +973,12 @@ int main (int argc, char** argv)
         zin.onClick();
         const auto viewBefore = field.getViewCentre();
         const double halfBefore = field.getViewHalfExtent();
-        const float speakerX = value (p, tripan::params::speakerId (0, 'x'));
-        setParam (p, tripan::params::speakerId (0, 'x'), -9.0f);
+        const float speakerX = value (p, tlos::params::speakerId (0, 'x'));
+        setParam (p, tlos::params::speakerId (0, 'x'), -9.0f);
         field.refresh();
         CHECK (std::abs (field.getViewCentre().x - viewBefore.x) < 1e-12 && std::abs (field.getViewCentre().y - viewBefore.y) < 1e-12);
         CHECK (std::abs (field.getViewHalfExtent() - halfBefore) < 1e-12);
-        setParam (p, tripan::params::speakerId (0, 'x'), speakerX);
+        setParam (p, tlos::params::speakerId (0, 'x'), speakerX);
         while (zout.isEnabled())
             zout.onClick();
         field.refresh();
@@ -989,18 +989,18 @@ int main (int argc, char** argv)
         auto& box = editor->getVirtualModeBox();
         auto& spkBox = editor->getSpeakersModeBox();
         CHECK (box.getNumItems() == 3 && box.getItemText (0) == "Auto" && box.getItemText (1) == "Manual" && box.getItemText (2) == "Off");
-        CHECK (box.getSelectedId() == 1 && p.getVirtualMode() == VirtualMode::Auto); // default
+        CHECK (box.getSelectedId() == 1 && p.getVirtualMode() == tlos::VirtualMode::Auto); // default
 
         // Auto: the user cannot add or move anything, even with speakers set to Edit.
         spkBox.setSelectedId (1, juce::sendNotificationSync);
         CHECK (! field.canEditVirtualSpeakers() && ! field.addVirtualSpeakerAt (field.toView (1.0, 1.0)));
 
         box.setSelectedId (3, juce::sendNotificationSync); // Off
-        CHECK (p.getVirtualMode() == VirtualMode::Off && p.getVirtualSpeakers().empty() && ! field.addVirtualSpeakerAt (field.toView (1.0, 1.0)));
+        CHECK (p.getVirtualMode() == tlos::VirtualMode::Off && p.getVirtualSpeakers().empty() && ! field.addVirtualSpeakerAt (field.toView (1.0, 1.0)));
 
         // Manual with speakers set to View: locked like the speakers.
         box.setSelectedId (2, juce::sendNotificationSync);
-        CHECK (p.getVirtualMode() == VirtualMode::Manual && p.getManualVirtualSpeakers().empty());
+        CHECK (p.getVirtualMode() == tlos::VirtualMode::Manual && p.getManualVirtualSpeakers().empty());
         spkBox.setSelectedId (2, juce::sendNotificationSync);
         CHECK (! field.canEditVirtualSpeakers() && ! field.addVirtualSpeakerAt (field.toView (1.0, 1.0)));
 
@@ -1046,24 +1046,24 @@ int main (int argc, char** argv)
         editor->getSourcesModeBox().setSelectedId (1, juce::sendNotificationSync);
         const float ppm = field.toView (1.0, 0.0).x - field.toView (0.0, 0.0).x; // pixels per metre
         const auto p0 = field.toView (0.5, 1.0);                                  // source 1
-        const auto spread = [&] (int i) { return value (p, tripan::params::spreadId (i)); };
+        const auto spread = [&] (int i) { return value (p, tlos::params::spreadId (i)); };
         const juce::ModifierKeys none, alt (juce::ModifierKeys::altModifier), cmd (juce::ModifierKeys::commandModifier);
 
-        CHECK (FieldComponent::isSpreadModifier (alt) && ! FieldComponent::isSpreadModifier (none));
+        CHECK (tlos::FieldComponent::isSpreadModifier (alt) && ! tlos::FieldComponent::isSpreadModifier (none));
         CHECK (std::abs (spread (0)) < 1e-6f && field.getSpread (0) == 0.0);       // default: no spread
 
         // A big spread circle on source 1 covers source 3, but only inner circles take the mouse.
-        const double x3 = value (p, tripan::params::sourceId (2, 'x')), y3 = value (p, tripan::params::sourceId (2, 'y'));
+        const double x3 = value (p, tlos::params::sourceId (2, 'x')), y3 = value (p, tlos::params::sourceId (2, 'y'));
         const float bigSpread = std::min (10.0f, (float) std::hypot (x3 - 0.5, y3 - 1.0) + 1.0f);
-        setParam (p, tripan::params::spreadId (0), bigSpread);
+        setParam (p, tlos::params::spreadId (0), bigSpread);
         field.refresh();
         CHECK (std::abs (field.getSpread (0) - bigSpread) < 1e-3);
         const auto h3 = field.findHandleAt (field.toView (x3, y3));               // source 3 lies inside the spread circle
         CHECK (h3 && h3->isSource && h3->index == 2);
         CHECK (! field.findHandleAt (field.toView (3.5, 1.0)).has_value());        // inside the circle, not on any source
-        CHECK (field.findHandleAt (p0 + juce::Point<float> (FieldComponent::kSourceRadius - 1.0f, 0.0f)).has_value());
-        CHECK (! field.findHandleAt (p0 + juce::Point<float> (FieldComponent::kSourceRadius + 2.0f, 0.0f)).has_value());
-        setParam (p, tripan::params::spreadId (0), 0.0f);
+        CHECK (field.findHandleAt (p0 + juce::Point<float> (tlos::FieldComponent::kSourceRadius - 1.0f, 0.0f)).has_value());
+        CHECK (! field.findHandleAt (p0 + juce::Point<float> (tlos::FieldComponent::kSourceRadius + 2.0f, 0.0f)).has_value());
+        setParam (p, tlos::params::spreadId (0), 0.0f);
 
         // Option + drag, vertically: up increases the spread, down decreases it, sideways does nothing.
         // The change is relative to the value at the press, and the source stays where it is.
@@ -1090,15 +1090,15 @@ int main (int argc, char** argv)
         pointer = stay (pointer, up (-1.0));   field.dragTo (pointer);          // and down again at once
         CHECK (std::abs (spread (0) - 9.0f) < 0.03f);
         field.release();
-        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 0.5f) < 0.02f && std::abs (value (p, tripan::params::sourceId (0, 'y')) - 1.0f) < 0.02f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 0.5f) < 0.02f && std::abs (value (p, tlos::params::sourceId (0, 'y')) - 1.0f) < 0.02f);
 
         // A new drag starts from the current value, wherever the mouse is pressed on the inner circle.
-        setParam (p, tripan::params::spreadId (0), 2.5f);
+        setParam (p, tlos::params::spreadId (0), 2.5f);
         field.pressAt (p0 + juce::Point<float> (4.0f, 3.0f), alt);
         field.dragTo (p0 + juce::Point<float> (4.0f, 3.0f) + up (1.0));
         field.release();
         CHECK (std::abs (spread (0) - 3.5f) < 0.03f);
-        setParam (p, tripan::params::spreadId (0), 0.0f);
+        setParam (p, tlos::params::spreadId (0), 0.0f);
 
         // Only Option does this: with Cmd (or Ctrl) the drag moves the source as usual.
         for (const auto& modifier : { cmd, juce::ModifierKeys (juce::ModifierKeys::ctrlModifier) })
@@ -1107,20 +1107,20 @@ int main (int argc, char** argv)
             field.dragTo (field.toView (1.5, 1.5));
             field.release();
             CHECK (spread (0) < 1e-6f);
-            CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 1.5f) < 0.02f);
-            setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
-            setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+            CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 1.5f) < 0.02f);
+            setParam (p, tlos::params::sourceId (0, 'x'), 0.5f);
+            setParam (p, tlos::params::sourceId (0, 'y'), 1.0f);
         }
-        CHECK (! FieldComponent::isSpreadModifier (cmd));
+        CHECK (! tlos::FieldComponent::isSpreadModifier (cmd));
 
         // Without a modifier the drag moves the source and leaves the spread alone.
-        setParam (p, tripan::params::spreadId (0), 2.5f);
+        setParam (p, tlos::params::spreadId (0), 2.5f);
         field.pressAt (p0, none);
         field.dragTo (field.toView (1.5, 1.5));
         field.release();
-        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) - 1.5f) < 0.02f && std::abs (spread (0) - 2.5f) < 0.03f);
-        setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
-        setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 1.5f) < 0.02f && std::abs (spread (0) - 2.5f) < 0.03f);
+        setParam (p, tlos::params::sourceId (0, 'x'), 0.5f);
+        setParam (p, tlos::params::sourceId (0, 'y'), 1.0f);
 
         // Option + double-click on the source resets its spread; without the modifier (or with Cmd) nothing happens.
         field.doubleClickAt (p0, none);
@@ -1158,7 +1158,7 @@ int main (int argc, char** argv)
         field.release();
         CHECK (std::abs (spread (0) - 2.0f) < 0.03f);
         while (editor->getZoomOutButton().isEnabled()) editor->getZoomOutButton().onClick();
-        setParam (p, tripan::params::spreadId (0), 0.0f);
+        setParam (p, tlos::params::spreadId (0), 0.0f);
         field.refresh();
     }
 
@@ -1174,8 +1174,8 @@ int main (int argc, char** argv)
 
         CHECK (! field.findHandleAt (field.toView (9.0, 9.0)).has_value());
         // Inactive channels (source 4 and above) are not hit-testable even though their parameters exist.
-        setParam (p, tripan::params::sourceId (3, 'x'), -9.0f);
-        setParam (p, tripan::params::sourceId (3, 'y'), -9.0f);
+        setParam (p, tlos::params::sourceId (3, 'x'), -9.0f);
+        setParam (p, tlos::params::sourceId (3, 'y'), -9.0f);
         CHECK (! field.findHandleAt (field.toView (-9.0, -9.0)).has_value());
     }
 
@@ -1183,26 +1183,26 @@ int main (int argc, char** argv)
     {
         const auto target = field.toView (-2.0, 7.0);
         field.moveHandle ({ false, 2 }, target);
-        CHECK (std::abs (value (p, tripan::params::speakerId (2, 'x')) + 2.0f) < 0.02f);
-        CHECK (std::abs (value (p, tripan::params::speakerId (2, 'y')) - 7.0f) < 0.02f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (2, 'x')) + 2.0f) < 0.02f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (2, 'y')) - 7.0f) < 0.02f);
 
         // Dragging far outside the plane clamps to the parameter range (screen y grows downwards).
         field.moveHandle ({ true, 0 }, juce::Point<float> (-5000.0f, 5000.0f));
-        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'x')) + 10.0f) < 1e-3f);
-        CHECK (std::abs (value (p, tripan::params::sourceId (0, 'y')) + 10.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) + 10.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'y')) + 10.0f) < 1e-3f);
 
         // Round trip of the coordinate mapping.
         const auto v = field.toView (3.25, -4.5);
         field.moveHandle ({ true, 1 }, v);
-        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 3.25f) < 0.02f);
-        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'y')) + 4.5f) < 0.02f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 3.25f) < 0.02f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'y')) + 4.5f) < 0.02f);
     }
 
     // Table windows: one for sources (x, y, spread) and one for speakers (x, y), opened by a button at the
     // right end of the row. The values can be edited, the width follows the content.
     {
-        using tripan::io::Kind;
-        using Col = PositionTable::Column;
+        using tlos::io::Kind;
+        using Col = tlos::PositionTable::Column;
         CHECK (editor->getTableWindow (Kind::Sources) == nullptr && editor->getTableWindow (Kind::Speakers) == nullptr);
 
         // The buttons sit at the right end of their rows.
@@ -1222,35 +1222,35 @@ int main (int argc, char** argv)
 
         // Rows are the sources / speakers in use; the cells show the parameters.
         CHECK (sources.getMainTable().getRowCount() == 3 && speakers.getMainTable().getRowCount() == 7);
-        CHECK (std::abs (sources.getMainTable().getValue (0, Col::xColumn) - value (p, tripan::params::sourceId (0, 'x'))) < 1e-4);
-        CHECK (std::abs (sources.getMainTable().getValue (1, Col::yColumn) - value (p, tripan::params::sourceId (1, 'y'))) < 1e-4);
-        CHECK (std::abs (speakers.getMainTable().getValue (2, Col::xColumn) - value (p, tripan::params::speakerId (2, 'x'))) < 1e-4);
+        CHECK (std::abs (sources.getMainTable().getValue (0, Col::xColumn) - value (p, tlos::params::sourceId (0, 'x'))) < 1e-4);
+        CHECK (std::abs (sources.getMainTable().getValue (1, Col::yColumn) - value (p, tlos::params::sourceId (1, 'y'))) < 1e-4);
+        CHECK (std::abs (speakers.getMainTable().getValue (2, Col::xColumn) - value (p, tlos::params::speakerId (2, 'x'))) < 1e-4);
         CHECK (sources.getMainTable().getTable().getHeader().getNumColumns (true) == 5); // #, X, Y, Spread, Group
         CHECK (speakers.getMainTable().getTable().getHeader().getNumColumns (true) == 3); // #, X, Y
 
         // Editing: typed text goes to the parameters, limited to the range; rubbish is rejected.
         CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "2.5") == "2.500");
-        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 2.5f) < 1e-4f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 2.5f) < 1e-4f);
         CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "99") == "10.000");
-        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
         CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "abc") == "10.000");
         CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "") == "10.000");
-        CHECK (std::abs (value (p, tripan::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
+        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
         CHECK (sources.getMainTable().setValueFromText (0, Col::spreadColumn, "-3") == "0.000");     // spread is 0..10
         CHECK (sources.getMainTable().setValueFromText (0, Col::spreadColumn, "4.25") == "4.250");
-        CHECK (std::abs (value (p, tripan::params::spreadId (0)) - 4.25f) < 1e-4f);
+        CHECK (std::abs (value (p, tlos::params::spreadId (0)) - 4.25f) < 1e-4f);
         CHECK (speakers.getMainTable().setValueFromText (4, Col::yColumn, "-1.5") == "-1.500");
-        CHECK (std::abs (value (p, tripan::params::speakerId (4, 'y')) + 1.5f) < 1e-4f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (4, 'y')) + 1.5f) < 1e-4f);
         CHECK (sources.getMainTable().setValueFromText (9, Col::xColumn, "1") == "0.000");           // no such row
-        setParam (p, tripan::params::sourceId (1, 'x'), -6.5f);                                       // back as before
-        setParam (p, tripan::params::spreadId (0), 0.0f);
-        setParam (p, tripan::params::speakerId (4, 'y'), 0.0f);
+        setParam (p, tlos::params::sourceId (1, 'x'), -6.5f);                                       // back as before
+        setParam (p, tlos::params::spreadId (0), 0.0f);
+        setParam (p, tlos::params::speakerId (4, 'y'), 0.0f);
 
         // A change made elsewhere (automation, the pad) shows up in the table.
-        setParam (p, tripan::params::sourceId (2, 'y'), -1.25f);
+        setParam (p, tlos::params::sourceId (2, 'y'), -1.25f);
         sources.refresh();
         CHECK (std::abs (sources.getMainTable().getValue (2, Col::yColumn) + 1.25) < 1e-4);
-        setParam (p, tripan::params::sourceId (2, 'y'), -3.5f);
+        setParam (p, tlos::params::sourceId (2, 'y'), -3.5f);
 
         // The number of sources / speakers can be changed in the window, and the table follows.
         sources.getCountSlider().setValue (2.0, juce::sendNotificationSync);
@@ -1258,8 +1258,8 @@ int main (int argc, char** argv)
         speakers.getCountSlider().setValue (5.0, juce::sendNotificationSync);
         CHECK (p.getActiveSpeakers() == 5 && speakers.getMainTable().getRowCount() == 5);
         CHECK (sources.getCountSlider().getMaximum() == 3.0 && speakers.getCountSlider().getMaximum() == 7.0);
-        setParam (p, tripan::params::kNumSourcesId, 3.0f);  // as if automation changed it
-        setParam (p, tripan::params::kNumSpeakersId, 7.0f);
+        setParam (p, tlos::params::kNumSourcesId, 3.0f);  // as if automation changed it
+        setParam (p, tlos::params::kNumSpeakersId, 7.0f);
         sources.refresh();
         speakers.refresh();
         CHECK (sources.getCountSlider().getValue() == 3.0 && speakers.getCountSlider().getValue() == 7.0);
@@ -1272,7 +1272,7 @@ int main (int argc, char** argv)
         // The virtual speaker table appears to the right while they can be placed by hand (Manual and speakers on Edit).
         const int narrow = speakersWindow->getWidth();
         CHECK (narrow == speakers.getPreferredWidth() && sources.getPreferredWidth() < narrow);
-        editor->getVirtualModeBox().setSelectedId ((int) VirtualMode::Manual, juce::sendNotificationSync);
+        editor->getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Manual, juce::sendNotificationSync);
         editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);          // View: no virtual table
         speakers.refresh();
         CHECK (speakers.getVirtualTable() == nullptr);
@@ -1294,15 +1294,15 @@ int main (int argc, char** argv)
                && std::abs (manual[0].x - 1.0) < 1e-9 && std::abs (manual[0].y + 10.0) < 1e-9);
 
         // The menu in the window changes the mode; Auto removes the table and the window narrows again.
-        speakers.getVirtualModeBox().setSelectedId ((int) VirtualMode::Auto, juce::sendNotificationSync);
-        CHECK (p.getVirtualMode() == VirtualMode::Auto && speakers.getVirtualTable() == nullptr);
+        speakers.getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Auto, juce::sendNotificationSync);
+        CHECK (p.getVirtualMode() == tlos::VirtualMode::Auto && speakers.getVirtualTable() == nullptr);
         CHECK (speakersWindow->getWidth() == narrow);
 
         // Height: resizable between a few rows and every row, the width is fixed.
         CHECK (speakers.getMinimumHeight() <= speakersWindow->getHeight());
         CHECK (speakersWindow->getHeight() <= speakers.getMaximumHeight());
         CHECK (speakersWindow->getConstrainer()->getMinimumWidth() == speakersWindow->getConstrainer()->getMaximumWidth());
-        CHECK (speakers.getMinimumHeight() == speakers.getHeightForRows (PositionTableContent::kMinVisibleRows));
+        CHECK (speakers.getMinimumHeight() == speakers.getHeightForRows (tlos::PositionTableContent::kMinVisibleRows));
 
         // Placement beside the main window: right if there is room, otherwise left, otherwise nowhere (then it is centred over it).
         {
@@ -1310,7 +1310,7 @@ int main (int argc, char** argv)
             const juce::BorderSize<int> frame (28, 0, 0, 0); // a title bar
             const auto place = [&] (juce::Rectangle<int> main, juce::Rectangle<int> avail, juce::Rectangle<int> size)
             {
-                return PositionTableWindow::chooseBesidePosition (main, avail, size, frame, 8);
+                return tlos::PositionTableWindow::chooseBesidePosition (main, avail, size, frame, 8);
             };
 
             auto right = place ({ 100, 100, 700, 830 }, screen, tableSize);
@@ -1330,7 +1330,7 @@ int main (int argc, char** argv)
                 const auto mainBounds = editor->getTopLevelComponent()->getScreenBounds();
                 const auto displays = juce::Desktop::getInstance().getDisplays();
                 const bool roomBeside = displays.getDisplayForRect (mainBounds) != nullptr
-                    && PositionTableWindow::chooseBesidePosition (mainBounds, displays.getDisplayForRect (mainBounds)->userBounds.toNearestInt(),
+                    && tlos::PositionTableWindow::chooseBesidePosition (mainBounds, displays.getDisplayForRect (mainBounds)->userBounds.toNearestInt(),
                                                                   w->getLocalBounds(), {}, 8).has_value();
                 if (roomBeside)
                     CHECK (! w->getBounds().intersects (mainBounds));
@@ -1352,7 +1352,7 @@ int main (int argc, char** argv)
         editor->getSourcesTableButton().onClick();
         CHECK (sourcesWindow->isVisible());
 
-        editor->getVirtualModeBox().setSelectedId ((int) VirtualMode::Auto, juce::sendNotificationSync);
+        editor->getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Auto, juce::sendNotificationSync);
         editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
         p.setManualVirtualSpeakers ({});
     }
@@ -1368,7 +1368,7 @@ int main (int argc, char** argv)
         big.setPlayConfigDetails (64, 64, 48000.0, 512);
         big.prepareToPlay (48000.0, 512);
 
-        PositionTableWindow window (big, tripan::io::Kind::Sources);
+        tlos::PositionTableWindow window (big, tlos::io::Kind::Sources);
         auto& content = window.getContent();
         CHECK (content.getMainTable().getRowCount() == 64);
         CHECK (window.getHeight() < content.getHeightForRows (64));          // starts at a moderate height
@@ -1378,26 +1378,26 @@ int main (int argc, char** argv)
         content.setBounds (0, 0, window.getWidth(), content.getMinimumHeight());
         auto& table = content.getMainTable().getTable();
         CHECK (table.getViewport()->canScrollVertically());
-        CHECK (table.getHeader().getHeight() == PositionTable::kHeaderHeight);
+        CHECK (table.getHeader().getHeight() == tlos::PositionTable::kHeaderHeight);
         const int headerY = table.getHeader().getY();                         // the header is outside the scrolling area
         table.getViewport()->setViewPosition (0, 500);
         CHECK (table.getHeader().getY() == headerY && table.getHeader().isVisible());
         CHECK (table.getViewport()->getViewPositionY() > 0);
-        CHECK (table.getViewport()->getY() >= PositionTable::kHeaderHeight);
+        CHECK (table.getViewport()->getY() >= tlos::PositionTable::kHeaderHeight);
         window.setVisible (false);
     }
 
     // Restore a pleasant picture for the snapshot.
-    setParam (p, tripan::params::speakerId (2, 'x'), 6.5f);
-    setParam (p, tripan::params::speakerId (2, 'y'), -1.0f);
-    setParam (p, tripan::params::sourceId (0, 'x'), 0.5f);
-    setParam (p, tripan::params::sourceId (0, 'y'), 1.0f);
-    setParam (p, tripan::params::sourceId (1, 'x'), -6.5f);
-    setParam (p, tripan::params::sourceId (1, 'y'), 8.5f);
+    setParam (p, tlos::params::speakerId (2, 'x'), 6.5f);
+    setParam (p, tlos::params::speakerId (2, 'y'), -1.0f);
+    setParam (p, tlos::params::sourceId (0, 'x'), 0.5f);
+    setParam (p, tlos::params::sourceId (0, 'y'), 1.0f);
+    setParam (p, tlos::params::sourceId (1, 'x'), -6.5f);
+    setParam (p, tlos::params::sourceId (1, 'y'), 8.5f);
 
     // The snapshot shows 6 of 7 speakers in use.
-    setParam (p, tripan::params::kNumSpeakersId, 6.0f);
-    p.refreshTriangulation();
+    setParam (p, tlos::params::kNumSpeakersId, 6.0f);
+    p.refreshLayout();
     editor->syncControls();
 
     editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync); // defaults for the picture: speakers View
@@ -1406,9 +1406,9 @@ int main (int argc, char** argv)
     if (argc > 2) // optional: a speaker file for the snapshot
     {
         editor->getVirtualModeBox().setSelectedId (1, juce::sendNotificationSync);
-        CHECK (editor->importPositionsFrom (tripan::io::Kind::Speakers, juce::File (argv[2])).wasOk());
-        setParam (p, tripan::params::sourceId (0, 'x'), 0.0f);
-        setParam (p, tripan::params::sourceId (0, 'y'), 0.0f);
+        CHECK (editor->importPositionsFrom (tlos::io::Kind::Speakers, juce::File (argv[2])).wasOk());
+        setParam (p, tlos::params::sourceId (0, 'x'), 0.0f);
+        setParam (p, tlos::params::sourceId (0, 'y'), 0.0f);
         editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
         editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
         editor->getZoomOutButton().onClick();
@@ -1417,8 +1417,8 @@ int main (int argc, char** argv)
 
     if (argc > 1)
     {
-        setParam (p, tripan::params::spreadId (0), 3.0f); // the snapshot shows some spread
-        setParam (p, tripan::params::spreadId (2), 1.4f);
+        setParam (p, tlos::params::spreadId (0), 3.0f); // the snapshot shows some spread
+        setParam (p, tlos::params::spreadId (2), 1.4f);
         if (argc <= 2)
             while (editor->getZoomInButton().isEnabled()) editor->getZoomInButton().onClick(); // snapshot shows the zoomed view
         field.refresh();
@@ -1431,17 +1431,17 @@ int main (int argc, char** argv)
         std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
 
         // Pictures of the table windows as well: <name>-sources.png and <name>-speakers.png (with virtual speakers by hand).
-        editor->getVirtualModeBox().setSelectedId ((int) VirtualMode::Manual, juce::sendNotificationSync);
+        editor->getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Manual, juce::sendNotificationSync);
         editor->getSpeakersModeBox().setSelectedId (1, juce::sendNotificationSync);
         p.setManualVirtualSpeakers ({ { 0.0, 0.0 }, { 0.0, -6.0 } });
-        for (auto kind : { tripan::io::Kind::Sources, tripan::io::Kind::Speakers })
+        for (auto kind : { tlos::io::Kind::Sources, tlos::io::Kind::Speakers })
         {
             auto& window = editor->showTableWindow (kind);
             window.getContent().refresh();
             auto& content = window.getContent();
             content.setBounds (0, 0, window.getWidth(), window.getHeight());
             auto picture = content.createComponentSnapshot (content.getLocalBounds(), true, 1.0f);
-            juce::File tableOut (out.getFullPathName().replace (".png", kind == tripan::io::Kind::Sources ? "-sources.png" : "-speakers.png"));
+            juce::File tableOut (out.getFullPathName().replace (".png", kind == tlos::io::Kind::Sources ? "-sources.png" : "-speakers.png"));
             tableOut.deleteFile();
             juce::FileOutputStream tableStream (tableOut);
             CHECK (tableStream.openedOk() && png.writeImageToStream (picture, tableStream));

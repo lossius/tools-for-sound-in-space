@@ -42,27 +42,17 @@ target_sources(TriPan PRIVATE
     Source/PluginProcessor.h
     Source/PluginEditor.cpp
     Source/PluginEditor.h
-    Source/FieldComponent.cpp
-    Source/FieldComponent.h
-    Source/PositionIO.cpp
-    Source/PositionIO.h
-    Source/PositionTableWindow.cpp
-    Source/PositionTableWindow.h
-    Source/Parameters.h)
+    Source/TriPanField.cpp
+    Source/TriPanField.h)
 # In the IDE, sources and headers sit in separate subfolders, like in TriPanCore.
 source_group("Sources/src" FILES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
-    Source/FieldComponent.cpp
-    Source/PositionIO.cpp
-    Source/PositionTableWindow.cpp)
+    Source/TriPanField.cpp)
 source_group("Sources/include" FILES
     Source/PluginProcessor.h
     Source/PluginEditor.h
-    Source/FieldComponent.h
-    Source/PositionIO.h
-    Source/PositionTableWindow.h
-    Source/Parameters.h)
+    Source/TriPanField.h)
 
 target_compile_definitions(TriPan PUBLIC
     JUCE_WEB_BROWSER=0
@@ -71,9 +61,10 @@ target_compile_definitions(TriPan PUBLIC
 
 target_link_libraries(TriPan
     PRIVATE
-        TriPanCore
         juce::juce_audio_utils
     PUBLIC
+        TriPanCore
+        TlosUI
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)

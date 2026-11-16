@@ -6,14 +6,14 @@
 
 #pragma once
 
-#include "Limits.h"
-#include "Triangulation.h"
+#include "tlos/Limits.h"
+#include "tlos/Vec2.h"
 
 #include <array>
 #include <string>
 #include <vector>
 
-namespace tripan
+namespace tlos
 {
 /** Which sources are grouped. Every source has a group id: 0 = not in a group, 1, 2, ... = the group it
     belongs to. Sources with the same id move together. A group always has at least two members (a

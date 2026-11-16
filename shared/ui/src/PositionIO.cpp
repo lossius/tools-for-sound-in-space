@@ -4,22 +4,26 @@
 /** @file PositionIO.cpp
     @brief XML writing and strict, all-or-nothing reading of position files. */
 
-#include "PositionIO.h"
-#include "Parameters.h"
+#include "tlos/PositionIO.h"
+#include "tlos/Parameters.h"
 
 #include <algorithm>
 #include <cmath>
 #include <map>
 
-namespace tripan::io
+namespace tlos::io
 {
 namespace
 {
 /** Value of the `version` attribute written to every file. */
 constexpr int kFormatVersion = 1;
 
-/** Name of the root element for the kind of file. */
-const char* rootTag (Kind k)  { return k == Kind::Sources ? "TriPanSources" : "TriPanSpeakers"; }
+/** Ending of the root element's name for the kind of file; the start is the name of the plugin that wrote it. */
+const char* tagSuffix (Kind k) { return k == Kind::Sources ? "Sources" : "Speakers"; }
+/** Name of the root element a plugin writes, for example "TriPanSources". */
+juce::String rootTag (const SpatialProcessor& p, Kind k) { return p.getName() + tagSuffix (k); }
+/** True if the document holds the kind of positions, whichever plugin wrote it: files can be moved between the plugins. */
+bool hasKindTag (const juce::XmlElement& xml, Kind k) { return xml.getTagName().endsWith (tagSuffix (k)); }
 /** Name of the per-entry elements for the kind of file. */
 const char* entryTag (Kind k) { return k == Kind::Sources ? "Source" : "Speaker"; }
 
@@ -30,13 +34,13 @@ juce::String idFor (Kind k, int index, char axis)
 }
 
 /** Current real value of a parameter. */
-float readParam (const TriPanAudioProcessor& p, const juce::String& id)
+float readParam (const SpatialProcessor& p, const juce::String& id)
 {
     return p.getValueTreeState().getRawParameterValue (id)->load();
 }
 
 /** Sets a parameter to a real value inside a change gesture, so that hosts record it. */
-void writeParam (TriPanAudioProcessor& p, const juce::String& id, float value)
+void writeParam (SpatialProcessor& p, const juce::String& id, float value)
 {
     if (auto* prm = p.getValueTreeState().getParameter (id))
     {
@@ -87,11 +91,11 @@ juce::String describe (Kind k)
     return k == Kind::Sources ? "source" : "speaker";
 }
 
-std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kind)
+std::unique_ptr<juce::XmlElement> toXml (const SpatialProcessor& p, Kind kind)
 {
     const int count = kind == Kind::Sources ? p.getActiveSources() : p.getActiveSpeakers();
 
-    auto root = std::make_unique<juce::XmlElement> (rootTag (kind));
+    auto root = std::make_unique<juce::XmlElement> (rootTag (p, kind));
     root->setAttribute ("version", kFormatVersion);
     root->setAttribute ("count", count);
 
@@ -105,7 +109,7 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
         }
     }
 
-    const auto groups = kind == Kind::Sources ? p.getSourceGroups() : tripan::SourceGroups();
+    const auto groups = kind == Kind::Sources ? p.getSourceGroups() : tlos::SourceGroups();
 
     for (int i = 0; i < count; ++i)
     {
@@ -135,7 +139,7 @@ std::unique_ptr<juce::XmlElement> toXml (const TriPanAudioProcessor& p, Kind kin
     return root;
 }
 
-juce::Result save (const TriPanAudioProcessor& p, Kind kind, const juce::File& file)
+juce::Result save (const SpatialProcessor& p, Kind kind, const juce::File& file)
 {
     const auto xml = toXml (p, kind);
 
@@ -149,7 +153,7 @@ juce::Result save (const TriPanAudioProcessor& p, Kind kind, const juce::File& f
     return juce::Result::ok();
 }
 
-juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, ImportReport& report)
+juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, ImportReport& report)
 {
     report = {};
 
@@ -160,16 +164,16 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
     if (xml == nullptr)
         return juce::Result::fail ("The file is not valid XML.");
 
-    if (! xml->hasTagName (rootTag (kind)))
+    if (! hasKindTag (*xml, kind))
     {
         const auto other = kind == Kind::Sources ? Kind::Speakers : Kind::Sources;
-        if (xml->hasTagName (rootTag (other)))
+        if (hasKindTag (*xml, other))
             return juce::Result::fail ("This file contains " + describe (other) + " positions, not " + describe (kind) + " positions.");
-        return juce::Result::fail ("This is not a TriPan " + describe (kind) + " file.");
+        return juce::Result::fail ("This is not a " + describe (kind) + " positions file.");
     }
 
     if (xml->getIntAttribute ("version", 1) > kFormatVersion)
-        return juce::Result::fail ("The file was written by a newer version of TriPan.");
+        return juce::Result::fail ("The file was written by a newer version of " + p.getName() + ".");
 
     // Validate everything first, so a bad file changes nothing. Later entries win on duplicate indices.
     std::map<int, Entry> entries;
@@ -236,7 +240,7 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
                 double x = 0.0, y = 0.0;
 
                 if (! readNumber (*e, "x", x) || ! readNumber (*e, "y", y)
-                    || (int) newManual.size() >= TriPanAudioProcessor::kMaxVirtualSpeakers)
+                    || (int) newManual.size() >= SpatialProcessor::kMaxVirtualSpeakers)
                 {
                     ++report.skipped;
                     continue;
@@ -303,7 +307,7 @@ juce::Result load (TriPanAudioProcessor& p, Kind kind, const juce::File& file, I
         if (entry.first <= inUseLimit)
             ++report.inUse;
 
-    p.refreshTriangulation();
+    p.refreshLayout();
     return juce::Result::ok();
 }
 }

@@ -4,9 +4,9 @@
 /** @file ProcessorTests.cpp
     @brief Offline tests of the TriPan processor (no DAW): energy conservation, locality, ramping, speaker updates, state round-trip, large layouts, presets, spread, parameter order. */
 
-#include "../Source/Parameters.h"
+#include "tlos/Parameters.h"
 #include "../Source/PluginProcessor.h"
-#include "../Source/PositionIO.h"
+#include "tlos/PositionIO.h"
 #include "tripan/Gains.h"
 
 #include <atomic>
@@ -91,7 +91,7 @@ static void testStationaryEnergyAndLocality()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 4, 8, 512));
-    p.setVirtualMode (VirtualMode::Off); // plain triangulation: three speakers at most per source
+    p.setVirtualMode (tlos::VirtualMode::Off); // plain triangulation: three speakers at most per source
 
     juce::AudioBuffer<float> buf (8, 512);
     juce::MidiBuffer midi;
@@ -129,8 +129,8 @@ static void testMovingSourceIsSmoothAndBounded()
     for (int block = 0; block < 100; ++block)
     {
         const float a = 0.2f * (float) block;
-        setParam (p, tripan::params::sourceId (0, 'x'), 6.0f * std::sin (a));
-        setParam (p, tripan::params::sourceId (0, 'y'), 6.0f * std::cos (a));
+        setParam (p, tlos::params::sourceId (0, 'x'), 6.0f * std::sin (a));
+        setParam (p, tlos::params::sourceId (0, 'y'), 6.0f * std::cos (a));
 
         const double inE = fillNoise (buf, 2, 0, rng);
         p.processBlock (buf, midi);
@@ -153,13 +153,13 @@ static void testSourceOnSpeakerAndSpeakerUpdate()
     std::mt19937 rng (3);
 
     // Move speaker 2 and tell the processor (the timer does this in a real host).
-    setParam (p, tripan::params::speakerId (2, 'x'), -4.0f);
-    setParam (p, tripan::params::speakerId (2, 'y'), -3.0f);
-    p.refreshTriangulation();
+    setParam (p, tlos::params::speakerId (2, 'x'), -4.0f);
+    setParam (p, tlos::params::speakerId (2, 'y'), -3.0f);
+    p.refreshLayout();
 
     // Put the source exactly on speaker 2; after the ramp block only that output carries signal.
-    setParam (p, tripan::params::sourceId (0, 'x'), -4.0f);
-    setParam (p, tripan::params::sourceId (0, 'y'), -3.0f);
+    setParam (p, tlos::params::sourceId (0, 'x'), -4.0f);
+    setParam (p, tlos::params::sourceId (0, 'y'), -3.0f);
     for (int block = 0; block < 2; ++block)
     {
         const double inE = fillNoise (buf, 1, 0, rng);
@@ -199,8 +199,8 @@ static void testStateRoundTrip()
 {
     TriPanAudioProcessor a;
     CHECK (configure (a, 4, 6, 256));
-    setParam (a, tripan::params::speakerId (3, 'x'), 1.25f);
-    setParam (a, tripan::params::sourceId (2, 'y'), -2.5f);
+    setParam (a, tlos::params::speakerId (3, 'x'), 1.25f);
+    setParam (a, tlos::params::sourceId (2, 'y'), -2.5f);
     CHECK (a.canEditSources() && ! a.canEditSpeakers()); // defaults
     a.setSpeakersEditable (true);
     a.setSourcesEditable (false);
@@ -213,8 +213,8 @@ static void testStateRoundTrip()
     CHECK (configure (b, 4, 6, 256)); // must not overwrite restored positions with default rings
 
     const auto get = [] (TriPanAudioProcessor& p, const juce::String& id) { return p.getValueTreeState().getRawParameterValue (id)->load(); };
-    CHECK (std::abs (get (b, tripan::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
-    CHECK (std::abs (get (b, tripan::params::sourceId (2, 'y')) + 2.5f) < 1e-4f);
+    CHECK (std::abs (get (b, tlos::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
+    CHECK (std::abs (get (b, tlos::params::sourceId (2, 'y')) + 2.5f) < 1e-4f);
     CHECK (! b.canEditSources() && b.canEditSpeakers());
 
     // State written by an earlier version (single "editMode" property) is still understood.
@@ -252,8 +252,8 @@ static void testFullSize64x64()
         for (int s = 0; s < 64; ++s)
         {
             const float a = 0.05f * (float) block + (float) s;
-            setParam (p, tripan::params::sourceId (s, 'x'), 6.0f * std::sin (a));
-            setParam (p, tripan::params::sourceId (s, 'y'), 6.0f * std::cos (a));
+            setParam (p, tlos::params::sourceId (s, 'x'), 6.0f * std::sin (a));
+            setParam (p, tlos::params::sourceId (s, 'y'), 6.0f * std::cos (a));
             for (int i = 0; i < 512; ++i) buf.setSample (s, i, u (rng));
         }
         p.processBlock (buf, midi);
@@ -278,18 +278,18 @@ static void testFullSizeEnergyConservation()
     std::uniform_real_distribution<float> pos (-8.0f, 8.0f);
     for (int i = 0; i < 64; ++i)
     {
-        setParam (p, tripan::params::speakerId (i, 'x'), pos (rng));
-        setParam (p, tripan::params::speakerId (i, 'y'), pos (rng));
+        setParam (p, tlos::params::speakerId (i, 'x'), pos (rng));
+        setParam (p, tlos::params::speakerId (i, 'y'), pos (rng));
     }
-    p.refreshTriangulation();
+    p.refreshLayout();
 
     juce::AudioBuffer<float> buf (64, 256);
     juce::MidiBuffer midi;
 
     for (int src : { 0, 17, 63 })
     {
-        setParam (p, tripan::params::sourceId (src, 'x'), pos (rng));
-        setParam (p, tripan::params::sourceId (src, 'y'), pos (rng));
+        setParam (p, tlos::params::sourceId (src, 'x'), pos (rng));
+        setParam (p, tlos::params::sourceId (src, 'y'), pos (rng));
 
         for (int block = 0; block < 3; ++block)
         {
@@ -360,11 +360,11 @@ static void testParameterAutomationWhileProcessing()
     for (int iter = 0; iter < 1500; ++iter)
     {
         const int k = (int) (rng() % 16);
-        setParam (p, tripan::params::speakerId (k, 'x'), pos (rng));
-        setParam (p, tripan::params::speakerId (k, 'y'), pos (rng));
-        setParam (p, tripan::params::sourceId (k, 'x'), pos (rng));
-        setParam (p, tripan::params::sourceId (k, 'y'), pos (rng));
-        p.refreshTriangulation();
+        setParam (p, tlos::params::speakerId (k, 'x'), pos (rng));
+        setParam (p, tlos::params::speakerId (k, 'y'), pos (rng));
+        setParam (p, tlos::params::sourceId (k, 'x'), pos (rng));
+        setParam (p, tlos::params::sourceId (k, 'y'), pos (rng));
+        p.refreshLayout();
         if (iter % 50 == 0)
             std::this_thread::sleep_for (std::chrono::milliseconds (1));
     }
@@ -388,7 +388,7 @@ static void testNumberOfSourcesAndSpeakersInUse()
     std::mt19937 rng (9);
 
     // One source in use: the other sources are silent.
-    setParam (p, tripan::params::kNumSourcesId, 1.0f);
+    setParam (p, tlos::params::kNumSourcesId, 1.0f);
     CHECK (p.getActiveSources() == 1);
     for (int block = 0; block < 3; ++block)
     {
@@ -416,8 +416,8 @@ static void testNumberOfSourcesAndSpeakersInUse()
     }
 
     // Three speakers in use: only outputs 1-3 may carry signal, power is still conserved.
-    setParam (p, tripan::params::kNumSpeakersId, 3.0f);
-    p.refreshTriangulation();
+    setParam (p, tlos::params::kNumSpeakersId, 3.0f);
+    p.refreshLayout();
     CHECK (p.getActiveSpeakers() == 3);
     for (int block = 0; block < 3; ++block)
     {
@@ -436,7 +436,7 @@ static void testNumberOfSourcesAndSpeakersInUse()
     }
 
     // Parameter values above the channel count clamp, and below 1 cannot happen (range starts at 1).
-    setParam (p, tripan::params::kNumSpeakersId, 64.0f);
+    setParam (p, tlos::params::kNumSpeakersId, 64.0f);
     CHECK (p.getActiveSpeakers() == 8);
 }
 
@@ -451,8 +451,8 @@ static void testUnusedSpeakersAreSilentImmediately()
     std::mt19937 rng (10);
 
     // Put source 1 on speaker 7 so that speaker is definitely carrying signal.
-    setParam (p, tripan::params::sourceId (0, 'x'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (6, 'x'))->load());
-    setParam (p, tripan::params::sourceId (0, 'y'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (6, 'y'))->load());
+    setParam (p, tlos::params::sourceId (0, 'x'), (float) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (6, 'x'))->load());
+    setParam (p, tlos::params::sourceId (0, 'y'), (float) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (6, 'y'))->load());
     for (int block = 0; block < 3; ++block)
     {
         fillNoise (buf, 2, 0, rng);
@@ -462,7 +462,7 @@ static void testUnusedSpeakersAreSilentImmediately()
 
     // Reduce to 4 speakers WITHOUT refreshing the triangulation (the audio thread still sees the
     // old one with 8 speakers, as it does for up to ~33 ms in a real host).
-    setParam (p, tripan::params::kNumSpeakersId, 4.0f);
+    setParam (p, tlos::params::kNumSpeakersId, 4.0f);
 
     // First block: the outputs that just became unused fade out, ending at (almost) zero.
     fillNoise (buf, 2, 0, rng);
@@ -474,7 +474,7 @@ static void testUnusedSpeakersAreSilentImmediately()
     for (int block = 0; block < 3; ++block)
     {
         if (block == 2)
-            p.refreshTriangulation();
+            p.refreshLayout();
         fillNoise (buf, 2, 0, rng);
         p.processBlock (buf, midi);
         for (int ch = 4; ch < 8; ++ch)
@@ -482,8 +482,8 @@ static void testUnusedSpeakersAreSilentImmediately()
     }
 
     // Growing the count again lets the speakers carry signal again.
-    setParam (p, tripan::params::kNumSpeakersId, 8.0f);
-    p.refreshTriangulation();
+    setParam (p, tlos::params::kNumSpeakersId, 8.0f);
+    p.refreshLayout();
     double energy = 0.0;
     for (int block = 0; block < 3; ++block)
     {
@@ -514,8 +514,8 @@ static void testSpeakerPresets (const juce::File& dir)
         TriPanAudioProcessor p;
         CHECK (configure (p, 2, 64, 256));
 
-        tripan::io::ImportReport report;
-        const auto result = tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (e.file), report);
+        tlos::io::ImportReport report;
+        const auto result = tlos::io::load (p, tlos::io::Kind::Speakers, dir.getChildFile (e.file), report);
         if (result.failed())
             std::printf ("preset %s: %s\n", e.file, result.getErrorMessage().toRawUTF8());
         CHECK (result.wasOk());
@@ -523,14 +523,14 @@ static void testSpeakerPresets (const juce::File& dir)
 
         // Importing a speaker setup adjusts Number of Speakers (the track has 64 outputs).
         CHECK (report.fileCount == e.count && report.speakersSetTo == e.count && report.inUse == e.count);
-        CHECK (report.virtualMode && *report.virtualMode == (e.manualVirtual == 0 ? VirtualMode::Auto : VirtualMode::Manual)); // automatic, or the file's own virtual speakers
+        CHECK (report.virtualMode && *report.virtualMode == (e.manualVirtual == 0 ? tlos::VirtualMode::Auto : tlos::VirtualMode::Manual)); // automatic, or the file's own virtual speakers
         CHECK (report.virtualCount == e.manualVirtual && (int) p.getManualVirtualSpeakers().size() == e.manualVirtual);
         CHECK (p.getActiveSpeakers() == e.count);
 
         std::vector<tripan::Vec2> pts;
         for (int i = 0; i < e.count; ++i)
-            pts.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'x'))->load(),
-                             (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'y'))->load() });
+            pts.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'x'))->load(),
+                             (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'y'))->load() });
 
         // Within the plane, distinct, and a proper triangulation (non-collinear).
         double minDistance = 1e9;
@@ -592,26 +592,26 @@ static void testSpeakerPresets (const juce::File& dir)
     {
         TriPanAudioProcessor p;
         CHECK (configure (p, 2, 8, 256));
-        tripan::io::ImportReport r;
+        tlos::io::ImportReport r;
 
         CHECK (p.getActiveSpeakers() == 8);
-        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile ("Quad.xml"), r).wasOk());
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, dir.getChildFile ("Quad.xml"), r).wasOk());
         CHECK (p.getActiveSpeakers() == 4 && r.speakersSetTo == 4 && r.trackOutputs == 8);
-        CHECK (std::abs (p.getValueTreeState().getRawParameterValue (tripan::params::kNumSpeakersId)->load() - 4.0f) < 1e-3f);
+        CHECK (std::abs (p.getValueTreeState().getRawParameterValue (tlos::params::kNumSpeakersId)->load() - 4.0f) < 1e-3f);
 
-        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile ("Octagon-symmetric.xml"), r).wasOk());
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, dir.getChildFile ("Octagon-symmetric.xml"), r).wasOk());
         CHECK (p.getActiveSpeakers() == 8 && r.speakersSetTo == 8);
 
         // A file with more speakers than the track has outputs: positions are stored, the count is left alone.
-        setParam (p, tripan::params::kNumSpeakersId, 5.0f);
-        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile ("Grid-4x4.xml"), r).wasOk());
+        setParam (p, tlos::params::kNumSpeakersId, 5.0f);
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, dir.getChildFile ("Grid-4x4.xml"), r).wasOk());
         CHECK (r.fileCount == 16 && r.speakersSetTo == 0 && r.trackOutputs == 8 && r.applied == 16 && r.inUse == 5);
         CHECK (p.getActiveSpeakers() == 5);
 
         // Importing sources never changes Number of Sources.
         const auto sourceFile = dir.getChildFile ("..").getChildFile ("tripan_one_source.xml");
         sourceFile.replaceWithText ("<TriPanSources version=\"1\"><Source index=\"1\" x=\"1\" y=\"2\"/></TriPanSources>");
-        CHECK (tripan::io::load (p, tripan::io::Kind::Sources, sourceFile, r).wasOk());
+        CHECK (tlos::io::load (p, tlos::io::Kind::Sources, sourceFile, r).wasOk());
         CHECK (p.getActiveSources() == 2 && r.speakersSetTo == 0);
         sourceFile.deleteFile();
     }
@@ -624,12 +624,12 @@ static void testSpeakerPresets (const juce::File& dir)
     {
         TriPanAudioProcessor p;
         configure (p, 2, 64, 256);
-        tripan::io::ImportReport r;
-        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
+        tlos::io::ImportReport r;
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
         out.clear();
         for (int i = 0; i < r.applied; ++i)
-            out.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'x'))->load(),
-                             (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'y'))->load() });
+            out.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'x'))->load(),
+                             (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'y'))->load() });
     };
     const auto azimuth = [] (tripan::Vec2 v) { return std::atan2 (v.x, v.y) * 180.0 / 3.14159265358979; };
 
@@ -706,11 +706,11 @@ static void testVirtualSpeakerModes()
     const auto activeOutputs = [] (const std::vector<double>& e) { int n = 0; for (double v : e) if (v > 1e-9) ++n; return n; };
 
     // Default: Auto. The 8-ring gets a centre speaker.
-    CHECK (p.getVirtualMode() == VirtualMode::Auto);
+    CHECK (p.getVirtualMode() == tlos::VirtualMode::Auto);
     CHECK (p.getVirtualSpeakers().size() == 1);
 
-    setParam (p, tripan::params::sourceId (0, 'x'), 0.0f);
-    setParam (p, tripan::params::sourceId (0, 'y'), 0.0f);
+    setParam (p, tlos::params::sourceId (0, 'x'), 0.0f);
+    setParam (p, tlos::params::sourceId (0, 'y'), 0.0f);
     double inE = 0.0;
     auto e = outputEnergies (0, inE);
     CHECK (activeOutputs (e) == 8);                 // a source at the centre feeds every speaker...
@@ -720,27 +720,27 @@ static void testVirtualSpeakerModes()
     for (double v : e) CHECK (std::abs (v - inE / 8.0) < 0.02 * inE); // ...equally
 
     // Off: plain triangulation, at most three speakers.
-    p.setVirtualMode (VirtualMode::Off);
+    p.setVirtualMode (tlos::VirtualMode::Off);
     CHECK (p.getVirtualSpeakers().empty());
-    setParam (p, tripan::params::sourceId (0, 'x'), 1.0f);
-    setParam (p, tripan::params::sourceId (0, 'y'), 3.0f);
+    setParam (p, tlos::params::sourceId (0, 'x'), 1.0f);
+    setParam (p, tlos::params::sourceId (0, 'y'), 3.0f);
     e = outputEnergies (0, inE);
     CHECK (activeOutputs (e) <= 3);
 
     // Manual: switching from Off with an empty list gives an empty list; the user's own points are used.
-    p.setVirtualMode (VirtualMode::Manual);
+    p.setVirtualMode (tlos::VirtualMode::Manual);
     CHECK (p.getManualVirtualSpeakers().empty());
     p.setManualVirtualSpeakers ({ { 0.0, 0.0 } });
     CHECK (p.getVirtualSpeakers().size() == 1);
-    setParam (p, tripan::params::sourceId (0, 'x'), 0.0f);
-    setParam (p, tripan::params::sourceId (0, 'y'), 0.0f);
+    setParam (p, tlos::params::sourceId (0, 'x'), 0.0f);
+    setParam (p, tlos::params::sourceId (0, 'y'), 0.0f);
     e = outputEnergies (0, inE);
     CHECK (activeOutputs (e) == 8);
 
     // Auto -> Manual copies the automatic result when the manual list is empty.
     TriPanAudioProcessor q;
     CHECK (configure (q, 2, 8, 256));
-    q.setVirtualMode (VirtualMode::Manual);
+    q.setVirtualMode (tlos::VirtualMode::Manual);
     CHECK (q.getManualVirtualSpeakers().size() == 1);
 
     // Mode and manual list are saved with the state; limits are enforced.
@@ -750,7 +750,7 @@ static void testVirtualSpeakerModes()
     TriPanAudioProcessor r;
     r.setStateInformation (state.getData(), (int) state.getSize());
     CHECK (configure (r, 2, 8, 256));
-    CHECK (r.getVirtualMode() == VirtualMode::Manual);
+    CHECK (r.getVirtualMode() == tlos::VirtualMode::Manual);
     const auto manual = r.getManualVirtualSpeakers();
     CHECK (manual.size() == 2 && std::abs (manual[0].x - 1.5) < 1e-3 && std::abs (manual[0].y + 2.25) < 1e-3 && std::abs (manual[1].x - 10.0) < 1e-3);
     std::vector<tripan::Vec2> tooMany (100, tripan::Vec2 { 1.0, 1.0 });
@@ -769,13 +769,13 @@ static void testMirrorSymmetryWithVirtualSpeakers (const juce::File& dir)
     {
         TriPanAudioProcessor p;
         CHECK (configure (p, 2, 16, 256));
-        tripan::io::ImportReport r;
-        CHECK (tripan::io::load (p, tripan::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
+        tlos::io::ImportReport r;
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
 
         std::vector<tripan::Vec2> speakers;
         for (int i = 0; i < r.applied; ++i)
-            speakers.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'x'))->load(),
-                                  (double) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (i, 'y'))->load() });
+            speakers.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'x'))->load(),
+                                  (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'y'))->load() });
 
         const auto virtualSpeakers = p.getVirtualSpeakers();
         CHECK (! virtualSpeakers.empty());
@@ -834,15 +834,15 @@ static void testUnchangedSourcesFollowLayoutChanges()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 1, 6, 256));
-    p.setVirtualMode (VirtualMode::Off);
+    p.setVirtualMode (tlos::VirtualMode::Off);
 
     juce::AudioBuffer<float> buf (6, 256);
     juce::MidiBuffer midi;
     std::mt19937 rng (31);
 
     // A stationary source right next to speaker 1 (the first speaker, at the front).
-    setParam (p, tripan::params::sourceId (0, 'x'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'x'))->load());
-    setParam (p, tripan::params::sourceId (0, 'y'), (float) p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'y'))->load());
+    setParam (p, tlos::params::sourceId (0, 'x'), (float) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (0, 'x'))->load());
+    setParam (p, tlos::params::sourceId (0, 'y'), (float) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (0, 'y'))->load());
 
     double inE = 0.0;
     for (int block = 0; block < 4; ++block)
@@ -853,9 +853,9 @@ static void testUnchangedSourcesFollowLayoutChanges()
     CHECK (std::abs (channelEnergy (buf, 0) - inE) < 1e-3 * inE);
 
     // Move speaker 1 elsewhere; the source stays. The cached gains must be dropped.
-    setParam (p, tripan::params::speakerId (0, 'x'), -4.0f);
-    setParam (p, tripan::params::speakerId (0, 'y'), -4.0f);
-    p.refreshTriangulation();
+    setParam (p, tlos::params::speakerId (0, 'x'), -4.0f);
+    setParam (p, tlos::params::speakerId (0, 'y'), -4.0f);
+    p.refreshLayout();
     for (int block = 0; block < 4; ++block)
     {
         inE = fillNoise (buf, 1, 0, rng);
@@ -868,7 +868,7 @@ static void testUnchangedSourcesFollowLayoutChanges()
     CHECK (std::abs (outE - inE) < 1e-3 * inE);
 
     // Switching the virtual speakers also changes the layout.
-    p.setVirtualMode (VirtualMode::Manual);
+    p.setVirtualMode (tlos::VirtualMode::Manual);
     p.setManualVirtualSpeakers ({ { 0.0, 0.0 } });
     for (int block = 0; block < 4; ++block)
     {
@@ -885,17 +885,17 @@ static void testSourceSpread()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 2, 6, 256));
-    p.setVirtualMode (VirtualMode::Off);
+    p.setVirtualMode (tlos::VirtualMode::Off);
 
     juce::AudioBuffer<float> buf (6, 256);
     juce::MidiBuffer midi;
     std::mt19937 rng (51);
 
-    CHECK (p.getValueTreeState().getRawParameterValue (tripan::params::spreadId (0))->load() == 0.0f); // default: no spread
+    CHECK (p.getValueTreeState().getRawParameterValue (tlos::params::spreadId (0))->load() == 0.0f); // default: no spread
 
     // Source 1 exactly on speaker 1 (the default ring starts at the front).
-    setParam (p, tripan::params::sourceId (0, 'x'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'x'))->load());
-    setParam (p, tripan::params::sourceId (0, 'y'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (0, 'y'))->load());
+    setParam (p, tlos::params::sourceId (0, 'x'), p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (0, 'x'))->load());
+    setParam (p, tlos::params::sourceId (0, 'y'), p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (0, 'y'))->load());
 
     const auto measure = [&] (double& inputEnergy)
     {
@@ -916,7 +916,7 @@ static void testSourceSpread()
     double previousShare = 1.0;
     for (float spread : { 1.0f, 3.0f, 6.0f })
     {
-        setParam (p, tripan::params::spreadId (0), spread);           // changing only the spread must be noticed
+        setParam (p, tlos::params::spreadId (0), spread);           // changing only the spread must be noticed
         e = measure (inE);
 
         double total = 0.0;
@@ -929,9 +929,9 @@ static void testSourceSpread()
     }
 
     // Source 2 has its own spread: it is unaffected by source 1.
-    setParam (p, tripan::params::spreadId (0), 0.0f);
-    setParam (p, tripan::params::sourceId (1, 'x'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (2, 'x'))->load());
-    setParam (p, tripan::params::sourceId (1, 'y'), p.getValueTreeState().getRawParameterValue (tripan::params::speakerId (2, 'y'))->load());
+    setParam (p, tlos::params::spreadId (0), 0.0f);
+    setParam (p, tlos::params::sourceId (1, 'x'), p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (2, 'x'))->load());
+    setParam (p, tlos::params::sourceId (1, 'y'), p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (2, 'y'))->load());
     double inE2 = 0.0;
     std::vector<double> e2 (6, 0.0);
     for (int block = 0; block < 4; ++block)
@@ -943,13 +943,13 @@ static void testSourceSpread()
     CHECK (std::abs (e2[2] - inE2) < 1e-3 * inE2);
 
     // The spread is a normal automatable parameter, saved with the state.
-    setParam (p, tripan::params::spreadId (1), 2.5f);
+    setParam (p, tlos::params::spreadId (1), 2.5f);
     juce::MemoryBlock state;
     p.getStateInformation (state);
     TriPanAudioProcessor q;
     q.setStateInformation (state.getData(), (int) state.getSize());
-    CHECK (std::abs (q.getValueTreeState().getRawParameterValue (tripan::params::spreadId (1))->load() - 2.5f) < 1e-3f);
-    CHECK (q.getValueTreeState().getParameter (tripan::params::spreadId (63)) != nullptr);
+    CHECK (std::abs (q.getValueTreeState().getRawParameterValue (tlos::params::spreadId (1))->load() - 2.5f) < 1e-3f);
+    CHECK (q.getValueTreeState().getParameter (tlos::params::spreadId (63)) != nullptr);
 }
 
 /** The order of the parameters as a host lists them: counts, then each source (x, y, spread), then each speaker (x, y). */
@@ -958,17 +958,17 @@ static void testParameterOrder()
     TriPanAudioProcessor p;
     const auto& parameters = p.getParameters();
 
-    std::vector<juce::String> expected { tripan::params::kNumSourcesId, tripan::params::kNumSpeakersId };
-    for (int i = 0; i < tripan::kMaxChannels; ++i)
+    std::vector<juce::String> expected { tlos::params::kNumSourcesId, tlos::params::kNumSpeakersId };
+    for (int i = 0; i < tlos::kMaxChannels; ++i)
     {
-        expected.push_back (tripan::params::sourceId (i, 'x'));
-        expected.push_back (tripan::params::sourceId (i, 'y'));
-        expected.push_back (tripan::params::spreadId (i));
+        expected.push_back (tlos::params::sourceId (i, 'x'));
+        expected.push_back (tlos::params::sourceId (i, 'y'));
+        expected.push_back (tlos::params::spreadId (i));
     }
-    for (int i = 0; i < tripan::kMaxChannels; ++i)
+    for (int i = 0; i < tlos::kMaxChannels; ++i)
     {
-        expected.push_back (tripan::params::speakerId (i, 'x'));
-        expected.push_back (tripan::params::speakerId (i, 'y'));
+        expected.push_back (tlos::params::speakerId (i, 'x'));
+        expected.push_back (tlos::params::speakerId (i, 'y'));
     }
 
     CHECK ((size_t) parameters.size() == expected.size());
@@ -1002,8 +1002,8 @@ static void testManyVirtualSpeakers()
     std::vector<tripan::Vec2> list;
     for (int i = 0; i < TriPanAudioProcessor::kMaxVirtualSpeakers; ++i)
         list.push_back ({ 8.0 * std::sin (i * 2.399963), 8.0 * std::cos (i * 2.399963) * (0.3 + 0.7 * (i % 7) / 6.0) });
-    p.setVirtualLayout (VirtualMode::Manual, &list);
-    p.refreshTriangulation();
+    p.setVirtualLayout (tlos::VirtualMode::Manual, &list);
+    p.refreshLayout();
     CHECK ((int) p.getManualVirtualSpeakers().size() == 64 && p.getVirtualSpeakers().size() == 64);
 
     juce::AudioBuffer<float> buf (64, 512);
@@ -1019,8 +1019,8 @@ static void testManyVirtualSpeakers()
         for (int s = 0; s < 64; ++s)
         {
             const float a = 0.05f * (float) block + (float) s;
-            setParam (p, tripan::params::sourceId (s, 'x'), 6.0f * std::sin (a));
-            setParam (p, tripan::params::sourceId (s, 'y'), 6.0f * std::cos (a));
+            setParam (p, tlos::params::sourceId (s, 'x'), 6.0f * std::sin (a));
+            setParam (p, tlos::params::sourceId (s, 'y'), 6.0f * std::cos (a));
             for (int i = 0; i < 512; ++i) { const float v = u (rng); buf.setSample (s, i, v); inE += (double) v * v; }
         }
 

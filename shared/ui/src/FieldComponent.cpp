@@ -4,20 +4,22 @@
 /** @file FieldComponent.cpp
     @brief Drawing, hit-testing, dragging, spread editing, virtual speaker editing and zoom of the XY pad. */
 
-#include "FieldComponent.h"
-#include "Parameters.h"
+#include "tlos/FieldComponent.h"
+#include "tlos/Parameters.h"
 
-#include "tripan/Gains.h"
-#include "tripan/Groups.h"
+#include "tlos/Groups.h"
 
 #include <algorithm>
 #include <cmath>
 #include <functional>
 
+namespace tlos
+{
+
 namespace
 {
 /// The full view shows +-kFullHalf metres.
-constexpr double kFullHalf = tripan::params::kCoordRange;
+constexpr double kFullHalf = params::kCoordRange;
 /// View size ratio between two zoom levels.
 constexpr double kZoomStep = 1.5;
 /// Never zoom in closer than +-2 m.
@@ -36,17 +38,17 @@ juce::Colour individualColour (int index)
 
 }
 
-FieldComponent::FieldComponent (TriPanAudioProcessor& p)
+FieldComponent::FieldComponent (SpatialProcessor& p)
     : processor (p)
 {
     auto& apvts = processor.getValueTreeState();
-    for (int i = 0; i < tripan::kMaxChannels; ++i)
+    for (int i = 0; i < tlos::kMaxChannels; ++i)
     {
-        srcXp[(size_t) i] = apvts.getParameter (tripan::params::sourceId (i, 'x'));
-        srcYp[(size_t) i] = apvts.getParameter (tripan::params::sourceId (i, 'y'));
-        srcSpreadP[(size_t) i] = apvts.getParameter (tripan::params::spreadId (i));
-        spkXp[(size_t) i] = apvts.getParameter (tripan::params::speakerId (i, 'x'));
-        spkYp[(size_t) i] = apvts.getParameter (tripan::params::speakerId (i, 'y'));
+        srcXp[(size_t) i] = apvts.getParameter (params::sourceId (i, 'x'));
+        srcYp[(size_t) i] = apvts.getParameter (params::sourceId (i, 'y'));
+        srcSpreadP[(size_t) i] = apvts.getParameter (params::spreadId (i));
+        spkXp[(size_t) i] = apvts.getParameter (params::speakerId (i, 'x'));
+        spkYp[(size_t) i] = apvts.getParameter (params::speakerId (i, 'y'));
     }
 
     baseTooltip = "Drag a source (its inner circle) to move it with the rest of its group or selection. "
@@ -68,11 +70,17 @@ FieldComponent::~FieldComponent()
     stopTimer();
 }
 
-void FieldComponent::setShowTriangulation (bool shouldShow)
+void FieldComponent::setShowOverlay (bool shouldShow)
 {
-    showTriangulation = shouldShow;
+    showOverlay = shouldShow;
     repaint();
 }
+
+void FieldComponent::updateOverlay (const std::vector<Vec2>&, const std::vector<VirtualSpeaker>&) {}
+
+void FieldComponent::paintOverlay (juce::Graphics&) {}
+
+SourceGains FieldComponent::getLinkGains (int, Vec2, double) const { return {}; }
 
 void FieldComponent::setShowLinks (bool shouldShow)
 {
@@ -175,7 +183,7 @@ bool FieldComponent::isSpreadModifier (const juce::ModifierKeys& mods) noexcept
 
 double FieldComponent::getSpread (int source) const
 {
-    if (source < 0 || source >= tripan::kMaxChannels)
+    if (source < 0 || source >= tlos::kMaxChannels)
         return 0.0;
 
     auto* prm = srcSpreadP[(size_t) source];
@@ -184,18 +192,18 @@ double FieldComponent::getSpread (int source) const
 
 void FieldComponent::setSpread (int source, double metres)
 {
-    if (source < 0 || source >= tripan::kMaxChannels || ! processor.canEditSources())
+    if (source < 0 || source >= tlos::kMaxChannels || ! processor.canEditSources())
         return;
 
     auto* prm = srcSpreadP[(size_t) source];
-    prm->setValueNotifyingHost (prm->convertTo0to1 (juce::jlimit (0.0f, tripan::params::kMaxSpread, (float) metres)));
+    prm->setValueNotifyingHost (prm->convertTo0to1 (juce::jlimit (0.0f, params::kMaxSpread, (float) metres)));
 }
 
-juce::Colour FieldComponent::sourceColour (int source, const tripan::SourceGroups& groups)
+juce::Colour FieldComponent::sourceColour (int source, const tlos::SourceGroups& groups)
 {
     const int id = groups.groupOf (source);
     if (id > 0)
-        for (int i = 0; i < tripan::kMaxChannels; ++i)
+        for (int i = 0; i < tlos::kMaxChannels; ++i)
             if (groups.groupOf (i) == id)
                 return individualColour (i); // the lowest member
 
@@ -311,11 +319,11 @@ juce::String FieldComponent::getTooltip()
     return baseTooltip;
 }
 
-void FieldComponent::writeDragPositions (const std::vector<tripan::Vec2>& positions)
+void FieldComponent::writeDragPositions (const std::vector<Vec2>& positions)
 {
     const auto set = [] (juce::RangedAudioParameter* prm, double v)
     {
-        const float clamped = juce::jlimit (-tripan::params::kCoordRange, tripan::params::kCoordRange, (float) v);
+        const float clamped = juce::jlimit (-params::kCoordRange, params::kCoordRange, (float) v);
         prm->setValueNotifyingHost (prm->convertTo0to1 (clamped));
     };
 
@@ -334,8 +342,8 @@ void FieldComponent::moveSelectionTo (juce::Point<float> p)
     // The grabbed source goes to the pointer and the others keep their offsets to it; the movement is
     // limited as a whole, so that the shape never changes when a member would leave the pad.
     const auto pos = fromView (p);
-    const auto delta = tripan::clampTranslation (dragStart, { pos.x - dragGrabStart.x, pos.y - dragGrabStart.y },
-                                                 (double) tripan::params::kCoordRange);
+    const auto delta = tlos::clampTranslation (dragStart, { pos.x - dragGrabStart.x, pos.y - dragGrabStart.y },
+                                                 (double) params::kCoordRange);
 
     auto moved = dragStart;
     for (auto& q : moved)
@@ -371,11 +379,11 @@ bool FieldComponent::canEditVirtualSpeakers() const
 bool FieldComponent::addVirtualSpeakerAt (juce::Point<float> p)
 {
     auto list = processor.getManualVirtualSpeakers();
-    if (! canEditVirtualSpeakers() || (int) list.size() >= TriPanAudioProcessor::kMaxVirtualSpeakers)
+    if (! canEditVirtualSpeakers() || (int) list.size() >= SpatialProcessor::kMaxVirtualSpeakers)
         return false;
 
     const auto pos = fromView (p);
-    const float limit = tripan::params::kCoordRange;
+    const float limit = params::kCoordRange;
     list.push_back ({ (double) juce::jlimit (-limit, limit, (float) pos.x), (double) juce::jlimit (-limit, limit, (float) pos.y) });
     processor.setManualVirtualSpeakers (list);
     refresh();
@@ -403,7 +411,7 @@ void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
             return;
 
         const auto pos = fromView (p);
-        const float limit = tripan::params::kCoordRange;
+        const float limit = params::kCoordRange;
         list[(size_t) h.index] = { (double) juce::jlimit (-limit, limit, (float) pos.x), (double) juce::jlimit (-limit, limit, (float) pos.y) };
         processor.setManualVirtualSpeakers (list);
         refresh();
@@ -416,7 +424,7 @@ void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
     const auto pos = fromView (p);
     const auto set = [] (juce::RangedAudioParameter* prm, double v)
     {
-        const float clamped = juce::jlimit (-tripan::params::kCoordRange, tripan::params::kCoordRange, (float) v);
+        const float clamped = juce::jlimit (-params::kCoordRange, params::kCoordRange, (float) v);
         prm->setValueNotifyingHost (prm->convertTo0to1 (clamped));
     };
 
@@ -489,7 +497,7 @@ void FieldComponent::timerCallback()
     size_t hash = std::hash<int> {} (n * 1000 + m);
     const auto mix = [&] (double v) { hash = hash * 1000003u ^ std::hash<double> {} (v); };
 
-    std::vector<tripan::Vec2> speakers;
+    std::vector<Vec2> speakers;
     speakers.reserve ((size_t) m);
     for (int i = 0; i < m; ++i)
     {
@@ -532,24 +540,7 @@ void FieldComponent::timerCallback()
         mix (v.strength);
     }
 
-    const auto samePosition = [] (const tripan::Vec2& p, const tripan::Vec2& q) { return juce::exactlyEqual (p.x, q.x) && juce::exactlyEqual (p.y, q.y); };
-    const auto sameVirtual = [&] (const tripan::VirtualSpeaker& p, const tripan::VirtualSpeaker& q)
-    {
-        return samePosition (p.position, q.position) && juce::exactlyEqual (p.strength, q.strength);
-    };
-
-    const bool changed = triangulation == nullptr
-                      || speakers.size() != triangulatedSpeakers.size()
-                      || ! std::equal (speakers.begin(), speakers.end(), triangulatedSpeakers.begin(), samePosition)
-                      || virtualSpeakers.size() != triangulatedVirtual.size()
-                      || ! std::equal (virtualSpeakers.begin(), virtualSpeakers.end(), triangulatedVirtual.begin(), sameVirtual);
-
-    if (changed)
-    {
-        triangulation = std::make_unique<tripan::SpeakerLayout> (speakers, virtualSpeakers);
-        triangulatedSpeakers = std::move (speakers);
-        triangulatedVirtual = virtualSpeakers;
-    }
+    updateOverlay (speakers, virtualSpeakers);
 
     if (hash != lastStateHash)
     {
@@ -623,34 +614,18 @@ void FieldComponent::paint (juce::Graphics& g)
 
     const int n = activeSources(), m = activeSpeakers();
 
-    // Triangulation
-    if (showTriangulation && triangulation != nullptr)
-    {
-        g.setColour (juce::Colour (0xff7aa2c8).withAlpha (0.55f));
-        const auto& full = triangulation->full(); // the triangulation with all virtual speakers
-        const auto pts = full.speakers();
-        for (const auto& t : full.triangles())
-        {
-            juce::Path path;
-            const auto a = toView (pts[(size_t) t.a].x, pts[(size_t) t.a].y);
-            const auto b = toView (pts[(size_t) t.b].x, pts[(size_t) t.b].y);
-            const auto c = toView (pts[(size_t) t.c].x, pts[(size_t) t.c].y);
-            path.startNewSubPath (a);
-            path.lineTo (b);
-            path.lineTo (c);
-            path.closeSubPath();
-            g.strokePath (path, juce::PathStrokeType (1.0f));
-        }
-    }
+    // What the plugin draws under everything else (TriPan: the triangulation).
+    if (showOverlay)
+        paintOverlay (g);
 
     // Groups: a soft band around the members of each group (the outline of the convex hull, widened), in the
     // group's colour, with its number above the top member.
-    for (int id = 1; id <= tripan::SourceGroups::kMaxGroupId; ++id)
+    for (int id = 1; id <= tlos::SourceGroups::kMaxGroupId; ++id)
     {
         if (groups.sizeOf (id, n) < 2)
             continue;
 
-        std::vector<tripan::Vec2> pts;
+        std::vector<Vec2> pts;
         std::vector<int> members;
         for (int s = 0; s < n; ++s)
             if (groups.groupOf (s) == id)
@@ -661,7 +636,7 @@ void FieldComponent::paint (juce::Graphics& g)
             }
 
         const auto groupTint = sourceColour (members.front(), groups);
-        const auto hull = tripan::convexHull (pts);
+        const auto hull = tlos::convexHull (pts);
         juce::Path path;
         for (size_t i = 0; i < hull.size(); ++i)
         {
@@ -710,12 +685,12 @@ void FieldComponent::paint (juce::Graphics& g)
     }
 
     // Links from each source to the speakers it currently feeds, weighted by gain.
-    if (showLinks && triangulation != nullptr)
+    if (showLinks)
     {
         for (int s = 0; s < n; ++s)
         {
             const auto sp = position ({ true, s });
-            const auto gains = tripan::computeGains (*triangulation, { sp.x, sp.y }, getSpread (s));
+            const auto gains = getLinkGains (s, { sp.x, sp.y }, getSpread (s));
             const auto from = toView (sp.x, sp.y);
             for (int i = 0; i < gains.count; ++i)
             {
@@ -918,7 +893,7 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
 
         if (dragMode == DragMode::Scale || dragMode == DragMode::Rotate)
         {
-            dragCentre = tripan::centroid (dragStart);
+            dragCentre = tlos::centroid (dragStart);
             dragScale = 1.0;
             dragAngle = 0.0;
             lastSpreadDragY = p.y;
@@ -970,7 +945,7 @@ void FieldComponent::dragTo (juce::Point<float> p)
         for (const int member : dragSources)
             current.push_back (getSpread (member));
 
-        const double change = tripan::clampSpreadChange (current, wanted, (double) tripan::params::kMaxSpread);
+        const double change = tlos::clampSpreadChange (current, wanted, (double) params::kMaxSpread);
         for (size_t i = 0; i < dragSources.size(); ++i)
             setSpread (dragSources[i], current[i] + change);
     }
@@ -979,12 +954,12 @@ void FieldComponent::dragTo (juce::Point<float> p)
         // Vertical drags, relative to the press and limited at every step (no dead zone at the limits).
         const double up = (double) (lastSpreadDragY - p.y);
         lastSpreadDragY = p.y;
-        const double limit = (double) tripan::params::kCoordRange;
+        const double limit = (double) params::kCoordRange;
 
         auto result = dragStart;
         if (dragMode == DragMode::Scale)
         {
-            const double highest = std::max (kMinScale, tripan::maxScaleFactor (dragStart, dragCentre, limit));
+            const double highest = std::max (kMinScale, tlos::maxScaleFactor (dragStart, dragCentre, limit));
             dragScale = std::clamp (dragScale * std::exp (kScalePerPixel * up), kMinScale, highest);
             for (auto& q : result)
             {
@@ -994,9 +969,9 @@ void FieldComponent::dragTo (juce::Point<float> p)
         }
         else
         {
-            dragAngle = tripan::clampRotation (dragStart, dragCentre, dragAngle, dragAngle + up * kRotationPerPixel, limit);
+            dragAngle = tlos::clampRotation (dragStart, dragCentre, dragAngle, dragAngle + up * kRotationPerPixel, limit);
             for (auto& q : result)
-                q = tripan::rotateAbout (q, dragCentre, dragAngle);
+                q = tlos::rotateAbout (q, dragCentre, dragAngle);
         }
 
         if (processor.canEditSources())
@@ -1100,4 +1075,5 @@ void FieldComponent::mouseMove (const juce::MouseEvent& e)
                               : h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
     if (changed)
         repaint();
+}
 }

@@ -4,12 +4,15 @@
 /** @file PositionTableWindow.cpp
     @brief Editable tables of source, speaker and virtual speaker positions, and the windows that hold them. */
 
-#include "PositionTableWindow.h"
-#include "FieldComponent.h"
-#include "Parameters.h"
+#include "tlos/PositionTableWindow.h"
+#include "tlos/FieldComponent.h"
+#include "tlos/Parameters.h"
 
 #include <cmath>
 #include <functional>
+
+namespace tlos
+{
 
 namespace
 {
@@ -56,7 +59,7 @@ private:
 };
 
 /** Sets a parameter to a real value inside a change gesture, so that hosts record it. */
-void setParameter (TriPanAudioProcessor& processor, const juce::String& id, float value)
+void setParameter (SpatialProcessor& processor, const juce::String& id, float value)
 {
     if (auto* parameter = processor.getValueTreeState().getParameter (id))
     {
@@ -85,7 +88,7 @@ void hashCombine (size_t& seed, double value)
 }
 
 //==============================================================================
-PositionTable::PositionTable (TriPanAudioProcessor& p, Content c)
+PositionTable::PositionTable (SpatialProcessor& p, Content c)
     : processor (p), content (c), table ("positions", nullptr)
 {
     caption.setText (content == Content::Sources ? "Sources" : content == Content::Speakers ? "Speakers" : "Virtual speakers (manual)",
@@ -157,14 +160,14 @@ double PositionTable::getValue (int row, int column) const
     switch (content)
     {
         case Content::Sources:
-            if (column == xColumn)      return read (tripan::params::sourceId (row, 'x'));
-            if (column == yColumn)      return read (tripan::params::sourceId (row, 'y'));
-            if (column == spreadColumn) return read (tripan::params::spreadId (row));
+            if (column == xColumn)      return read (params::sourceId (row, 'x'));
+            if (column == yColumn)      return read (params::sourceId (row, 'y'));
+            if (column == spreadColumn) return read (params::spreadId (row));
             break;
 
         case Content::Speakers:
-            if (column == xColumn)      return read (tripan::params::speakerId (row, 'x'));
-            if (column == yColumn)      return read (tripan::params::speakerId (row, 'y'));
+            if (column == xColumn)      return read (params::speakerId (row, 'x'));
+            if (column == yColumn)      return read (params::speakerId (row, 'y'));
             break;
 
         case Content::VirtualSpeakers:
@@ -194,21 +197,21 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
         return format (getValue (row, column));
 
     const bool isSpread = content == Content::Sources && column == spreadColumn;
-    const float limit = tripan::params::kCoordRange;
-    const double value = isSpread ? juce::jlimit (0.0, (double) tripan::params::kMaxSpread, typed)
+    const float limit = params::kCoordRange;
+    const double value = isSpread ? juce::jlimit (0.0, (double) params::kMaxSpread, typed)
                                   : juce::jlimit (-(double) limit, (double) limit, typed);
 
     switch (content)
     {
         case Content::Sources:
-            if (column == xColumn)      setParameter (processor, tripan::params::sourceId (row, 'x'), (float) value);
-            if (column == yColumn)      setParameter (processor, tripan::params::sourceId (row, 'y'), (float) value);
-            if (column == spreadColumn) setParameter (processor, tripan::params::spreadId (row), (float) value);
+            if (column == xColumn)      setParameter (processor, params::sourceId (row, 'x'), (float) value);
+            if (column == yColumn)      setParameter (processor, params::sourceId (row, 'y'), (float) value);
+            if (column == spreadColumn) setParameter (processor, params::spreadId (row), (float) value);
             break;
 
         case Content::Speakers:
-            if (column == xColumn)      setParameter (processor, tripan::params::speakerId (row, 'x'), (float) value);
-            if (column == yColumn)      setParameter (processor, tripan::params::speakerId (row, 'y'), (float) value);
+            if (column == xColumn)      setParameter (processor, params::speakerId (row, 'x'), (float) value);
+            if (column == yColumn)      setParameter (processor, params::speakerId (row, 'y'), (float) value);
             break;
 
         case Content::VirtualSpeakers:
@@ -319,10 +322,10 @@ juce::Component* PositionTable::refreshComponentForCell (int row, int column, bo
 }
 
 //==============================================================================
-PositionTableContent::PositionTableContent (TriPanAudioProcessor& p, tripan::io::Kind k)
+PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
     : processor (p), kind (k)
 {
-    const bool sources = kind == tripan::io::Kind::Sources;
+    const bool sources = kind == io::Kind::Sources;
 
     countLabel.setText (sources ? "Number of sources" : "Number of speakers", juce::dontSendNotification);
     countLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -357,7 +360,7 @@ PositionTableContent::PositionTableContent (TriPanAudioProcessor& p, tripan::io:
             parameter->endChangeGesture();
         }
 
-        processor.refreshTriangulation();
+        processor.refreshLayout();
         refresh();
     };
     addAndMakeVisible (countSlider);
@@ -398,12 +401,12 @@ PositionTableContent::~PositionTableContent()
 
 const juce::String& PositionTableContent::countParameterId() const
 {
-    return kind == tripan::io::Kind::Sources ? tripan::params::kNumSourcesId : tripan::params::kNumSpeakersId;
+    return kind == io::Kind::Sources ? params::kNumSourcesId : params::kNumSpeakersId;
 }
 
 int PositionTableContent::getPreferredWidth() const
 {
-    const int topBar = kind == tripan::io::Kind::Sources ? 130 + 110
+    const int topBar = kind == io::Kind::Sources ? 130 + 110
                                                          : 130 + 110 + 16 + 110 + 90;
     int tables = mainTable->getPreferredWidth();
     if (virtualTable != nullptr)
@@ -424,8 +427,8 @@ void PositionTableContent::refresh()
     bool layoutChanged = false;
 
     // The count: its range follows the channel count of the track.
-    const bool sources = kind == tripan::io::Kind::Sources;
-    const int channels = std::min (sources ? processor.getTotalNumInputChannels() : processor.getTotalNumOutputChannels(), tripan::kMaxChannels);
+    const bool sources = kind == io::Kind::Sources;
+    const int channels = std::min (sources ? processor.getTotalNumInputChannels() : processor.getTotalNumOutputChannels(), tlos::kMaxChannels);
     const int maximum = std::max (channels, 1);
     const int inUse = sources ? processor.getActiveSources() : processor.getActiveSpeakers();
     countSlider.setEnabled (channels > 1);
@@ -477,7 +480,7 @@ void PositionTableContent::resized()
     auto bar = area.removeFromTop (kTopBarHeight);
     countLabel.setBounds (bar.removeFromLeft (130));
     countSlider.setBounds (bar.removeFromLeft (110).reduced (0, 4));
-    if (kind == tripan::io::Kind::Speakers)
+    if (kind == io::Kind::Speakers)
     {
         bar.removeFromLeft (16);
         virtualLabel.setBounds (bar.removeFromLeft (110));
@@ -499,8 +502,8 @@ void PositionTableContent::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-PositionTableWindow::PositionTableWindow (TriPanAudioProcessor& processor, tripan::io::Kind kind)
-    : juce::DocumentWindow (kind == tripan::io::Kind::Sources ? "TriPan - Sources" : "TriPan - Speakers",
+PositionTableWindow::PositionTableWindow (SpatialProcessor& processor, io::Kind kind)
+    : juce::DocumentWindow (processor.getName() + (kind == io::Kind::Sources ? " - Sources" : " - Speakers"),
                             juce::Colour (0xff23272e), juce::DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);
@@ -590,4 +593,5 @@ void PositionTableWindow::show (juce::Component* around)
     setVisible (true);
     applyLimits(); // the native frame size is known once the window is shown
     toFront (true);
+}
 }

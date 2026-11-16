@@ -1,4 +1,7 @@
-# TriPan
+# TriPan (part of "Tools for Sound in Space")
+
+This repository is the start of a family of spatial audio plugins that share code (`shared/`). TriPan is the first;
+DBAP ("DistPan"), VBAP and ViMiC are planned and should look and behave like TriPan (same pad, tables, groups, import/export).
 
 Free, AGPLv3-licensed audio plugin (VST3, AU, Standalone; AAX optional) for macOS and Windows.
 Distributes n source channels to m speaker channels (up to 64 each). Sources and speakers lie in
@@ -7,15 +10,33 @@ one 2D plane, positions are xy plugin parameters. For each source, the speakers 
 triangle's three speakers using barycentric weights, power-normalised so overall intensity is constant.
 
 ## Layout
-- `core/` — `TriPanCore`: pure C++20 geometry and gain computation. **Must never include JUCE.**
-- `tests/` — dependency-free tests of `TriPanCore`, run through `ctest`.
-- `Source/` — JUCE plugin layer (processor, editor, parameters).
+- `shared/core/` — `TlosCore` (namespace `tlos`): what every plugin shares, in pure C++20: `Vec2`/`VirtualSpeaker`, `SourceGains`
+  (the result of any panning method), channel limits, `SourceGroups` and the group geometry, and the lock-free `Exchange<T>`.
+  **Must never include JUCE.**
+- `shared/ui/` — `TlosUI` (namespace `tlos`, JUCE): `Parameters.h` (host parameters), `SpatialProcessor` (processor base class),
+  `FieldComponent` (the pad), `SpatialEditor` (the window), `PositionTableWindow`, `PositionIO`.
+- `shared/tests/` — tests of `TlosCore` (`TlosCoreTests`, `TlosExchangeTests`).
+- `TriPan/core/` — `TriPanCore` (namespace `tripan`): triangulation, gains, virtual speakers, speaker layout. **Must never include JUCE.**
+- `TriPan/Source/` — the plugin: `PluginProcessor` (derives from `SpatialProcessor`; panning), `TriPanField` (derives from
+  `FieldComponent`; draws the triangulation and links), `PluginEditor` (a thin `SpatialEditor`).
+- `TriPan/tests/` — tests of `TriPanCore`, the processor and the editor, run through `ctest`.
 - `JUCE/` — git submodule, pinned to a release tag. Do not edit.
+
+### Adding a plugin
+Create a folder next to `TriPan/` with its own `core/` (only the panning method), `Source/` and `tests/`, link `TlosUI`, and add it
+in the root `CMakeLists.txt`. The processor derives from `tlos::SpatialProcessor` and implements `processBlock`, `refreshLayout()`
+(called by a 30 Hz timer and after layout changes: build what the audio thread needs and hand it over with `tlos::Exchange<T>`),
+`getName()`, `createEditor()`; it passes its own saved-state tag to the base (keep it stable). Virtual speakers are optional
+(`supportsVirtualSpeakers()`, `findAutomaticVirtualSpeakers()`). The editor passes a `FieldComponent` subclass and the text of the overlay
+toggle to `SpatialEditor`; the pad's three hooks are `updateOverlay` (follow the layout), `paintOverlay` (draw under the sources,
+toggle in row 3) and `getLinkGains` (which speakers a source feeds, drawn as links). Position files are named after the plugin
+(`<Name>Sources` / `<Name>Speakers`) and any plugin of the family imports the other's files. Parameter IDs (`src1x`, ...) and the
+state tags are part of saved sessions: do not change them. Do not put anything plugin-specific in `shared/`.
 
 ## Build and test
 ```
 git submodule update --init
-cmake -B build -G Xcode          # or: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake -B build -G Xcode          # or: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug (artefacts are in build/TriPan/TriPan_artefacts/)
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
@@ -54,17 +75,17 @@ warnings; keep it that way when adding code.
   Entries beyond the active channel count are inactive.
 - Bus layouts: any enabled layout up to 64 channels (discrete, standard, or ambisonic orders 1-7 as
   channel-count carriers). n inputs and m outputs may differ.
-- Gain law (core/src/Gains.cpp): barycentric weights w, g_i = w_i / sqrt(sum w_j^2), so sum g^2 = 1.
+- Gain law (TriPan/core/src/Gains.cpp): barycentric weights w, g_i = w_i / sqrt(sum w_j^2), so sum g^2 = 1.
   Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
 - Top of the editor: row 1 sources, row 2 speakers (count, Edit/View menu, export, import), row 3 triangulation
-  toggle, "Show links" toggle (source-to-speaker lines, `FieldComponent::setShowLinks`), reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
+  toggle, "Show links" toggle (source-to-speaker lines, `tlos::FieldComponent::setShowLinks`), reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
   "View". Defaults: sources Edit, speakers View. Stored in the plugin state as `editSources` / `editSpeakers`
   (not host parameters; the old single `editMode` property from earlier versions is still read) and queried with
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, and "Reset layout" only resets kinds set to Edit (disabled if both are View).
   Host automation of the position parameters is unaffected.
-- Spread: parameter `src<N>spread` (0..10 m, default 0, host-visible). `computeGains(layout, pos, spread)` (core/SpeakerLayout)
+- Spread: parameter `src<N>spread` (0..10 m, default 0, host-visible). `computeGains(layout, pos, spread)` (TriPan/core/SpeakerLayout)
   pans from the position plus 8 points on a circle of radius `spread` (rotated 22.5 deg, mirror-symmetric) and averages the
   squared gains (MDAP-like, constant power, continuous in position and spread; spread <= 0 = plain). The audio thread's
   gain cache key includes the spread. On the pad (`FieldComponent`): semi-transparent circle of radius spread, drawn under
@@ -77,7 +98,7 @@ warnings; keep it that way when adding code.
   `computeGains` splits the gain of a virtual point over its real neighbours with weights ~ 1/distance (unit L2 norm;
   `kDistanceExponent` in Triangulation.cpp; equidistant neighbours, e.g. a ring centre, still get equal shares)
   (`redistribution()`) and renormalises, so `SourceGains` can have up to 64 entries. `findVirtualSpeakers`
-  (core/VirtualSpeakers) returns `VirtualSpeaker {position, strength}`: one gap filler per angular gap (strength
+  (TriPan/core/VirtualSpeakers) returns `VirtualSpeaker {position, strength}`: one gap filler per angular gap (strength
   ramps 0..1 over 90..110 deg), a centre speaker for rings (soft ring tolerance 0.25 +-0.05, soft clearance), all
   scaled by an enclosure factor that fades from 1 at largest gap 160 deg to 0 at 180 deg (nothing if the listener,
   the origin, is not enclosed). Strengths < 1 are blended by `SpeakerLayout` (core): virtual speakers sorted by
@@ -88,7 +109,7 @@ warnings; keep it that way when adding code.
   (`virtualMode`, `manualVirtual` in the state, max 64, not host parameters; manual ones have strength 1);
   Manual ones are edited on the pad (double-click add/delete, drag) when speakers are set to Edit. Known limit:
   cocircular grid cells (3x3, 4x4) still have arbitrary diagonals.
-- Source groups: `tripan::SourceGroups` (core/Groups: group id per source, 0 = none, 1..32; groups of one are dissolved;
+- Source groups: `tlos::SourceGroups` (shared/core/Groups: group id per source, 0 = none, 1..32; groups of one are dissolved;
   `group()` merges touched groups whole and keeps the smallest id, `ungroup()` dissolves whole groups, `membersOf(source, activeCount)`;
   text form "0 0 1 1 ..." (64 numbers)) plus `clampTranslation` (rigid move limited to +-10 m per axis, so the group slides along a wall),
   `clampSpreadChange` (common spread change limited to 0..10) and `convexHull` (for drawing). The assignment is saved in the plugin
@@ -98,8 +119,8 @@ warnings; keep it that way when adding code.
   the positions at the press (nothing stored, so automation/table edits/imports never desync a group). Drag modes are chosen from the
   modifiers at the press (`FieldComponent::dragModeFor`, at most two keys each, "group" = `movingSet`): none = move group; Cmd = move one;
   Option = spread of the group; Option+Cmd = spread of one; Option+Shift = scale (up = apart, `kScalePerPixel` 0.005 per px as exp, floor `kMinScale`
-  5 %, cap `tripan::maxScaleFactor`); Cmd+Shift = rotate around the centroid (`kRotationPerPixel` 1 degree per px, up = counter-clockwise,
-  `tripan::clampRotation` follows the angle in 1 degree steps and stops at the first violation so it can never tunnel through a forbidden
+  5 %, cap `tlos::maxScaleFactor`); Cmd+Shift = rotate around the centroid (`kRotationPerPixel` 1 degree per px, up = counter-clockwise,
+  `tlos::clampRotation` follows the angle in 1 degree steps and stops at the first violation so it can never tunnel through a forbidden
   range). Scale and rotation are relative to the press positions with a running factor/angle clamped at every step (no dead zone), need at least two
   sources (else nothing happens), and show a readout and the centre of gravity while dragging. Option / Option+Cmd double-click reset the spread
   of the group / the source. Cmd+G / Cmd+Shift+G (pad has
@@ -116,7 +137,7 @@ warnings; keep it that way when adding code.
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
-- Table windows (`Source/PositionTableWindow.*`): a "Table..." button at the right end of the sources row and of the
+- Table windows (`shared/ui/.../PositionTableWindow.*`): a "Table..." button at the right end of the sources row and of the
   speakers row opens a `PositionTableWindow` (native title bar, always on top so it is in front of the host's floating plug-in window, owned by the editor, close = hide, and the button toggles it; opened beside the plug-in window, right if the screen has room, else left, else centred over it: `chooseBesidePosition`). Sources: table of
   x, y, spread for the sources in use; speakers: x, y for the speakers in use, plus a second table to the right with
   the manual virtual speakers while `canEditVirtualSpeakers()` (mode Manual and speakers on Edit). Top row: count
@@ -126,7 +147,7 @@ warnings; keep it that way when adding code.
   Width is fixed to what the content needs (changes when the virtual table appears), height is resizable between 4 rows
   and all rows (limited to the screen; the limits include the native title bar); the `TableListBox` header stays put
   and the rows scroll. A 10 Hz timer follows parameter changes; a cell being edited is not overwritten.
-- Export/import (`Source/PositionIO.*`, four buttons in the editor): separate XML files for sources
+- Export/import (`shared/ui/.../PositionIO.*`, four buttons in the editor): separate XML files for sources
   (`<TriPanSources version="1" count="n"><Source index="1" x=".." y=".."/>`) and speakers
   (`<TriPanSpeakers virtual="auto|manual|off">/<Speaker>`, plus `<VirtualSpeaker>` children when manual; an import
   without the `virtual` attribute leaves the virtual setting alone, an unknown value fails the import; manual lists are
@@ -144,19 +165,19 @@ warnings; keep it that way when adding code.
   triangulation. The GUI shows them at the top with their maximum set to the channel count.
 - Parameter order (as listed by hosts, set by the order in `createLayout`): Number of Sources, Number of Speakers, then
   per source x, y, spread (source 1, 2, ...), then per speaker x, y (speaker 1, 2, ...). `ProcessorTests` checks it.
-- Parameters (Source/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±10, +y front.
+- Parameters (shared/ui/include/tlos/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±10, +y front.
   Speaker changes are picked up by a 30 Hz message-thread timer (`refreshTriangulation`), which
   publishes an immutable Triangulation through `TriangulationExchange` (hazard-pointer handover).
   processBlock computes per-source gains each block and ramps linearly from the previous block's gains.
 - First run only (flag `layoutInitialised` in saved state): active channels get default rings.
-- Editor: `Source/FieldComponent.*` draws the plane (±10 m), triangulation, source-to-speaker links
-  and drags handles through the parameters (with change gestures). `tests/EditorTests.cpp` tests
+- Editor: `shared/ui/.../FieldComponent.*` (with TriPan's `TriPan/Source/TriPanField.*`) draws the plane (±10 m), triangulation, source-to-speaker links
+  and drags handles through the parameters (with change gestures). `TriPan/tests/EditorTests.cpp` tests
   hit-testing/dragging/groups and, given a path argument, writes a PNG snapshot Claude can look at:
-  `build/Debug/TriPanEditorTests /path/out.png`.
-- `tests/ProcessorTests.cpp` drives the processor offline (energy conservation, locality, state, 64x64).
+  `build/TriPan/Debug/TriPanEditorTests /path/out.png` (Xcode) or `build/TriPan/TriPanEditorTests` (Ninja).
+- `TriPan/tests/ProcessorTests.cpp` drives the processor offline (energy conservation, locality, state, 64x64).
 - Edge cases handled and tested in M2: source outside the convex hull (project to nearest hull edge),
   fewer than 3 speakers, collinear speakers, coincident points.
-- Claude cannot listen or drive a DAW: prefer numerical tests in `tests/`, and ask the user for
+- Claude cannot listen or drive a DAW: prefer numerical tests in `tests/` folders, and ask the user for
   host checks (Reaper, Pro Tools, Windows).
 
 ## Milestones

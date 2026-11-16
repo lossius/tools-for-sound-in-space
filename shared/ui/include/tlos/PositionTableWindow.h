@@ -6,12 +6,15 @@
 
 #pragma once
 
-#include "PluginProcessor.h"
-#include "PositionIO.h"
+#include "tlos/SpatialProcessor.h"
+#include "tlos/PositionIO.h"
 
 #include <functional>
 #include <memory>
 #include <optional>
+
+namespace tlos
+{
 
 /** A table of positions with a caption and a header that stays visible while the rows scroll.
 
@@ -49,7 +52,7 @@ public:
 
     /** Creates the table. @param processor  The processor whose parameters are shown and edited.
         @param content  Which positions the table shows. */
-    PositionTable (TriPanAudioProcessor& processor, Content content);
+    PositionTable (SpatialProcessor& processor, Content content);
 
     /** Detaches the model from the table. */
     ~PositionTable() override;
@@ -101,7 +104,7 @@ private:
     /** Supplies the editable component for a value cell. */
     juce::Component* refreshComponentForCell (int row, int column, bool selected, juce::Component* existing) override;
 
-    TriPanAudioProcessor& processor;   ///< The processor whose parameters are shown and edited.
+    SpatialProcessor& processor;   ///< The processor whose parameters are shown and edited.
     Content content;                   ///< What the rows are.
     juce::Label caption;               ///< Title above the table.
     juce::TableListBox table;          ///< The table itself.
@@ -126,7 +129,7 @@ public:
     /** Creates the content and starts a 10 Hz timer that follows the parameters.
         @param processor  The processor whose parameters are shown and edited.
         @param kind       Sources (x, y, spread) or speakers (x, y). */
-    PositionTableContent (TriPanAudioProcessor& processor, tripan::io::Kind kind);
+    PositionTableContent (SpatialProcessor& processor, io::Kind kind);
 
     /** Stops the timer. */
     ~PositionTableContent() override;
@@ -174,8 +177,8 @@ private:
     /** @return The parameter ID of the count (numSources or numSpeakers). */
     const juce::String& countParameterId() const;
 
-    TriPanAudioProcessor& processor;   ///< The processor whose parameters are shown and edited.
-    tripan::io::Kind kind;             ///< Sources or speakers.
+    SpatialProcessor& processor;   ///< The processor whose parameters are shown and edited.
+    io::Kind kind;             ///< Sources or speakers.
 
     juce::Label countLabel;            ///< "Number of sources" / "Number of speakers".
     juce::Slider countSlider;          ///< How many are in use.
@@ -205,7 +208,7 @@ public:
     /** Creates the window (hidden).
         @param processor  The processor whose parameters are shown and edited.
         @param kind       Sources or speakers. */
-    PositionTableWindow (TriPanAudioProcessor& processor, tripan::io::Kind kind);
+    PositionTableWindow (SpatialProcessor& processor, io::Kind kind);
 
     /** Hides the window. */
     void closeButtonPressed() override { setVisible (false); }
@@ -241,3 +244,4 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PositionTableWindow)
 };
+}

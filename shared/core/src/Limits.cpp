@@ -4,9 +4,9 @@
 /** @file Limits.cpp
     @brief Channel-count validation. */
 
-#include "tripan/Limits.h"
+#include "tlos/Limits.h"
 
-namespace tripan
+namespace tlos
 {
 bool isValidChannelCount (int n) noexcept
 {

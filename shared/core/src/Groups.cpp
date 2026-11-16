@@ -4,13 +4,13 @@
 /** @file Groups.cpp
     @brief Source group bookkeeping, rigid-move clamping and convex hull. */
 
-#include "tripan/Groups.h"
+#include "tlos/Groups.h"
 
 #include <algorithm>
 #include <cmath>
 #include <sstream>
 
-namespace tripan
+namespace tlos
 {
 SourceGroups::SourceGroups (const Ids& ids)
     : groupIds (ids)

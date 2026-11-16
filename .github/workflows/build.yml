@@ -31,7 +31,7 @@ jobs:
         run: >
           cmake --build build --config Release
           --target TriPan_VST3 TriPan_AU TriPan_Standalone
-          TriPanCoreTests TriPanExchangeTests TriPanProcessorTests TriPanEditorTests
+          TlosCoreTests TlosExchangeTests TriPanCoreTests TriPanExchangeTests TriPanProcessorTests TriPanEditorTests
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
@@ -95,7 +95,7 @@ jobs:
         run: >
           cmake --build build --config Release --parallel
           --target TriPan_VST3 TriPan_Standalone
-          TriPanCoreTests TriPanExchangeTests TriPanProcessorTests TriPanEditorTests
+          TlosCoreTests TlosExchangeTests TriPanCoreTests TriPanExchangeTests TriPanProcessorTests TriPanEditorTests
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure

@@ -6,17 +6,14 @@
 
 #pragma once
 
+#include "tlos/Vec2.h"
+
 #include <span>
 #include <vector>
 
 namespace tripan
 {
-/** A point in the panning plane, in metres. +y is the front, +x the right. */
-struct Vec2
-{
-    double x = 0.0; ///< Horizontal position (positive = right).
-    double y = 0.0; ///< Depth position (positive = front).
-};
+using tlos::Vec2;
 
 /** Indices into the speaker array passed to Triangulation, counter-clockwise. */
 struct Triangle
