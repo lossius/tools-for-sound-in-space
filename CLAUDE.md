@@ -74,7 +74,7 @@ warnings; keep it that way when adding code.
 - Extra host parameters (last in the host's list): `rolloff` (1..12 dB, default 6), `blur` (0..5 m, default 0.2). IDs and the state tag `DistPan` are part of saved sessions.
 - Processor: `refreshLayout()` publishes the speaker positions (`SpeakerSet` with an id) through `tlos::Exchange`; `processBlock` computes dense per-source gain rows
   (cache key: position, spread, rolloff, blur, set id), ramps linearly per block, fades speakers that leave "Number of Speakers". No virtual speakers (`supportsVirtualSpeakers()` is false).
-- Editor: `DistPanField` draws no overlay (the overlay toggle is hidden) and links only for gains within 20 dB of the strongest; two sliders (rolloff, blur) sit in row 4.
+- Editor: `DistPanField` draws no overlay (the overlay toggle is hidden) and links only for gains within 20 dB of the strongest; two sliders (rolloff, blur) sit in row 5.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.
@@ -91,8 +91,9 @@ warnings; keep it that way when adding code.
   Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
-- Top of the editor: row 1 sources, row 2 speakers (count, Edit/View menu, export, import), row 3 triangulation
-  toggle, "Show links" toggle (source-to-speaker lines, `tlos::FieldComponent::setShowLinks`), reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
+- Top of the editor (five rows): row 1 sources, row 2 speakers (count, Edit/View menu, export, import), row 4 the virtual speaker menu
+  (only if the plugin has them) and the shared "Outside rolloff" slider, row 5 the plugin's own controls (`layoutExtraControls`) and the status text; row 3 triangulation
+  toggle (the overlay toggle, only if the plugin has an overlay), "Show links" toggle (source-to-speaker lines, `tlos::FieldComponent::setShowLinks`), reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
   "View". Defaults: sources Edit, speakers View. Stored in the plugin state as `editSources` / `editSpeakers`
   (not host parameters; the old single `editMode` property from earlier versions is still read) and queried with
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, and "Reset layout" only resets kinds set to Edit (disabled if both are View).
@@ -145,7 +146,7 @@ warnings; keep it that way when adding code.
   speakers) and not saved. `toView/fromView` and the grid use it, so hit-testing and dragging work zoomed.
 - Footer row (bottom of `content`, 11 px, `juce::HyperlinkButton`s sized to their text): left "Trond Lossius" -> trondlossius.no,
   centre "Help" -> trondlossius.no/software/, right "FTVS, INN" -> inn.no faculty page.
-- Scalable GUI: all controls sit in `content`, laid out at the base size 700x860 (`kBaseWidth/Height`, also
+- Scalable GUI: all controls sit in `content`, laid out at the base size 700x892 (`kBaseWidth/Height`, also
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
@@ -176,7 +177,13 @@ warnings; keep it that way when adding code.
   (`getActiveSources/Speakers`). Unused sources are silent, unused speakers are left out of the
   triangulation. The GUI shows them at the top with their maximum set to the channel count.
 - Parameter order (as listed by hosts, set by the order in `createLayout`): Number of Sources, Number of Speakers, then
-  per source x, y, spread (source 1, 2, ...), then per speaker x, y (speaker 1, 2, ...). `ProcessorTests` checks it.
+  per source x, y, spread (source 1, 2, ...), then per speaker x, y (speaker 1, 2, ...), then `outsideRolloff`, then the plugin's own parameters (DistPan: `rolloff`, `blur`). `ProcessorTests` checks it.
+- Falloff outside the layout (both plugins; host parameter `outsideRolloff`, 0..24 dB, **default 6 dB**, shared slider in row 4): the level of a source outside the speakers is scaled by
+  `tlos::outsideFactor(d, rolloffDb) = (1 + d / 1 m)^(-rolloffDb / 6.0206)`, d = distance to the convex hull of the real speakers (`tlos::Hull`, built off the audio thread and
+  stored with the snapshot: `SpeakerLayout::hull()` in TriPan, `SpeakerSet::hull` in DistPan). Factor 1 inside and on the boundary (continuous), 0 dB = off (bit-identical to before),
+  and no falloff at all if the hull has no area (fewer than 3 speakers or collinear: a stereo pair must keep its level). TriPan applies it to each of the 9 spread positions before the squared
+  gains are averaged (`tripan::computeGains(layout, pos, spread, outsideRolloffDb)`); DistPan applies it to the centre only (`distpan::computeGains(speakers, hull, ...)`; spread acts through the blur).
+  Power is therefore no longer 1 outside the layout. The processors' gain cache keys include the setting. Tests that check constant power with sources outside the speakers set the parameter to 0.
 - Parameters (shared/ui/include/tlos/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±10, +y front.
   Speaker changes are picked up by a 30 Hz message-thread timer (`refreshTriangulation`), which
   publishes an immutable Triangulation through `TriangulationExchange` (hazard-pointer handover).
@@ -187,7 +194,7 @@ warnings; keep it that way when adding code.
   hit-testing/dragging/groups and, given a path argument, writes a PNG snapshot Claude can look at:
   `build/TriPan/Debug/TriPanEditorTests /path/out.png` (Xcode) or `build/TriPan/TriPanEditorTests` (Ninja).
 - `TriPan/tests/ProcessorTests.cpp` drives the processor offline (energy conservation, locality, state, 64x64).
-- Edge cases handled and tested in M2: source outside the convex hull (project to nearest hull edge),
+- Edge cases handled and tested in M2: source outside the convex hull (TriPan: project to nearest hull edge, then the level falls off, see above),
   fewer than 3 speakers, collinear speakers, coincident points.
 - Claude cannot listen or drive a DAW: prefer numerical tests in `tests/` folders, and ask the user for
   host checks (Reaper, Pro Tools, Windows).

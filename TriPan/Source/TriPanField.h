@@ -30,7 +30,7 @@ protected:
     /** Draws the triangles of the triangulation (including those of the virtual speakers). */
     void paintOverlay (juce::Graphics& g) override;
 
-    /** The speakers a source feeds according to the triangulation (see tripan::computeGains). */
+    /** The speakers a source feeds according to the triangulation (see tripan::computeGains), including the falloff outside the layout. */
     tlos::SourceGains getLinkGains (int source, tlos::Vec2 position, double spread) const override;
 
 private:

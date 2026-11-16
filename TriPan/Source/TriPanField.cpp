@@ -64,5 +64,5 @@ tlos::SourceGains TriPanField::getLinkGains (int, tlos::Vec2 position, double sp
     if (triangulation == nullptr)
         return {};
 
-    return tripan::computeGains (*triangulation, position, spread);
+    return tripan::computeGains (*triangulation, position, spread, processor.getOutsideRolloff());
 }

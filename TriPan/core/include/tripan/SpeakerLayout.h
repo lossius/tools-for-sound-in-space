@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "tlos/Hull.h"
 #include "tripan/Gains.h"
 #include "tripan/Triangulation.h"
 #include "tripan/VirtualSpeakers.h"
@@ -58,6 +59,10 @@ public:
     /** The virtual speakers with strength > 0, strongest first. */
     std::span<const VirtualSpeaker> virtualSpeakers() const noexcept { return sorted; }
 
+    /** The convex hull of the real speakers (virtual speakers are not outputs and do not count): what the
+        level falloff outside the layout is measured from. */
+    const tlos::Hull& hull() const noexcept { return realHull; }
+
 private:
     /** One nested triangulation and its blend weight. */
     struct Layer
@@ -69,6 +74,7 @@ private:
     std::uint64_t layoutId = 0;         ///< See id().
     std::vector<Layer> layers;          ///< Layer 0 first.
     std::vector<VirtualSpeaker> sorted; ///< Virtual speakers, strongest first.
+    tlos::Hull realHull;                ///< Hull of the real speakers, see hull().
 };
 
 /** Gains of a source for the real speakers of the layout (constant power). Real-time safe.
@@ -94,4 +100,20 @@ inline constexpr double kMaxSpreadRadius = 100.0;
     @param spread  Radius of the spread circle in metres (limited to tripan::kMaxSpreadRadius).
     @return        Gains for the real speakers. */
 SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double spread) noexcept;
+
+/** As above, and with the level falling off for sources outside the speakers.
+
+    The distance from the source to the hull of the real speakers (SpeakerLayout::hull()) gives the factor
+    tlos::outsideFactor(distance, outsideRolloffDb), which scales the gains: 1 inside the layout and on its
+    boundary, smaller outside. With spread, the factor is applied to each of the 9 positions before the squared
+    gains are averaged, so a spread circle that is partly outside fades smoothly. Outside the layout the
+    power is therefore no longer 1. The falloff does not apply (the result is exactly that of the overload
+    above) if `outsideRolloffDb` is 0 or less, or if the real speakers have no area (fewer than three, or
+    on one line).
+    @param layout            The layout to pan within.
+    @param source            Source position in metres.
+    @param spread            Radius of the spread circle in metres.
+    @param outsideRolloffDb  Level drop in dB per doubling of (1 + the distance outside in metres).
+    @return                  Gains for the real speakers. */
+SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double spread, double outsideRolloffDb) noexcept;
 }

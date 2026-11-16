@@ -8,6 +8,7 @@
 
 #include "PluginProcessor.h"
 #include "tlos/FieldComponent.h"
+#include "tlos/Hull.h"
 
 #include <vector>
 
@@ -30,6 +31,7 @@ protected:
 private:
     DistPanAudioProcessor& dbapProcessor;      ///< The processor, for the rolloff and the blur.
     std::vector<tlos::Vec2> speakerPositions;  ///< Speakers in use as of the last timer tick.
+    tlos::Hull speakerHull;                    ///< Their hull, for the falloff outside the layout.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DistPanField)
 };

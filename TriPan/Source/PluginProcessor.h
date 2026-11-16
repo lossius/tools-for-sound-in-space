@@ -74,6 +74,7 @@ private:
         float x = 0.0f;               ///< Source x position.
         float y = 0.0f;               ///< Source y position.
         float spread = 0.0f;          ///< Source spread radius.
+        float outside = 0.0f;         ///< Outside rolloff the gains were computed with.
         std::uint64_t layoutId = 0;   ///< SpeakerLayout::id() the gains belong to.
         bool valid = false;           ///< False until gains have been computed.
     };

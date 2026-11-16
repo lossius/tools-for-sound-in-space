@@ -110,6 +110,7 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     // Sources beyond the "Number of Sources" setting get no gains, so they fade out and stay silent.
     // (The triangulation only contains the speakers in use, so unused outputs stay silent too.)
+    const float outside = outsideRolloffParam->load();
     const int usedSources = getActiveSources();
     const int usedSpeakers = getActiveSpeakers();
 
@@ -129,14 +130,14 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         // A source that has not moved, with an unchanged layout, keeps last block's gains.
         const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load(), spread = srcSpread[(size_t) s]->load();
         if (key.valid && key.layoutId == tri->id() && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y)
-            && juce::exactlyEqual (key.spread, spread))
+            && juce::exactlyEqual (key.spread, spread) && juce::exactlyEqual (key.outside, outside))
         {
             target[(size_t) s] = prevGains[(size_t) s];
             continue;
         }
 
-        target[(size_t) s] = tripan::computeGains (*tri, { (double) x, (double) y }, (double) spread);
-        key = { x, y, spread, tri->id(), true };
+        target[(size_t) s] = tripan::computeGains (*tri, { (double) x, (double) y }, (double) spread, (double) outside);
+        key = { x, y, spread, outside, tri->id(), true };
     }
 
     if (restartRamp.exchange (false))

@@ -40,6 +40,17 @@ Unlike TriPan, DistPan needs no triangulation and has no virtual speakers; it wo
 also collinear or irregular layouts, and sources outside the speakers. On the pad, links are drawn to the speakers that get
 a share within 20 dB of the strongest one.
 
+## Level outside the speakers
+
+Both plugins have the host parameter **Outside rolloff** (0-24 dB, default 6, one slider in the window). A source outside
+the speaker layout is lowered by `(1 + d)^(-r/6.02)`, where d is the distance in metres from the source to the edge of the
+layout (the convex hull of the speakers) and r the rolloff: each doubling of 1 + d costs r dB, so 6 dB gives -6 dB one
+metre outside and -12 dB three metres outside. Inside the layout and on its edge nothing changes, and the level falls
+smoothly with no step at the edge. Set it to 0 for the old behaviour, a constant level everywhere. With fewer than three
+speakers, or speakers on one line (a stereo pair), there is no inside to leave and the falloff does not apply.
+In TriPan the sound outside the layout is panned as if the source stood on the nearest edge of the layout; the
+rolloff comes on top of that. Sessions saved before this setting existed get the default (6 dB) when they are opened.
+
 ## API documentation
 
 The code is documented with Doxygen. Install it (`brew install doxygen`), run `doxygen Doxyfile` in the repository root and

@@ -379,6 +379,7 @@ static void testNumberOfSourcesAndSpeakersInUse()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 4, 8, 256));
+    setParam (p, tlos::params::kOutsideRolloffId, 0.0f); // this test is about something else than the falloff outside the speakers
 
     // Default: everything on the track is used; larger parameter values clamp to the channel counts.
     CHECK (p.getActiveSources() == 4 && p.getActiveSpeakers() == 8);
@@ -834,6 +835,7 @@ static void testUnchangedSourcesFollowLayoutChanges()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 1, 6, 256));
+    setParam (p, tlos::params::kOutsideRolloffId, 0.0f); // this test is about something else than the falloff outside the speakers
     p.setVirtualMode (tlos::VirtualMode::Off);
 
     juce::AudioBuffer<float> buf (6, 256);
@@ -885,6 +887,7 @@ static void testSourceSpread()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 2, 6, 256));
+    setParam (p, tlos::params::kOutsideRolloffId, 0.0f); // this test is about something else than the falloff outside the speakers
     p.setVirtualMode (tlos::VirtualMode::Off);
 
     juce::AudioBuffer<float> buf (6, 256);
@@ -971,8 +974,10 @@ static void testParameterOrder()
         expected.push_back (tlos::params::speakerId (i, 'y'));
     }
 
+    expected.push_back (tlos::params::kOutsideRolloffId);
+
     CHECK ((size_t) parameters.size() == expected.size());
-    CHECK (expected.size() == 2 + 64 * 3 + 64 * 2);
+    CHECK (expected.size() == 2 + 64 * 3 + 64 * 2 + 1);
 
     bool inOrder = parameters.size() == (int) expected.size();
     for (int i = 0; inOrder && i < parameters.size(); ++i)
@@ -991,7 +996,8 @@ static void testParameterOrder()
     CHECK (parameters[2]->getName (64) == "Source 1 X" && parameters[3]->getName (64) == "Source 1 Y" && parameters[4]->getName (64) == "Source 1 Spread");
     CHECK (parameters[5]->getName (64) == "Source 2 X");
     CHECK (parameters[2 + 64 * 3]->getName (64) == "Speaker 1 X" && parameters[2 + 64 * 3 + 1]->getName (64) == "Speaker 1 Y");
-    CHECK (parameters[parameters.size() - 1]->getName (64) == "Speaker 64 Y");
+    CHECK (parameters[parameters.size() - 2]->getName (64) == "Speaker 64 Y");
+    CHECK (parameters[parameters.size() - 1]->getName (64) == "Outside Rolloff");
 }
 
 /** The limit of 64 manual virtual speakers: with 64 sources and 64 speakers the output stays finite and keeps its power, and the cost of a block is reported. */
@@ -999,6 +1005,7 @@ static void testManyVirtualSpeakers()
 {
     TriPanAudioProcessor p;
     CHECK (configure (p, 64, 64, 512));
+    setParam (p, tlos::params::kOutsideRolloffId, 0.0f); // the sources below are partly outside the speakers: keep their power
     std::vector<tripan::Vec2> list;
     for (int i = 0; i < TriPanAudioProcessor::kMaxVirtualSpeakers; ++i)
         list.push_back ({ 8.0 * std::sin (i * 2.399963), 8.0 * std::cos (i * 2.399963) * (0.3 + 0.7 * (i % 7) / 6.0) });
@@ -1041,12 +1048,53 @@ static void testManyVirtualSpeakers()
                  total / blocks, worst);
 }
 
+/** Outside the speakers the level falls (6 dB per doubling of 1 + distance by default); inside nothing changes; 0 dB switches it off. */
+static void testOutsideFalloff()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 1, 8, 512));
+    CHECK (std::abs (p.getValueTreeState().getRawParameterValue (tlos::params::kOutsideRolloffId)->load() - 6.0f) < 1e-6f); // default
+
+    juce::AudioBuffer<float> buf (8, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (21);
+
+    // The default speaker ring has radius 5, so the speaker at the front is at (0, 5): a source at (0, 6) is 1 m outside.
+    const auto energyRatioAt = [&] (float x, float y)
+    {
+        setParam (p, tlos::params::sourceId (0, 'x'), x);
+        setParam (p, tlos::params::sourceId (0, 'y'), y);
+        double inE = 0.0, outE = 0.0;
+        for (int block = 0; block < 4; ++block)
+        {
+            inE = fillNoise (buf, 1, 0, rng);
+            p.processBlock (buf, midi);
+        }
+        for (int ch = 0; ch < 8; ++ch)
+            outE += channelEnergy (buf, ch);
+        return outE / inE;
+    };
+
+    CHECK (std::abs (energyRatioAt (0.0f, 2.0f) - 1.0) < 1e-3);          // inside: constant power
+    CHECK (std::abs (energyRatioAt (0.0f, 5.0f) - 1.0) < 1e-3);          // on a speaker: on the boundary
+    CHECK (std::abs (energyRatioAt (0.0f, 6.0f) - 0.25) < 0.01);         // 1 m outside: (1 + 1)^-1 = -6 dB = 0.25 in power
+    CHECK (std::abs (energyRatioAt (0.0f, 8.0f) - 1.0 / 16.0) < 0.01);   // 3 m outside: (1 + 3)^-1 = -12 dB
+
+    setParam (p, tlos::params::kOutsideRolloffId, 12.0f);
+    CHECK (std::abs (energyRatioAt (0.0f, 6.0f) - 0.0625) < 0.01);       // -12 dB for 1 m
+
+    setParam (p, tlos::params::kOutsideRolloffId, 0.0f);                 // off: as before
+    CHECK (std::abs (energyRatioAt (0.0f, 8.0f) - 1.0) < 1e-3);
+    CHECK (std::abs (energyRatioAt (0.0f, 6.0f) - 1.0) < 1e-3);
+}
+
 /** Runs all processor tests. @param argc,argv  argv[1] is the folder with the speaker layouts. @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInit;
 
     testParameterOrder();
+    testOutsideFalloff();
     testManyVirtualSpeakers();
     testStationaryEnergyAndLocality();
     testNumberOfSourcesAndSpeakersInUse();

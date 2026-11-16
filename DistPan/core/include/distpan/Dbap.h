@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include "tlos/Hull.h"
 #include "tlos/SourceGains.h"
 #include "tlos/Vec2.h"
 
@@ -23,6 +24,11 @@ struct DbapSettings
     /** Spatial blur in metres: the distance used is sqrt(d^2 + blur^2), so that a source right on a
         speaker does not use that speaker alone and the gains change smoothly when a source passes a speaker. */
     double blur = 0.2;
+
+    /** Level drop in dB for each doubling of (1 + the distance outside the speaker layout in metres), see
+        tlos::outsideFactor(). 0 = the level stays constant outside the layout. Only used by the overload of
+        computeGains() that takes the hull. */
+    double outsideRolloffDb = 0.0;
 };
 
 /** The exponent a of the gain law g_i ~ 1 / d_i^a that corresponds to a rolloff in dB per doubling of the distance. */
@@ -47,4 +53,18 @@ double rolloffExponent (double rolloffDb) noexcept;
                      position is not finite or there is no valid speaker. */
 tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, tlos::Vec2 source, double spread,
                                 const DbapSettings& settings) noexcept;
+
+/** As above, and with the level falling off for a source outside the speaker layout: the gains are scaled by
+    tlos::outsideFactor(distance from the source to the hull, settings.outsideRolloffDb), so they are as above
+    inside the layout and on its boundary, and smaller outside (where the power is therefore no longer 1). The
+    spread does not enter the distance: it acts through the blur. No falloff if the rolloff is 0 or less, or if
+    the hull has no area (fewer than three speakers, or all on one line).
+    @param speakers  The speakers in use, in metres.
+    @param hull      The hull of those speakers (build it once when the layout changes).
+    @param source    The source position in metres.
+    @param spread    The source's spread radius in metres.
+    @param settings  Rolloff, blur and the outside rolloff.
+    @return          One entry per speaker, as above. */
+tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, const tlos::Hull& hull, tlos::Vec2 source,
+                                double spread, const DbapSettings& settings) noexcept;
 }

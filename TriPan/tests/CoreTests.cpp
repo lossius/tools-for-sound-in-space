@@ -5,6 +5,7 @@
     @brief Minimal dependency-free test runner for TriPanCore (no JUCE): triangulation, gains and virtual speakers. The shared
     code (limits, groups) is tested in shared/tests. */
 
+#include "tlos/Hull.h"
 #include "tripan/Gains.h"
 #include "tripan/SpeakerLayout.h"
 #include "tripan/Triangulation.h"
@@ -755,6 +756,75 @@ static void testSpread()
     CHECK (computeGains (SpeakerLayout(), { 0.0, 0.0 }, 2.0).count == 0);
 }
 
+/** Falloff outside the speakers: exactly the old gains inside and when it is off, the factor outside, continuous with spread. */
+static void testOutsideFalloff()
+{
+    std::vector<Vec2> octagon;
+    for (int i = 0; i < 8; ++i)
+        octagon.push_back ({ 5.0 * std::sin (i * 3.14159265358979 / 4.0), 5.0 * std::cos (i * 3.14159265358979 / 4.0) });
+    const SpeakerLayout layout (octagon, findVirtualSpeakers (octagon));
+    CHECK (layout.hull().hasArea());
+
+    const auto sameGains = [] (const SourceGains& a, const SourceGains& b)
+    {
+        if (a.count != b.count)
+            return false;
+        for (int i = 0; i < a.count; ++i)
+            if (a.speaker[(size_t) i] != b.speaker[(size_t) i] || a.gain[(size_t) i] != b.gain[(size_t) i])
+                return false;
+        return true;
+    };
+
+    // Off: identical to the plain computation, inside and outside, with and without spread.
+    for (const Vec2 p : { Vec2 { 0.3, 0.2 }, Vec2 { 0.0, 6.5 }, Vec2 { -9.0, 3.0 } })
+        for (const double spread : { 0.0, 1.5 })
+        {
+            CHECK (sameGains (computeGains (layout, p, spread, 0.0), computeGains (layout, p, spread)));
+            CHECK (sameGains (computeGains (layout, p, spread, -3.0), computeGains (layout, p, spread)));
+        }
+
+    // Inside the layout and on its boundary: the same gains as without falloff (spread 0).
+    for (const Vec2 p : { Vec2 { 0.0, 0.0 }, Vec2 { 1.0, 2.0 }, Vec2 { 0.0, 5.0 }, Vec2 { -3.0, -3.0 } })
+        CHECK (sameGains (computeGains (layout, p, 0.0, 6.0), computeGains (layout, p, 0.0)));
+
+    // Outside, without spread: the same distribution, scaled by the factor.
+    const Vec2 outside { 0.0, 6.0 }; // 1 m beyond the speaker at the front
+    const double factor = tlos::outsideFactor (1.0, 6.0206);
+    CHECK (isNear (factor, 0.5, 1e-3));
+    const auto plain = computeGains (layout, outside, 0.0);
+    const auto fallen = computeGains (layout, outside, 0.0, 6.0206);
+    CHECK (fallen.count == plain.count);
+    for (int i = 0; i < plain.count; ++i)
+        CHECK (isNear ((double) fallen.gain[(size_t) i], factor * (double) plain.gain[(size_t) i], 1e-5));
+    CHECK (isNear (sumSq (fallen), factor * factor, 1e-4));
+
+    // With spread: the power is between the extremes, and it moves continuously and steadily while the source goes outwards.
+    double previous = 2.0;
+    for (int i = 0; i <= 160; ++i)
+    {
+        const double y = 3.0 + 0.05 * i; // from well inside to 6 m outside
+        const double power = sumSq (computeGains (layout, { 0.0, y }, 2.0, 6.0));
+        CHECK (power <= previous + 1e-6);
+        CHECK (previous > 1.5 || previous - power < 0.06);
+        CHECK (power > 0.0 && power <= 1.0 + 1e-5);
+        previous = power;
+    }
+    CHECK (isNear (sumSq (computeGains (layout, { 0.0, 0.0 }, 2.0, 6.0)), 1.0, 1e-4));            // a spread circle fully inside
+
+    // A spread circle half out costs less than a point source at the same place would, but more than one fully out.
+    const double half = sumSq (computeGains (layout, { 0.0, 5.0 }, 2.0, 6.0));
+    CHECK (half < 1.0 - 0.01 && half > sumSq (computeGains (layout, { 0.0, 9.0 }, 2.0, 6.0)));
+
+    // The hull is of the real speakers: without area there is no falloff (the stereo pair must stay as it is).
+    const std::vector<Vec2> pair { { -2.0, 3.0 }, { 2.0, 3.0 } };
+    const SpeakerLayout stereo (pair);
+    CHECK (! stereo.hull().hasArea());
+    CHECK (sameGains (computeGains (stereo, { 5.0, -4.0 }, 0.0, 6.0), computeGains (stereo, { 5.0, -4.0 }, 0.0)));
+    const std::vector<Vec2> line { { 0.0, 0.0 }, { 0.0, 2.0 }, { 0.0, 4.0 } };
+    const SpeakerLayout column (line);
+    CHECK (sameGains (computeGains (column, { 3.0, 9.0 }, 1.0, 6.0), computeGains (column, { 3.0, 9.0 }, 1.0)));
+}
+
 /** Runs all core tests. @return 0 if every check passed, otherwise 1. */
 int main()
 {
@@ -769,6 +839,7 @@ int main()
     testVirtualSpeakerGains();
     testDistanceWeightedRedistribution();
     testSpread();
+    testOutsideFalloff();
     testVirtualSpeakerStrengths();
     testSpeakerLayoutBlend();
     testNoJumpsWhileSpeakersMove();

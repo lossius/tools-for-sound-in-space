@@ -186,6 +186,57 @@ static void testDegenerate()
     CHECK (isNear (sumSq (h), 1.0));
 }
 
+/** Falloff outside the speakers: the plain gains inside, on the boundary and when off; scaled by the factor outside. */
+static void testOutsideFalloff()
+{
+    const auto speakers = ring (8); // radius 5, an octagon
+    const tlos::Hull hull (speakers);
+    CHECK (hull.hasArea());
+
+    const auto same = [] (const tlos::SourceGains& a, const tlos::SourceGains& b)
+    {
+        if (a.count != b.count)
+            return false;
+        for (int i = 0; i < a.count; ++i)
+            if (a.gain[(size_t) i] != b.gain[(size_t) i])
+                return false;
+        return true;
+    };
+
+    const DbapSettings on { 6.0, 0.2, 6.0206 }, off { 6.0, 0.2, 0.0 };
+
+    // Inside, on the boundary, and with the falloff off: exactly the plain gains.
+    for (const Vec2 p : { Vec2 { 0.0, 0.0 }, Vec2 { 1.0, 2.0 }, Vec2 { 0.0, 5.0 } })
+        CHECK (same (computeGains (speakers, hull, p, 0.0, on), computeGains (speakers, p, 0.0, on)));
+    for (const Vec2 p : { Vec2 { 0.0, 6.5 }, Vec2 { -9.0, 3.0 } })
+        CHECK (same (computeGains (speakers, hull, p, 1.0, off), computeGains (speakers, p, 1.0, off)));
+
+    // 1 m beyond the speaker at the front: (1 + 1)^-1 = 0.5, the same distribution, half the amplitude.
+    const Vec2 outside { 0.0, 6.0 };
+    const auto plain = computeGains (speakers, outside, 0.0, on);
+    const auto fallen = computeGains (speakers, hull, outside, 0.0, on);
+    CHECK (fallen.count == plain.count);
+    for (int i = 0; i < plain.count; ++i)
+        CHECK (isNear ((double) fallen.gain[(size_t) i], 0.5 * (double) plain.gain[(size_t) i], 1e-4));
+    CHECK (isNear (sumSq (fallen), 0.25, 1e-4));
+
+    // Steadily and smoothly lower while the source goes outwards, with no step at the boundary.
+    double previous = 2.0;
+    for (int i = 0; i <= 160; ++i)
+    {
+        const double power = sumSq (computeGains (speakers, hull, { 0.0, 3.0 + 0.05 * i }, 0.5, on));
+        CHECK (power <= previous + 1e-6);
+        CHECK (previous > 1.5 || previous - power < 0.12); // a slope of about 2 per metre at the boundary, not a step
+        previous = power;
+    }
+
+    // No area: no falloff, so a stereo pair keeps its power wherever the source is.
+    const std::vector<Vec2> pair { { -2.0, 3.0 }, { 2.0, 3.0 } };
+    const tlos::Hull pairHull (pair);
+    CHECK (! pairHull.hasArea());
+    CHECK (isNear (sumSq (computeGains (pair, pairHull, { 8.0, -7.0 }, 0.0, on)), 1.0));
+}
+
 /** Runs all core tests. @return 0 if every check passed, otherwise 1. */
 int main()
 {
@@ -196,6 +247,7 @@ int main()
     testCoincidentSource();
     testSpreadEvensOut();
     testDegenerate();
+    testOutsideFalloff();
 
     if (failures == 0)
         std::printf ("All tests passed\n");

@@ -53,7 +53,7 @@ int main (int argc, char** argv)
 
     std::unique_ptr<DistPanAudioProcessorEditor> editor (static_cast<DistPanAudioProcessorEditor*> (p.createEditor()));
     CHECK (editor != nullptr);
-    editor->setSize (700, 860);
+    editor->setSize (tlos::SpatialEditor::kBaseWidth, tlos::SpatialEditor::kBaseHeight);
     editor->syncControls();
 
     // What this plugin does not have is hidden: there is no overlay to toggle and no virtual speakers.
@@ -67,6 +67,14 @@ int main (int argc, char** argv)
     editor->getSpeakersModeBox().setSelectedId (1, juce::sendNotificationSync);
     CHECK (p.canEditSpeakers());
     editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
+
+    // The shared outside rolloff slider is there, shows the default and writes to its parameter.
+    auto& outside = editor->getOutsideSlider();
+    CHECK (outside.isVisible() && outside.getWidth() > 50);
+    CHECK (std::abs (outside.getValue() - (double) tlos::params::kDefaultOutsideRolloff) < 1e-3);
+    outside.setValue (12.0, juce::sendNotificationSync);
+    CHECK (std::abs (value (p, tlos::params::kOutsideRolloffId) - 12.0f) < 1e-3f);
+    setParam (p, tlos::params::kOutsideRolloffId, 6.0f);
 
     // The sliders show the parameters and write to them.
     auto& rolloff = editor->getRolloffSlider();

@@ -18,9 +18,9 @@ namespace tlos
 
     All controls live in a child component laid out at the base size (kBaseWidth x kBaseHeight) and
     scaled uniformly with the window, which has a fixed aspect ratio. Rows from the top: sources,
-    speakers, display options (an optional overlay toggle, links, reset, zoom, groups), a row with the
-    virtual speaker menu (only if the processor supports them) and the status text, then the
-    FieldComponent pad and a footer.
+    speakers, display options (an optional overlay toggle, links, reset, zoom, groups), the virtual speaker
+    menu (only if the processor supports them) with the outside rolloff slider, the plugin's own controls
+    with the status text, then the FieldComponent pad and a footer.
 
     A plugin derives from this class and passes its own FieldComponent (which draws what is specific to
     its panning method) and the text of the toggle that shows or hides that drawing. */
@@ -43,7 +43,7 @@ public:
     /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
         window is resized. The base size is also the smallest allowed size. */
     static constexpr int kBaseWidth = 700;   ///< Width in pixels at scale 1.
-    static constexpr int kBaseHeight = 860;  ///< Height in pixels at scale 1.
+    static constexpr int kBaseHeight = 892;  ///< Height in pixels at scale 1.
     static constexpr int kMaxScale = 3;      ///< The window can grow to this multiple of the base size.
 
     /** Fills the background. */
@@ -63,6 +63,7 @@ public:
     juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }            ///< Edit/View menu for sources.
     juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }          ///< Edit/View menu for speakers.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }            ///< Auto/Manual/Off menu.
+    juce::Slider& getOutsideSlider() noexcept { return outsideSlider; }                ///< "Outside rolloff" slider.
     juce::ToggleButton& getOverlayButton() noexcept { return overlayButton; }          ///< The overlay toggle (e.g. "Show triangulation").
     juce::ToggleButton& getShowLinksButton() noexcept { return showLinksButton; }      ///< "Show links".
     juce::TextButton& getResetButton() noexcept { return resetButton; }                ///< "Reset layout".
@@ -99,7 +100,7 @@ public:
 
 protected:
     /** Hook for the controls of the plugin's panning method (for example a rolloff slider): positions them
-        in the row that also holds the virtual speaker menu and the status text, taking the space they need
+        in the row that also holds the status text, taking the space they need
         off `row` (base-size pixels; the status text gets what is left). Add the controls themselves with
         addToContent() in the constructor. The default has none. */
     virtual void layoutExtraControls (juce::Rectangle<int>& row);
@@ -155,6 +156,9 @@ private:
     juce::ComboBox speakersModeBox;  ///< "Edit" / "View" for speakers.
     juce::Label virtualLabel { {}, "Virtual speakers" }; ///< Caption of the virtual speaker menu.
     juce::ComboBox virtualModeBox;                       ///< Auto / Manual / Off (only if the processor supports virtual speakers).
+    juce::Label outsideLabel { {}, "Outside rolloff" };  ///< Caption of the outside rolloff slider.
+    juce::Slider outsideSlider;                          ///< Level drop in dB per doubling of the distance outside the speakers.
+    std::unique_ptr<juce::SliderParameterAttachment> outsideAttachment; ///< Ties the slider to its parameter.
     juce::ToggleButton overlayButton;                    ///< Shows or hides the plugin's overlay on the pad (e.g. the triangles).
     juce::ToggleButton showLinksButton { "Show links" }; ///< Draws the lines from each source to the speakers it feeds.
     juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.

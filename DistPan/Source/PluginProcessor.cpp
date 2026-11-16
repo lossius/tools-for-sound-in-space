@@ -24,7 +24,7 @@ DistPanAudioProcessor::DistPanAudioProcessor()
 
 distpan::DbapSettings DistPanAudioProcessor::getSettings() const noexcept
 {
-    return { (double) rolloffParam->load(), (double) blurParam->load() };
+    return { (double) rolloffParam->load(), (double) blurParam->load(), getOutsideRolloff() };
 }
 
 void DistPanAudioProcessor::refreshLayout()
@@ -39,6 +39,7 @@ void DistPanAudioProcessor::refreshLayout()
 
     auto set = std::make_unique<SpeakerSet>();
     set->positions = speakers;
+    set->hull = tlos::Hull (speakers);
     set->id = nextSetId++;
     exchange.publish (std::move (set));
 
@@ -87,7 +88,7 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
     // Target gains from the current source positions, the settings and the latest published speakers.
     const SpeakerSet* speakers = exchange.acquire();
-    const float rolloff = rolloffParam->load(), blur = blurParam->load();
+    const float rolloff = rolloffParam->load(), blur = blurParam->load(), outside = outsideRolloffParam->load();
 
     // Sources beyond the "Number of Sources" setting get no gains, so they fade out and stay silent.
     // (The speaker set only contains the speakers in use, so unused outputs stay silent too.)
@@ -110,19 +111,20 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         // A source that has not moved, with unchanged speakers and settings, keeps last block's gains.
         const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load(), spread = srcSpread[(size_t) s]->load();
         if (key.valid && key.setId == speakers->id && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y)
-            && juce::exactlyEqual (key.spread, spread) && juce::exactlyEqual (key.rolloff, rolloff) && juce::exactlyEqual (key.blur, blur))
+            && juce::exactlyEqual (key.spread, spread) && juce::exactlyEqual (key.rolloff, rolloff) && juce::exactlyEqual (key.blur, blur)
+            && juce::exactlyEqual (key.outside, outside))
         {
             row = prevGains[(size_t) s];
             continue;
         }
 
-        const auto gains = distpan::computeGains (speakers->positions, { (double) x, (double) y }, (double) spread,
-                                                  { (double) rolloff, (double) blur });
+        const auto gains = distpan::computeGains (speakers->positions, speakers->hull, { (double) x, (double) y }, (double) spread,
+                                                  { (double) rolloff, (double) blur, (double) outside });
         row.fill (0.0f);
         for (int i = 0; i < gains.count; ++i)
             row[(size_t) gains.speaker[(size_t) i]] = gains.gain[(size_t) i];
 
-        key = { x, y, spread, rolloff, blur, speakers->id, true };
+        key = { x, y, spread, rolloff, blur, outside, speakers->id, true };
     }
 
     if (restartRamp.exchange (false))

@@ -106,13 +106,14 @@ static void testParameterOrder()
     DistPanAudioProcessor p;
     const auto& parameters = p.getParameters();
 
-    CHECK (parameters.size() == 2 + 64 * 3 + 64 * 2 + 2);
+    CHECK (parameters.size() == 2 + 64 * 3 + 64 * 2 + 1 + 2);
 
     const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
     CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId);
     CHECK (idOf (2) == tlos::params::sourceId (0, 'x'));
     CHECK (idOf (2 + 64 * 3) == tlos::params::speakerId (0, 'x'));
-    CHECK (idOf (parameters.size() - 3) == tlos::params::speakerId (63, 'y'));
+    CHECK (idOf (parameters.size() - 4) == tlos::params::speakerId (63, 'y'));
+    CHECK (idOf (parameters.size() - 3) == tlos::params::kOutsideRolloffId);
     CHECK (idOf (parameters.size() - 2) == distpan::params::kRolloffId && idOf (parameters.size() - 1) == distpan::params::kBlurId);
     CHECK (parameters[parameters.size() - 2]->getName (64) == "Rolloff" && parameters[parameters.size() - 1]->getName (64) == "Blur");
 
@@ -286,6 +287,47 @@ static void testStateRoundTrip()
     CHECK (std::abs (getParam (c, distpan::params::kRolloffId) - distpan::params::kDefaultRolloff) < 1e-6f);
 }
 
+/** Outside the speakers the level falls (6 dB per doubling of 1 + distance by default); inside nothing changes; 0 dB switches it off. */
+static void testOutsideFalloff()
+{
+    DistPanAudioProcessor p;
+    CHECK (configure (p, 1, 8, 512));
+    CHECK (std::abs (getParam (p, tlos::params::kOutsideRolloffId) - 6.0f) < 1e-6f); // default
+    CHECK (std::abs (p.getOutsideRolloff() - 6.0) < 1e-6);
+
+    juce::AudioBuffer<float> buf (8, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (22);
+
+    // The default speaker ring has radius 5: the speaker at the front is at (0, 5), so (0, 6) is 1 m outside.
+    const auto energyRatioAt = [&] (float x, float y)
+    {
+        setParam (p, tlos::params::sourceId (0, 'x'), x);
+        setParam (p, tlos::params::sourceId (0, 'y'), y);
+        double inE = 0.0;
+        for (int block = 0; block < 4; ++block)
+        {
+            inE = fillNoise (buf, 0, rng);
+            p.processBlock (buf, midi);
+        }
+        return totalEnergy (buf, 8) / inE;
+    };
+
+    CHECK (std::abs (energyRatioAt (0.0f, 2.0f) - 1.0) < 1e-3);
+    CHECK (std::abs (energyRatioAt (0.0f, 5.0f) - 1.0) < 1e-3);
+    CHECK (std::abs (energyRatioAt (0.0f, 6.0f) - 0.25) < 0.01);        // -6 dB
+    CHECK (std::abs (energyRatioAt (0.0f, 8.0f) - 1.0 / 16.0) < 0.01);  // -12 dB
+
+    setParam (p, tlos::params::kOutsideRolloffId, 0.0f);
+    CHECK (std::abs (energyRatioAt (0.0f, 8.0f) - 1.0) < 1e-3);
+
+    // A layout without area (two speakers) keeps its level wherever the source is.
+    setParam (p, tlos::params::kOutsideRolloffId, 6.0f);
+    setParam (p, tlos::params::kNumSpeakersId, 2.0f);
+    p.refreshLayout();
+    CHECK (std::abs (energyRatioAt (7.0f, -7.0f) - 1.0) < 1e-3);
+}
+
 /** 64 sources to 64 speakers: one source at a time keeps its energy, and the output is finite. */
 static void testFullSize64x64()
 {
@@ -366,6 +408,7 @@ static void testSpeakerLayouts (const juce::File& dir)
     {
         DistPanAudioProcessor p;
         CHECK (configure (p, 2, 64, 256));
+        setParam (p, tlos::params::kOutsideRolloffId, 0.0f); // the source may be outside a layout: this tests the import, not the falloff
 
         tlos::io::ImportReport report;
         const auto result = tlos::io::load (p, tlos::io::Kind::Speakers, file, report);
@@ -394,6 +437,7 @@ int main (int argc, char** argv)
     testParameterOrder();
     testStationaryEnergyAndDistribution();
     testRolloffAndBlur();
+    testOutsideFalloff();
     testSpeakerUpdate();
     testNumberOfSourcesAndSpeakersInUse();
     testStateRoundTrip();

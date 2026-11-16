@@ -17,6 +17,8 @@ SpeakerLayout::SpeakerLayout (std::span<const Vec2> realSpeakers, std::span<cons
     static std::atomic<std::uint64_t> counter { 1 };
     layoutId = counter.fetch_add (1);
 
+    realHull = tlos::Hull (realSpeakers);
+
     for (const auto& v : virtualSpeakers)
         if (v.strength > 1e-9 && std::isfinite (v.position.x) && std::isfinite (v.position.y))
             sorted.push_back ({ v.position, std::min (v.strength, 1.0) });
@@ -104,19 +106,25 @@ SourceGains computeGains (const SpeakerLayout& layout, Vec2 source) noexcept
     return out;
 }
 
-SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double spread) noexcept
+namespace
 {
-    if (! (spread > 1e-6) || ! std::isfinite (spread) || ! std::isfinite (source.x) || ! std::isfinite (source.y))
-        return computeGains (layout, source);
+/** The spread average (see computeGains with spread), with a weight for each of the 9 positions.
 
-    spread = std::min (spread, kMaxSpreadRadius);
-
+    The squared gains of every position are added with the weight of that position. With `normalise` the result
+    is scaled to constant power (the weights then only decide how much each position counts); without it
+    the result is the root of the weighted mean, so weights below 1 lower the level. */
+template <typename Weight>
+SourceGains spreadAverage (const SpeakerLayout& layout, Vec2 source, double spread, Weight weightAt, bool normalise) noexcept
+{
     SourceGains out;
     double power[kMaxGainEntries] {};
+    int positions = 0;
 
     const auto accumulate = [&] (Vec2 position)
     {
         const auto g = computeGains (layout, position);
+        const double weight = weightAt (position);
+        ++positions;
 
         for (int i = 0; i < g.count; ++i)
         {
@@ -137,7 +145,7 @@ SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double sprea
                 out.speaker[(size_t) slot] = speaker;
             }
 
-            power[slot] += (double) g.gain[(size_t) i] * (double) g.gain[(size_t) i];
+            power[slot] += weight * (double) g.gain[(size_t) i] * (double) g.gain[(size_t) i];
         }
     };
 
@@ -160,10 +168,44 @@ SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double sprea
     if (total <= 0.0)
         return SourceGains {};
 
-    const double inv = 1.0 / total; // the mean of the squared gains sums to 1 when each term does
+    // Normalised: the mean of the squared gains sums to 1 when each term does. Otherwise it sums to the mean weight.
+    const double inv = normalise ? 1.0 / total : 1.0 / (double) positions;
     for (int i = 0; i < out.count; ++i)
         out.gain[(size_t) i] = (float) std::sqrt (power[i] * inv);
 
     return out;
+}
+}
+
+SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double spread) noexcept
+{
+    if (! (spread > 1e-6) || ! std::isfinite (spread) || ! std::isfinite (source.x) || ! std::isfinite (source.y))
+        return computeGains (layout, source);
+
+    return spreadAverage (layout, source, std::min (spread, kMaxSpreadRadius), [] (Vec2) { return 1.0; }, true);
+}
+
+SourceGains computeGains (const SpeakerLayout& layout, Vec2 source, double spread, double outsideRolloffDb) noexcept
+{
+    if (! (outsideRolloffDb > 0.0) || ! std::isfinite (outsideRolloffDb) || ! layout.hull().hasArea())
+        return computeGains (layout, source, spread);
+
+    // The level factor of a position; its square is the weight of that position's squared gains.
+    const auto weightAt = [&] (Vec2 p)
+    {
+        const double factor = tlos::outsideFactor (layout.hull().distance (p), outsideRolloffDb);
+        return factor * factor;
+    };
+
+    if (! (spread > 1e-6) || ! std::isfinite (spread) || ! std::isfinite (source.x) || ! std::isfinite (source.y))
+    {
+        auto g = computeGains (layout, source);
+        const float factor = (float) tlos::outsideFactor (layout.hull().distance (source), outsideRolloffDb);
+        for (int i = 0; i < g.count; ++i)
+            g.gain[(size_t) i] *= factor;
+        return g;
+    }
+
+    return spreadAverage (layout, source, std::min (spread, kMaxSpreadRadius), weightAt, false);
 }
 }

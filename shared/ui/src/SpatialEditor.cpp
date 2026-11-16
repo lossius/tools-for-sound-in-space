@@ -17,7 +17,7 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
     addAndMakeVisible (content);
     content.addAndMakeVisible (*field);
 
-    for (auto* label : { &sourcesLabel, &speakersLabel, &virtualLabel })
+    for (auto* label : { &sourcesLabel, &speakersLabel, &virtualLabel, &outsideLabel })
     {
         label->setJustificationType (juce::Justification::centredRight);
         label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -70,6 +70,20 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
     content.addAndMakeVisible (virtualModeBox);
     virtualLabel.setVisible (owner.supportsVirtualSpeakers());
     virtualModeBox.setVisible (owner.supportsVirtualSpeakers());
+
+    // How the level falls for a source outside the speaker layout (same for every plugin).
+    outsideSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    outsideSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
+    outsideSlider.setTooltip ("Level drop in dB for each doubling of (1 + the distance in metres outside the edge of the speaker layout). "
+                              "6 dB is the free-field value. 0 = the level stays constant outside the layout.");
+    content.addAndMakeVisible (outsideSlider);
+    if (auto* parameter = owner.getValueTreeState().getParameter (params::kOutsideRolloffId))
+    {
+        outsideAttachment = std::make_unique<juce::SliderParameterAttachment> (*parameter, outsideSlider, nullptr);
+        outsideSlider.textFromValueFunction = [] (double v) { return juce::String (v, 2) + " dB"; };
+        outsideSlider.valueFromTextFunction = [] (const juce::String& text) { return text.getDoubleValue(); };
+        outsideSlider.updateText();
+    }
 
     overlayButton.setButtonText (overlayToggleText);
     overlayButton.setTooltip (overlayToggleTip);
@@ -401,7 +415,7 @@ void SpatialEditor::layoutContent()
 
     // The pad goes first, because the rows and the footer line up with its borders: nothing in the top rows sticks
     // out beyond the pad on the left or on the right.
-    constexpr int rowHeight = 32, rowCount = 4, footerHeight = 28;
+    constexpr int rowHeight = 32, rowCount = 5, footerHeight = 28;
     field->setBounds (area.withTrimmedTop (rowCount * rowHeight).withTrimmedBottom (footerHeight));
     const auto plane = field->planeBounds().translated ((float) field->getX(), (float) field->getY()).toNearestInt();
     const auto nextRow = [&] { return area.removeFromTop (rowHeight).withLeft (plane.getX()).withRight (plane.getRight()).reduced (0, 5); };
@@ -442,14 +456,19 @@ void SpatialEditor::layoutContent()
     bar.removeFromLeft (4);
     ungroupButton.setBounds (bar.removeFromLeft (74));
 
-    // Fourth row: virtual speakers, and the line of text (track channels, import/export results).
-    auto last = nextRow();
+    // Fourth row: virtual speakers (if the plugin has them) and the outside rolloff.
+    auto fourth = nextRow();
     if (owner.supportsVirtualSpeakers())
     {
-        virtualLabel.setBounds (last.removeFromLeft (110));
-        virtualModeBox.setBounds (last.removeFromLeft (90));
-        last.removeFromLeft (12);
+        virtualLabel.setBounds (fourth.removeFromLeft (110));
+        virtualModeBox.setBounds (fourth.removeFromLeft (90));
+        fourth.removeFromLeft (24);
     }
+    outsideLabel.setBounds (fourth.removeFromLeft (110));
+    outsideSlider.setBounds (fourth.removeFromLeft (260));
+
+    // Fifth row: the plugin's own controls, and the line of text (track channels, import/export results).
+    auto last = nextRow();
     layoutExtraControls (last);
     infoLabel.setBounds (last);
 

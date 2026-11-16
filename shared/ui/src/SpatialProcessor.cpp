@@ -77,6 +77,7 @@ SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::St
 
     numSourcesParam  = apvts.getRawParameterValue (params::kNumSourcesId);
     numSpeakersParam = apvts.getRawParameterValue (params::kNumSpeakersId);
+    outsideRolloffParam = apvts.getRawParameterValue (params::kOutsideRolloffId);
 
     startTimerHz (30);
 }
@@ -106,6 +107,11 @@ int SpatialProcessor::getActiveSources() const noexcept
 int SpatialProcessor::getActiveSpeakers() const noexcept
 {
     return clampCount (numSpeakersParam->load(), getTotalNumOutputChannels());
+}
+
+double SpatialProcessor::getOutsideRolloff() const noexcept
+{
+    return (double) outsideRolloffParam->load();
 }
 
 std::vector<Vec2> SpatialProcessor::getActiveSpeakerPositions() const

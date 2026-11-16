@@ -64,4 +64,19 @@ tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, tlos::Vec2
 
     return result;
 }
+
+tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, const tlos::Hull& hull, tlos::Vec2 source,
+                                double spread, const DbapSettings& settings) noexcept
+{
+    auto gains = computeGains (speakers, source, spread, settings);
+
+    if (settings.outsideRolloffDb > 0.0 && hull.hasArea())
+    {
+        const auto factor = (float) tlos::outsideFactor (hull.distance (source), settings.outsideRolloffDb);
+        for (int i = 0; i < gains.count; ++i)
+            gains.gain[(size_t) i] *= factor;
+    }
+
+    return gains;
+}
 }

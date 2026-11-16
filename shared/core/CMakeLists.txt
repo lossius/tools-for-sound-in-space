@@ -5,7 +5,8 @@
 # source groups, the lock-free handover). Must never depend on JUCE.
 add_library(TlosCore STATIC
     src/Limits.cpp
-    src/Groups.cpp)
+    src/Groups.cpp
+    src/Hull.cpp)
 
 # Headers are listed so that they show up in the IDE's project navigator.
 file(GLOB TLOS_CORE_HEADERS CONFIGURE_DEPENDS include/tlos/*.h)

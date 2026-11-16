@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /** @file CoreTests.cpp
-    @brief Minimal dependency-free test runner for TlosCore (no JUCE): channel limits and source groups. */
+    @brief Minimal dependency-free test runner for TlosCore (no JUCE): channel limits, source groups and the hull falloff. */
 
 #include "tlos/Groups.h"
+#include "tlos/Hull.h"
 #include "tlos/Limits.h"
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <vector>
 
 using namespace tlos;
@@ -159,12 +161,80 @@ static void testGroupGeometry()
     CHECK (convexHull ({ { 0, 0 }, { 1, 1 }, { 2, 2 } }).size() == 2);
 }
 
+/** The hull: distance 0 inside and on the boundary, the distance to the nearest edge or corner outside, no effect without area. */
+static void testHull()
+{
+    const std::vector<Vec2> square { { -2, -2 }, { 2, -2 }, { 2, 2 }, { -2, 2 }, { 0, 0 }, { 1, 1 } }; // the inner points do not matter
+    const Hull hull (square);
+    CHECK (hull.hasArea() && hull.getCorners().size() == 4);
+
+    CHECK (isNear (hull.distance ({ 0, 0 }), 0.0));
+    CHECK (isNear (hull.distance ({ 1.9, -1.9 }), 0.0));
+    CHECK (isNear (hull.distance ({ 2, 0 }), 0.0));       // on an edge
+    CHECK (isNear (hull.distance ({ 2, 2 }), 0.0));       // on a corner
+    CHECK (isNear (hull.distance ({ 5, 0 }), 3.0));       // beside an edge
+    CHECK (isNear (hull.distance ({ 0, -2.5 }), 0.5));
+    CHECK (isNear (hull.distance ({ 5, 6 }), 5.0));       // beyond a corner: 3-4-5
+
+    // A triangle: continuous across the boundary.
+    const Hull triangle (std::vector<Vec2> { { 0, 0 }, { 4, 0 }, { 0, 4 } });
+    CHECK (isNear (triangle.distance ({ 1, 1 }), 0.0));
+    CHECK (isNear (triangle.distance ({ 3, 3 }), std::sqrt (2.0)));   // |3 + 3 - 4| / sqrt(2) from the hypotenuse
+    double previous = triangle.distance ({ 0.5, 0.5 });
+    for (int i = 1; i <= 400; ++i)
+    {
+        const double x = 0.5 + 0.01 * i;
+        const double d = triangle.distance ({ x, x });
+        CHECK (d >= previous - 1e-12 && d - previous < 0.02);
+        previous = d;
+    }
+
+    // No area: nothing to be outside of.
+    CHECK (! Hull().hasArea() && isNear (Hull().distance ({ 9, 9 }), 0.0));
+    CHECK (! Hull (std::vector<Vec2> { { 1, 1 } }).hasArea());
+    CHECK (isNear (Hull (std::vector<Vec2> { { 0, 0 }, { 4, 0 } }).distance ({ 2, 5 }), 0.0));
+    CHECK (isNear (Hull (std::vector<Vec2> { { 0, 0 }, { 1, 1 }, { 2, 2 } }).distance ({ 0, 9 }), 0.0));
+
+    // Non-finite points and positions are ignored.
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const Hull withNan (std::vector<Vec2> { { 0, 0 }, { 4, 0 }, { 0, 4 }, { nan, 1 } });
+    CHECK (withNan.getCorners().size() == 3);
+    CHECK (isNear (withNan.distance ({ nan, 0 }), 0.0));
+}
+
+/** The falloff: 1 up to the boundary, then (1 + d)^(-rolloff / 6.02): each doubling of (1 + d) costs `rolloff` dB. */
+static void testOutsideFactor()
+{
+    CHECK (isNear (outsideFactor (0.0, 6.0), 1.0));
+    CHECK (isNear (outsideFactor (-1.0, 6.0), 1.0));
+    CHECK (isNear (outsideFactor (3.0, 0.0), 1.0));      // off
+    CHECK (isNear (outsideFactor (3.0, -6.0), 1.0));
+    CHECK (isNear (outsideFactor (std::numeric_limits<double>::quiet_NaN(), 6.0), 1.0));
+
+    // 1 m outside = (1 + 1) = one doubling: 6 dB down; 3 m outside = two doublings: 12 dB down.
+    CHECK (isNear (20.0 * std::log10 (outsideFactor (1.0, 6.0206)), -6.0206, 1e-3));
+    CHECK (isNear (20.0 * std::log10 (outsideFactor (3.0, 6.0206)), -12.0412, 1e-3));
+    CHECK (isNear (20.0 * std::log10 (outsideFactor (1.0, 12.0)), -12.0 * std::log2 (2.0), 1e-3));
+
+    // Falls steadily and smoothly, and a larger rolloff always gives less.
+    double previous = 1.0;
+    for (int i = 1; i <= 200; ++i)
+    {
+        const double f = outsideFactor (0.05 * i, 6.0);
+        CHECK (f < previous && previous - f < 0.06);
+        CHECK (outsideFactor (0.05 * i, 12.0) < f);
+        previous = f;
+    }
+}
+
 /** Runs all shared core tests. @return 0 if every check passed, otherwise 1. */
 int main()
 {
     testLimits();
     testSourceGroups();
     testGroupGeometry();
+    testHull();
+    testOutsideFactor();
 
     if (failures == 0)
         std::printf ("All tests passed\n");

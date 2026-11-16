@@ -100,6 +100,10 @@ public:
     /** @copydoc getActiveSources() */
     int getActiveSpeakers() const noexcept;
 
+    /** @return The outside rolloff in dB (the "Outside Rolloff" parameter): how fast the level falls for a source
+        outside the speaker layout, see tlos::outsideFactor(). 0 = no falloff. Safe to call from any thread. */
+    double getOutsideRolloff() const noexcept;
+
     /** @return The positions of the speakers in use, in metres. */
     std::vector<Vec2> getActiveSpeakerPositions() const;
 
@@ -188,6 +192,7 @@ protected:
     std::array<std::atomic<float>*, kMaxChannels> spkY {};      ///< Raw values of the speaker y parameters.
     std::atomic<float>* numSourcesParam = nullptr;  ///< Raw value of "Number of Sources".
     std::atomic<float>* numSpeakersParam = nullptr; ///< Raw value of "Number of Speakers".
+    std::atomic<float>* outsideRolloffParam = nullptr; ///< Raw value of "Outside Rolloff".
 
 private:
     /** Timer callback (30 Hz, message thread): calls refreshLayout(). */

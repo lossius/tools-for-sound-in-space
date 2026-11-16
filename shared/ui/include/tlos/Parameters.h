@@ -26,6 +26,15 @@ inline const juce::String kNumSourcesId  { "numSources" };
 /** ID of the "Number of Speakers" parameter (see kNumSourcesId). */
 inline const juce::String kNumSpeakersId { "numSpeakers" };
 
+/** ID of the "Outside Rolloff" parameter: the level drop in dB for each doubling of (1 + distance outside the
+    speaker layout in metres), see tlos::outsideFactor(). 0 = the level stays constant outside the layout. Part of
+    saved sessions: never change it. */
+inline const juce::String kOutsideRolloffId { "outsideRolloff" };
+/** Largest outside rolloff in dB. */
+inline constexpr float kMaxOutsideRolloff = 24.0f;
+/** Default outside rolloff in dB (the free-field value). */
+inline constexpr float kDefaultOutsideRolloff = 6.0f;
+
 /** @return The parameter ID of the x or y (`axis`) coordinate of source `index` (zero-based), for example "src1x". */
 inline juce::String sourceId  (int index, char axis) { return "src" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
 /** @return The parameter ID of the spread of source `index` (zero-based), for example "src1spread". */
@@ -34,7 +43,7 @@ inline juce::String spreadId (int index) { return "src" + juce::String (index + 
 inline juce::String speakerId (int index, char axis) { return "spk" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
 
 /** @return All host parameters, in the order a host lists them: the two counts, then x, y and spread of
-    every source, then x and y of every speaker. The IDs are part of the saved sessions: never change them. */
+    every source, then x and y of every speaker, then the outside rolloff. The IDs are part of the saved sessions: never change them. */
 inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     using juce::AudioParameterFloat;
@@ -72,6 +81,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         add (speakerId (i, 'x'), "Speaker " + juce::String (i + 1) + " X");
         add (speakerId (i, 'y'), "Speaker " + juce::String (i + 1) + " Y");
     }
+
+    layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { kOutsideRolloffId, 1 }, "Outside Rolloff",
+                                                       NormalisableRange<float> (0.0f, kMaxOutsideRolloff), kDefaultOutsideRolloff,
+                                                       juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
     return layout;
 }

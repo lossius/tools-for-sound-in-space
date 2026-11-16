@@ -8,6 +8,7 @@
 
 #include "distpan/Dbap.h"
 #include "tlos/Exchange.h"
+#include "tlos/Hull.h"
 #include "tlos/SpatialProcessor.h"
 
 #include <array>
@@ -48,7 +49,7 @@ public:
         running (e.g. in tests). */
     void refreshLayout() override;
 
-    /** @return The current rolloff and blur. Safe to call from any thread. */
+    /** @return The current rolloff, blur and outside rolloff. Safe to call from any thread. */
     distpan::DbapSettings getSettings() const noexcept;
 
 protected:
@@ -60,6 +61,7 @@ private:
     struct SpeakerSet
     {
         std::vector<tlos::Vec2> positions; ///< Positions in metres.
+        tlos::Hull hull;                   ///< Their convex hull, for the falloff outside the layout.
         std::uint64_t id = 0;              ///< Distinguishes this set from all earlier ones (see GainKey).
     };
 
@@ -88,6 +90,7 @@ private:
         float spread = 0.0f;         ///< Source spread radius.
         float rolloff = 0.0f;        ///< Rolloff the gains were computed with.
         float blur = 0.0f;           ///< Blur the gains were computed with.
+        float outside = 0.0f;        ///< Outside rolloff the gains were computed with.
         std::uint64_t setId = 0;     ///< SpeakerSet::id the gains belong to.
         bool valid = false;          ///< False until gains have been computed.
     };

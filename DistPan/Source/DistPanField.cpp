@@ -18,11 +18,12 @@ DistPanField::DistPanField (DistPanAudioProcessor& p)
 void DistPanField::updateOverlay (const std::vector<tlos::Vec2>& speakers, const std::vector<tlos::VirtualSpeaker>&)
 {
     speakerPositions = speakers;
+    speakerHull = tlos::Hull (speakers);
 }
 
 tlos::SourceGains DistPanField::getLinkGains (int, tlos::Vec2 position, double spread) const
 {
-    auto gains = distpan::computeGains (speakerPositions, position, spread, dbapProcessor.getSettings());
+    auto gains = distpan::computeGains (speakerPositions, speakerHull, position, spread, dbapProcessor.getSettings());
 
     // Leave out what is more than 20 dB below the strongest share, so that the pad stays readable.
     float strongest = 0.0f;
