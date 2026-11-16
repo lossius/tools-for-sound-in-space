@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 
 : "${SIGN_IDENTITY:?Set SIGN_IDENTITY to your 'Developer ID Application: ...' certificate name}"
 BUILD_DIR="${BUILD_DIR:-build-release}"
-ART="$BUILD_DIR/TriPan_artefacts/Release"
+ART="$BUILD_DIR/TriPan/TriPan_artefacts/Release"
 ENTITLEMENTS="$(pwd)/resources/Standalone.entitlements"
 
 if [ -z "${DRY_RUN:-}" ] && [ -z "${NOTARY_PROFILE:-}" ] && [ -z "${APPLE_ID:-}" ]; then
