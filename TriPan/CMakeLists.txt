@@ -5,26 +5,13 @@
 add_subdirectory(core)
 add_subdirectory(tests)
 
-set(TRIPAN_FORMATS VST3 Standalone)
-if(APPLE)
-    list(APPEND TRIPAN_FORMATS AU)
-endif()
-
-if(TRIPAN_ENABLE_AAX)
-    if(NOT EXISTS "${TRIPAN_AAX_SDK_PATH}")
-        message(FATAL_ERROR "TRIPAN_ENABLE_AAX is ON but TRIPAN_AAX_SDK_PATH does not exist: '${TRIPAN_AAX_SDK_PATH}'")
-    endif()
-    juce_set_aax_sdk_path("${TRIPAN_AAX_SDK_PATH}")
-    list(APPEND TRIPAN_FORMATS AAX)
-endif()
-
 juce_add_plugin(TriPan
     PRODUCT_NAME "TriPan"
     COMPANY_NAME "Trond Lossius"
     BUNDLE_ID no.trondlossius.tripan
     PLUGIN_MANUFACTURER_CODE Tlos
     PLUGIN_CODE TrPn
-    FORMATS ${TRIPAN_FORMATS}
+    FORMATS ${TLOS_PLUGIN_FORMATS}
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
@@ -54,71 +41,8 @@ source_group("Sources/include" FILES
     Source/PluginEditor.h
     Source/TriPanField.h)
 
-target_compile_definitions(TriPan PUBLIC
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
-
-target_link_libraries(TriPan
-    PRIVATE
-        juce::juce_audio_utils
-    PUBLIC
-        TriPanCore
-        TlosUI
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags)
-
-# JUCE's module sources are compiled into our targets (they are not separate Xcode targets). Put
-# them all in a "JUCE" group, with one subgroup per module and, as in TriPanCore, "src" (the
-# compiled .mm/.cpp/.c units) and "include" (the headers, only listed so that the IDE shows them;
-# they are not compiled). Later groups win over earlier ones; groups with FILES win over regexes.
-source_group("JUCE" REGULAR_EXPRESSION "/JUCE/")
-set(TRIPAN_JUCE_MODULES
-    juce_audio_basics juce_audio_devices juce_audio_formats juce_audio_plugin_client
-    juce_audio_processors juce_audio_processors_headless juce_audio_utils juce_core
-    juce_data_structures juce_events juce_graphics juce_gui_basics juce_gui_extra)
-foreach(module_name IN LISTS TRIPAN_JUCE_MODULES)
-    set(module_dir "${CMAKE_SOURCE_DIR}/JUCE/modules/${module_name}")
-    source_group("JUCE/${module_name}/src" REGULAR_EXPRESSION "/JUCE/modules/${module_name}/")
-    file(GLOB_RECURSE module_headers CONFIGURE_DEPENDS "${module_dir}/*.h" "${module_dir}/*.hpp")
-    target_sources(TriPan PRIVATE ${module_headers})
-    source_group(TREE "${module_dir}" PREFIX "JUCE/${module_name}/include" FILES ${module_headers})
-endforeach()
-source_group("Tests" REGULAR_EXPRESSION "/tests/")
-
-if(TRIPAN_INSTALL_VST3)
-    set(TRIPAN_VST3_BUNDLE "$<GENEX_EVAL:$<TARGET_PROPERTY:TriPan_VST3,JUCE_PLUGIN_ARTEFACT_FILE>>")
-    set(TRIPAN_VST3_DEST "${TRIPAN_VST3_INSTALL_DIR}/$<TARGET_PROPERTY:TriPan,JUCE_PRODUCT_NAME>.vst3")
-    add_custom_command(TARGET TriPan_VST3 POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRIPAN_VST3_INSTALL_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_VST3_DEST}"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_VST3_BUNDLE}" "${TRIPAN_VST3_DEST}"
-        COMMENT "Copying TriPan.vst3 to ${TRIPAN_VST3_INSTALL_DIR}"
-        VERBATIM)
-endif()
-
-if(APPLE AND TRIPAN_INSTALL_AU)
-    set(TRIPAN_AU_BUNDLE "$<GENEX_EVAL:$<TARGET_PROPERTY:TriPan_AU,JUCE_PLUGIN_ARTEFACT_FILE>>")
-    set(TRIPAN_AU_DEST "${TRIPAN_AU_INSTALL_DIR}/$<TARGET_PROPERTY:TriPan,JUCE_PRODUCT_NAME>.component")
-    add_custom_command(TARGET TriPan_AU POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRIPAN_AU_INSTALL_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_AU_DEST}"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_AU_BUNDLE}" "${TRIPAN_AU_DEST}"
-        COMMENT "Copying TriPan.component to ${TRIPAN_AU_INSTALL_DIR}"
-        VERBATIM)
-endif()
-
-if(TRIPAN_ENABLE_AAX AND TRIPAN_INSTALL_AAX)
-    set(TRIPAN_AAX_BUNDLE "$<GENEX_EVAL:$<TARGET_PROPERTY:TriPan_AAX,JUCE_PLUGIN_ARTEFACT_FILE>>")
-    set(TRIPAN_AAX_DEST "${TRIPAN_AAX_INSTALL_DIR}/$<TARGET_PROPERTY:TriPan,JUCE_PRODUCT_NAME>.aaxplugin")
-    add_custom_command(TARGET TriPan_AAX POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${TRIPAN_AAX_INSTALL_DIR}"
-        COMMAND ${CMAKE_COMMAND} -E rm -rf "${TRIPAN_AAX_DEST}"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory "${TRIPAN_AAX_BUNDLE}" "${TRIPAN_AAX_DEST}"
-        COMMENT "Copying TriPan.aaxplugin to ${TRIPAN_AAX_INSTALL_DIR}"
-        VERBATIM)
-endif()
+tlos_finish_plugin(TriPan)
+target_link_libraries(TriPan PUBLIC TriPanCore)
 
 # Offline processor tests (no DAW needed)
 add_executable(TriPanProcessorTests tests/ProcessorTests.cpp)

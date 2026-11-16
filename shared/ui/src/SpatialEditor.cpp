@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/** @file PluginEditor.cpp
+/** @file SpatialEditor.cpp
     @brief Layout, scaling, controls and file dialogs of the plugin window. */
 
 #include "tlos/SpatialEditor.h"
@@ -67,9 +67,9 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
         owner.setVirtualMode ((VirtualMode) virtualModeBox.getSelectedId());
         syncControls();
     };
+    content.addAndMakeVisible (virtualModeBox);
     virtualLabel.setVisible (owner.supportsVirtualSpeakers());
     virtualModeBox.setVisible (owner.supportsVirtualSpeakers());
-    content.addAndMakeVisible (virtualModeBox);
 
     overlayButton.setButtonText (overlayToggleText);
     overlayButton.setTooltip (overlayToggleTip);
@@ -393,6 +393,8 @@ void SpatialEditor::resized()
         owner.setEditorWidth (getWidth());
 }
 
+void SpatialEditor::layoutExtraControls (juce::Rectangle<int>&) {}
+
 void SpatialEditor::layoutContent()
 {
     auto area = content.getLocalBounds();
@@ -448,6 +450,7 @@ void SpatialEditor::layoutContent()
         virtualModeBox.setBounds (last.removeFromLeft (90));
         last.removeFromLeft (12);
     }
+    layoutExtraControls (last);
     infoLabel.setBounds (last);
 
     // Footer: links at the left, in the centre and at the right, each only as wide as its text so that

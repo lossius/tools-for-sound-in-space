@@ -20,11 +20,15 @@ triangle's three speakers using barycentric weights, power-normalised so overall
 - `TriPan/Source/` — the plugin: `PluginProcessor` (derives from `SpatialProcessor`; panning), `TriPanField` (derives from
   `FieldComponent`; draws the triangulation and links), `PluginEditor` (a thin `SpatialEditor`).
 - `TriPan/tests/` — tests of `TriPanCore`, the processor and the editor, run through `ctest`.
+- `DistPan/` — the second plugin (DBAP, see below): `core/` (`DistPanCore`, namespace `distpan`, JUCE-free), `Source/`, `tests/`.
+- `cmake/TlosPlugin.cmake` — what every plugin's CMake needs: `TLOS_PLUGIN_FORMATS`, `tlos_finish_plugin(<target>)` (libraries, JUCE groups, install after build).
 - `JUCE/` — git submodule, pinned to a release tag. Do not edit.
 
 ### Adding a plugin
-Create a folder next to `TriPan/` with its own `core/` (only the panning method), `Source/` and `tests/`, link `TlosUI`, and add it
-in the root `CMakeLists.txt`. The processor derives from `tlos::SpatialProcessor` and implements `processBlock`, `refreshLayout()`
+Copy the shape of `DistPan/` (the simplest one): its own `core/` (only the panning method), `Source/` and `tests/`; call `juce_add_plugin(... FORMATS ${TLOS_PLUGIN_FORMATS})`, then `tlos_finish_plugin(<target>)`; add the folder
+in the root `CMakeLists.txt`. Choose a new plugin code (TriPan `TrPn`, DistPan `DsPn`); the manufacturer code stays `Tlos`.
+Parameters of the panning method are passed to the `SpatialProcessor` constructor (they follow the shared ones); controls for them
+are added in the editor with `addToContent()` + `layoutExtraControls()` + `relayout()`. The processor derives from `tlos::SpatialProcessor` and implements `processBlock`, `refreshLayout()`
 (called by a 30 Hz timer and after layout changes: build what the audio thread needs and hand it over with `tlos::Exchange<T>`),
 `getName()`, `createEditor()`; it passes its own saved-state tag to the base (keep it stable). Virtual speakers are optional
 (`supportsVirtualSpeakers()`, `findAutomaticVirtualSpeakers()`). The editor passes a `FieldComponent` subclass and the text of the overlay
@@ -40,18 +44,18 @@ cmake -B build -G Xcode          # or: cmake -B build -G Ninja -DCMAKE_BUILD_TYP
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
-On macOS every build of `TriPan_AU` likewise copies the bundle to `~/Library/Audio/Plug-Ins/Components`
-(`-DTRIPAN_INSTALL_AU=OFF`, `-DTRIPAN_AU_INSTALL_DIR=...`). On macOS every build of `TriPan_VST3` also copies the bundle to `~/Library/Audio/Plug-Ins/VST3`
-(`-DTRIPAN_INSTALL_VST3=OFF` disables it; `-DTRIPAN_VST3_INSTALL_DIR=...` changes the folder; CI and
+On macOS every build of an AU target (`TriPan_AU`, `DistPan_AU`) likewise copies the bundle to `~/Library/Audio/Plug-Ins/Components`
+(`-DTLOS_INSTALL_AU=OFF`, `-DTLOS_AU_INSTALL_DIR=...`). On macOS every build of a VST3 target also copies the bundle to `~/Library/Audio/Plug-Ins/VST3`
+(`-DTLOS_INSTALL_VST3=OFF` disables it; `-DTLOS_VST3_INSTALL_DIR=...` changes the folder; CI and
 the signing script turn it off).
 
-Validation: `scripts/validate.sh` builds the Release VST3 and runs pluginval at strictness 10
+Validation: `scripts/validate.sh` (`PLUGIN=DistPan` for the other plugin, `BUILD_DIR=...` for an Xcode build folder) builds the Release VST3 and runs pluginval at strictness 10
 (passes as of M5). pluginval can only scan an AU that is installed in ~/Library/Audio/Plug-Ins/Components.
 For threading checks, build `TriPanProcessorTests` in a separate dir with
 `-DCMAKE_CXX_FLAGS=-fsanitize=thread` (clean as of M5); it includes a test that automates parameters
 on one thread while another processes audio.
 
-AAX (optional): `-DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK`; every `TriPan_AAX` build then copies the bundle to Avid's system plug-in folder (`-DTRIPAN_INSTALL_AAX=OFF`, `-DTRIPAN_AAX_INSTALL_DIR=...`). The Avid AAX SDK is
+AAX (optional): `-DTLOS_ENABLE_AAX=ON -DTLOS_AAX_SDK_PATH=/path/to/AAX_SDK`; every AAX target then copies the bundle to Avid's system plug-in folder (`-DTLOS_INSTALL_AAX=OFF`, `-DTLOS_AAX_INSTALL_DIR=...`). The Avid AAX SDK is
 not redistributable: keep it outside this repo. Check its current licence before publishing AAX builds (SDK 2.10.0 compiles; its LICENSE.txt offers Avid's licence or GPLv3).
 
 IDE layout (Xcode / Visual Studio): `source_group` calls in the CMake files give the project navigator the groups
@@ -63,6 +67,14 @@ Documentation: every file has a Doxygen `@file`/`@brief` block and every class, 
 `/** */` comment (also private ones and the test helpers; unnamed parameters in declarations should be named so that
 `@param` works). `doxygen Doxyfile` (brew install doxygen) writes HTML to `build/doxygen/html` and must report no
 warnings; keep it that way when adding code.
+
+## DistPan (DBAP)
+- Gain law (`DistPan/core/src/Dbap.cpp`): `g_i = w_i / sqrt(sum w_j^2)`, `w_i = (d_i^2)^(-a/2)`, `d_i^2 = dx^2 + dy^2 + blur^2 + spread^2` (floored at 1e-12),
+  `a = rolloffDb / 6.0206`. Every speaker takes part; non-finite speakers get 0; at most 64 speakers; result is a `tlos::SourceGains` with entry i = speaker i.
+- Extra host parameters (last in the host's list): `rolloff` (1..12 dB, default 6), `blur` (0..5 m, default 0.2). IDs and the state tag `DistPan` are part of saved sessions.
+- Processor: `refreshLayout()` publishes the speaker positions (`SpeakerSet` with an id) through `tlos::Exchange`; `processBlock` computes dense per-source gain rows
+  (cache key: position, spread, rolloff, blur, set id), ramps linearly per block, fades speakers that leave "Number of Speakers". No virtual speakers (`supportsVirtualSpeakers()` is false).
+- Editor: `DistPanField` draws no overlay (the overlay toggle is hidden) and links only for gains within 20 dB of the strongest; two sliders (rolloff, blur) sit in row 4.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.

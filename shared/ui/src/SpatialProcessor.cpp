@@ -49,9 +49,22 @@ int clampCount (float parameterValue, int channels) noexcept
 }
 }
 
-SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::String& stateType)
+namespace
+{
+/** The shared parameters followed by the plugin's own. */
+juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (std::vector<std::unique_ptr<juce::RangedAudioParameter>> extra)
+{
+    auto layout = params::createLayout();
+    for (auto& parameter : extra)
+        layout.add (std::move (parameter));
+    return layout;
+}
+}
+
+SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::String& stateType,
+                                    std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters)
     : AudioProcessor (buses),
-      apvts (*this, nullptr, stateType, params::createLayout())
+      apvts (*this, nullptr, stateType, makeLayout (std::move (extraParameters)))
 {
     for (int i = 0; i < kMaxChannels; ++i)
     {

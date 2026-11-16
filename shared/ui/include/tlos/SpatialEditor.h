@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Trond Lossius
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/** @file PluginEditor.h
+/** @file SpatialEditor.h
     @brief The plugin window shared by all plugins: count sliders, Edit/View and virtual speaker menus, file buttons and the pad. */
 
 #pragma once
@@ -96,6 +96,20 @@ public:
 
     /** Re-reads the parameters and channel counts into the controls (also called by a timer). */
     void syncControls();
+
+protected:
+    /** Hook for the controls of the plugin's panning method (for example a rolloff slider): positions them
+        in the row that also holds the virtual speaker menu and the status text, taking the space they need
+        off `row` (base-size pixels; the status text gets what is left). Add the controls themselves with
+        addToContent() in the constructor. The default has none. */
+    virtual void layoutExtraControls (juce::Rectangle<int>& row);
+
+    /** Adds a child to the area that is laid out at the base size and scaled with the window. */
+    void addToContent (juce::Component& child) { content.addAndMakeVisible (child); }
+
+    /** Positions every control again (a subclass calls this at the end of its constructor, after it has added
+        its own controls: the base class has laid out the window before they existed). */
+    void relayout() { layoutContent(); }
 
 private:
     /** Timer callback: keeps the controls in step with the parameters. */

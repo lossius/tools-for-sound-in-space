@@ -44,10 +44,13 @@ class SpatialProcessor : public juce::AudioProcessor,
 public:
     /** Creates the processor with one input bus ("Sources") and one output bus ("Speakers"), all
         parameters, and a 30 Hz timer that calls refreshLayout().
-        @param buses      The buses (use stereo defaults; hosts change them).
-        @param stateType  The tag of the saved state. Keep it unchanged between versions of a plugin: it
-                          is how an old session is recognised. */
-    SpatialProcessor (const BusesProperties& buses, const juce::String& stateType);
+        @param buses            The buses (use stereo defaults; hosts change them).
+        @param stateType        The tag of the saved state. Keep it unchanged between versions of a plugin: it
+                                is how an old session is recognised.
+        @param extraParameters  Parameters that belong to the plugin's panning method (for example a rolloff).
+                                They come after the shared ones in the host's list. */
+    SpatialProcessor (const BusesProperties& buses, const juce::String& stateType,
+                      std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters = {});
 
     /** Stops the timer. */
     ~SpatialProcessor() override;

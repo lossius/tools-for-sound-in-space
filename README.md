@@ -1,6 +1,8 @@
 # Tools for Sound in Space
 
-A collection of free, open-source (AGPLv3) plugins for spatial audio. The first plugin is **TriPan**.
+A collection of free, open-source (AGPLv3) plugins for spatial audio, all with the same pad, tables, source groups and
+import/export, so that they look and work alike. So far: **TriPan** (triangulation panning) and **DistPan** (distance-based
+amplitude panning, DBAP). VBAP and ViMiC are planned.
 
 ## TriPan
 
@@ -16,11 +18,27 @@ Status: early development (M1 skeleton).
 |---|---|
 | `shared/core` | `TlosCore`: JUCE-free code every plugin uses (geometry types, channel limits, source groups, lock-free hand-over) |
 | `shared/ui` | `TlosUI`: the processor base class, host parameters, the XY pad, the editor window, table windows and position import/export |
+| `DistPan/` | DistPan: `core/` (the DBAP gain law, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
 | `TriPan/` | TriPan itself: `core/` (triangulation and gains, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
 | `speaker layouts/` | Ready-made speaker layouts (XML) that any plugin of the family can import |
 
-More plugins (DBAP, VBAP, ViMiC) are planned and will sit next to `TriPan/`, reusing `shared/`, so that they all look and work alike.
-The built plug-ins end up in `<build folder>/TriPan/TriPan_artefacts/`.
+More plugins (VBAP, ViMiC) are planned and will sit next to `TriPan/` and `DistPan/`, reusing `shared/`.
+The built plug-ins end up in `<build folder>/<plugin>/<plugin>_artefacts/`.
+
+## DistPan
+
+Distance-based amplitude panning (DBAP) in a 2D plane. Every speaker gets a share of a source that falls off with its
+distance from it, g_i = k / d_i^a, with k chosen so that the total power is constant. Two settings, both host parameters:
+
+- **Rolloff** (1-12 dB, default 6): the level drop for each doubling of the distance between a source and a speaker. 6 dB is the
+  free-field value; more makes the sound more local.
+- **Blur** (0-5 m, default 0.2): added to the distance (d^2 + blur^2), so that a source on top of a speaker does not use that
+  speaker alone and the sound moves smoothly when a source passes one. A source's **spread** adds to the blur, so a larger
+  spread distributes the sound more evenly.
+
+Unlike TriPan, DistPan needs no triangulation and has no virtual speakers; it works with any number of speakers (1 to 64),
+also collinear or irregular layouts, and sources outside the speakers. On the pad, links are drawn to the speakers that get
+a share within 20 dB of the strongest one.
 
 ## API documentation
 
@@ -36,9 +54,9 @@ cmake --build build --config Release
 ```
 
 On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` and the AudioUnit to
-`~/Library/Audio/Plug-Ins/Components` after each build. Use `-DTRIPAN_INSTALL_VST3=OFF` /
-`-DTRIPAN_INSTALL_AU=OFF` to disable this, or `-DTRIPAN_VST3_INSTALL_DIR=<folder>` /
-`-DTRIPAN_AU_INSTALL_DIR=<folder>` to change the location.
+`~/Library/Audio/Plug-Ins/Components` after each build. Use `-DTLOS_INSTALL_VST3=OFF` /
+`-DTLOS_INSTALL_AU=OFF` to disable this, or `-DTLOS_VST3_INSTALL_DIR=<folder>` /
+`-DTLOS_AU_INSTALL_DIR=<folder>` to change the location.
 
 ## Source spread
 Each source has a **spread**: the radius, in metres, of a circle around it over which its sound is
@@ -218,13 +236,13 @@ cmake --build build --config Release --target TriPan_VST3 TriPan_Standalone
 The Avid AAX SDK is not included and cannot be redistributed. Download it from Avid, keep it outside
 this repository, and check its current licence terms before publishing AAX builds.
 ```
-cmake -B build -G Xcode -DTRIPAN_ENABLE_AAX=ON -DTRIPAN_AAX_SDK_PATH=/path/to/AAX_SDK
+cmake -B build -G Xcode -DTLOS_ENABLE_AAX=ON -DTLOS_AAX_SDK_PATH=/path/to/AAX_SDK
 cmake --build build --config Release --target TriPan_AAX
 ```
 Every AAX build is copied to Pro Tools' system folder (`/Library/Application Support/Avid/Audio/Plug-Ins` on
 macOS, `%CommonProgramFiles%\Avid\Audio\Plug-Ins` on Windows). The folder must be writable by your user
-(on macOS it is writable by the `admin` group by default). Turn this off with `-DTRIPAN_INSTALL_AAX=OFF`
-or change the folder with `-DTRIPAN_AAX_INSTALL_DIR=...`.
+(on macOS it is writable by the `admin` group by default). Turn this off with `-DTLOS_INSTALL_AAX=OFF`
+or change the folder with `-DTLOS_AAX_INSTALL_DIR=...`.
 
 Pro Tools only loads AAX plugins that are signed through Avid's PACE process. Development builds
 need a Pro Tools Developer build; release builds need signing arranged with Avid. This path has not

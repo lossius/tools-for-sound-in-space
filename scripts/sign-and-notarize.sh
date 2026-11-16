@@ -10,6 +10,7 @@
 #                                  xcrun notarytool store-credentials <profile>
 #   or     APPLE_ID, TEAM_ID, APP_PASSWORD   (app-specific password; used in CI)
 # Optional:
+#   PLUGIN      which plugin to build and sign: TriPan (default) or DistPan
 #   BUILD_DIR   build folder (default: build-release)
 #   NO_BUILD=1  sign what is already in BUILD_DIR instead of building first
 #   DRY_RUN=1   sign and zip only; skip notarization and stapling (for testing the signing step)
@@ -17,8 +18,9 @@ set -eu
 cd "$(dirname "$0")/.."
 
 : "${SIGN_IDENTITY:?Set SIGN_IDENTITY to your 'Developer ID Application: ...' certificate name}"
+PLUGIN="${PLUGIN:-TriPan}"
 BUILD_DIR="${BUILD_DIR:-build-release}"
-ART="$BUILD_DIR/TriPan/TriPan_artefacts/Release"
+ART="$BUILD_DIR/$PLUGIN/${PLUGIN}_artefacts/Release"
 ENTITLEMENTS="$(pwd)/resources/Standalone.entitlements"
 
 if [ -z "${DRY_RUN:-}" ] && [ -z "${NOTARY_PROFILE:-}" ] && [ -z "${APPLE_ID:-}" ]; then
@@ -27,8 +29,8 @@ if [ -z "${DRY_RUN:-}" ] && [ -z "${NOTARY_PROFILE:-}" ] && [ -z "${APPLE_ID:-}"
 fi
 
 if [ -z "${NO_BUILD:-}" ]; then
-    cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DTRIPAN_INSTALL_VST3=OFF -DTRIPAN_INSTALL_AU=OFF >/dev/null
-    cmake --build "$BUILD_DIR" --config Release --target TriPan_VST3 TriPan_AU TriPan_Standalone
+    cmake -B "$BUILD_DIR" -G Xcode -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DTLOS_INSTALL_VST3=OFF -DTLOS_INSTALL_AU=OFF >/dev/null
+    cmake --build "$BUILD_DIR" --config Release --target "${PLUGIN}_VST3" "${PLUGIN}_AU" "${PLUGIN}_Standalone"
 fi
 
 notarize() # $1 = zip to submit
@@ -42,10 +44,10 @@ notarize() # $1 = zip to submit
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
-rm -rf dist
 mkdir -p dist
+rm -f "dist/$PLUGIN"-macOS-*.zip   # only this plugin's zips; the other plugin's stay
 
-for bundle in "$ART/VST3/TriPan.vst3" "$ART/AU/TriPan.component" "$ART/Standalone/TriPan.app"; do
+for bundle in "$ART/VST3/$PLUGIN.vst3" "$ART/AU/$PLUGIN.component" "$ART/Standalone/$PLUGIN.app"; do
     case "$bundle" in
         *.vst3)      label=VST3 ;;
         *.component) label=AU ;;
@@ -68,11 +70,11 @@ for bundle in "$ART/VST3/TriPan.vst3" "$ART/AU/TriPan.component" "$ART/Standalon
         xcrun stapler validate "$bundle"
     fi
 
-    ditto -c -k --keepParent "$bundle" "dist/TriPan-macOS-$label.zip"
+    ditto -c -k --keepParent "$bundle" "dist/$PLUGIN-macOS-$label.zip"
 done
 
 if [ -z "${DRY_RUN:-}" ]; then
-    spctl --assess --type execute --verbose "$ART/Standalone/TriPan.app"
+    spctl --assess --type execute --verbose "$ART/Standalone/$PLUGIN.app"
 else
     echo "DRY_RUN: notarization and stapling skipped; these zips will be blocked by Gatekeeper."
 fi
