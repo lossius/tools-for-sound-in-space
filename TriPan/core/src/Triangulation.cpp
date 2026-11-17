@@ -47,6 +47,26 @@ bool inCircle (Vec2 a, Vec2 b, Vec2 c, Vec2 d) noexcept
     return det > 1e-12 * permanent;
 }
 
+/** True if d is inside the circumcircle of abc by a clear margin (3 % of the smaller of the radius and the longest side), or inside the triangle itself. */
+bool deeplyInside (Vec2 a, Vec2 b, Vec2 c, Vec2 d) noexcept
+{
+    const double area2 = cross (a, b, c);
+    if (cross (a, b, d) >= 0.0 && cross (b, c, d) >= 0.0 && cross (c, a, d) >= 0.0)
+        return true;                                             // the triangle contains the point: it always goes
+    if (! (area2 > 0.0))
+        return false;
+
+    const double a2 = (a.x * a.x + a.y * a.y), b2 = (b.x * b.x + b.y * b.y), c2 = (c.x * c.x + c.y * c.y);
+    const double dd = 2.0 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+    if (! (std::abs (dd) > 0.0))
+        return false;
+    const Vec2 o { (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / dd,
+                   (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / dd };
+    const double r = std::hypot (a.x - o.x, a.y - o.y);
+    const double longest = std::max ({ std::hypot (a.x - b.x, a.y - b.y), std::hypot (b.x - c.x, b.y - c.y), std::hypot (c.x - a.x, c.y - a.y) });
+    return std::hypot (d.x - o.x, d.y - o.y) < r - 0.03 * std::min (r, longest);
+}
+
 /** True if `list` contains the edge b->a, i.e. the edge a->b has a neighbouring triangle. */
 bool hasReverse (const std::vector<Edge>& list, int a, int b)
 {
@@ -230,24 +250,67 @@ void Triangulation::build()
         keep.clear();
         cavity.clear();
 
-        for (const auto& t : work)
+        const auto buildCavity = [&] (bool margin)
         {
-            if (inCircle (q[(size_t) t.a], q[(size_t) t.b], q[(size_t) t.c], q[(size_t) k]))
+            keep.clear();
+            cavity.clear();
+            for (const auto& t : work)
             {
-                cavity.push_back ({ t.a, t.b });
-                cavity.push_back ({ t.b, t.c });
-                cavity.push_back ({ t.c, t.a });
+                const bool inside = margin ? deeplyInside (q[(size_t) t.a], q[(size_t) t.b], q[(size_t) t.c], q[(size_t) k])
+                                           : inCircle (q[(size_t) t.a], q[(size_t) t.b], q[(size_t) t.c], q[(size_t) k]);
+                if (inside)
+                {
+                    cavity.push_back ({ t.a, t.b });
+                    cavity.push_back ({ t.b, t.c });
+                    cavity.push_back ({ t.c, t.a });
+                }
+                else
+                {
+                    keep.push_back (t);
+                }
             }
-            else
+
+            // Cavity boundary = directed edges whose reverse is not also in the cavity.
+            std::vector<Edge> boundary;
+            for (const auto& e : cavity)
+                if (! hasReverse (cavity, e.a, e.b))
+                    boundary.push_back (e);
+            return boundary;
+        };
+
+        // A virtual speaker must not flip the edge between two real speakers just because its circle is nearly (not exactly)
+        // through the new point: the virtual centres of a grid form a second grid, and the real edges and the edges
+        // between the centres are then the two diagonals of the same nearly cocircular squares. The real edge is kept
+        // unless the new point is clearly inside the circle. If that cavity is not star-shaped around the point, the exact one is used.
+        auto boundary = buildCavity (ids[(size_t) k] >= realCount);
+        if (ids[(size_t) k] >= realCount)
+        {
+            bool valid = ! boundary.empty();
+            for (const auto& e : boundary)
+                if (cross (q[(size_t) e.a], q[(size_t) e.b], q[(size_t) k]) <= 0.0)
+                    valid = false;
+
+            // The cavity must also be one piece: the boundary's edges chain into a single loop.
+            if (valid)
             {
-                keep.push_back (t);
+                size_t chained = 1;
+                int at = boundary[0].b;
+                while (at != boundary[0].a && chained <= boundary.size())
+                {
+                    const auto next = std::find_if (boundary.begin(), boundary.end(), [at] (const Edge& e) { return e.a == at; });
+                    if (next == boundary.end()) { valid = false; break; }
+                    at = next->b;
+                    ++chained;
+                }
+                valid = valid && chained == boundary.size();
             }
+
+            if (! valid)
+                boundary = buildCavity (false);
         }
 
-        // Cavity boundary = directed edges whose reverse is not also in the cavity.
-        for (const auto& e : cavity)
-            if (! hasReverse (cavity, e.a, e.b))
-                keep.push_back ({ e.a, e.b, k });
+        for (const auto& e : boundary)
+            keep.push_back ({ e.a, e.b, k });
 
         work.swap (keep);
     }

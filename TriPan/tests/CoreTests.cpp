@@ -870,6 +870,32 @@ static std::vector<Vec2> gridOf (int columns, int rows, double spacing, Vec2 cen
 /** Cocircular faces get a virtual speaker, so that grids, polygons and arcs are panned symmetrically, for any listener position and any layout. */
 static void testCocircularFaces()
 {
+    // A 4x4 grid with the coordinates of the preset file (rounded to 3 decimals): a source on any edge between two neighbours
+    // feeds only those two, whichever edge it is (the virtual centres must not take over the shared edges).
+    {
+        const double xs[4] { -5.0, -1.667, 1.667, 5.0 };
+        std::vector<Vec2> speakers;
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+                speakers.push_back ({ xs[c], xs[3 - r] });
+        const SpeakerLayout layout (speakers, findVirtualSpeakers (speakers));
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+            {
+                const int me = r * 4 + c;
+                if (c < 3)
+                {
+                    const auto g = computeGains (layout, { 0.5 * (speakers[(size_t) me].x + speakers[(size_t) me + 1].x), speakers[(size_t) me].y });
+                    CHECK (isNear ((double) gainFor (g, me), std::sqrt (0.5), 1e-3) && isNear ((double) gainFor (g, me + 1), std::sqrt (0.5), 1e-3));
+                }
+                if (r < 3)
+                {
+                    const auto g = computeGains (layout, { speakers[(size_t) me].x, 0.5 * (speakers[(size_t) me].y + speakers[(size_t) me + 4].y) });
+                    CHECK (isNear ((double) gainFor (g, me), std::sqrt (0.5), 1e-3) && isNear ((double) gainFor (g, me + 4), std::sqrt (0.5), 1e-3));
+                }
+            }
+    }
+
     // The layer shortcut in computeGains must give what evaluating every layer from scratch gives.
     {
         std::mt19937 rng (21);
