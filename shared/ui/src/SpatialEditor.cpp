@@ -447,9 +447,9 @@ void SpatialEditor::layoutContent()
     bar.removeFromLeft (4);
     zoomOutButton.setBounds (bar.removeFromLeft (34));
     bar.removeFromLeft (16);
-    groupButton.setBounds (bar.removeFromLeft (62));
+    groupButton.setBounds (bar.removeFromLeft (34));
     bar.removeFromLeft (4);
-    ungroupButton.setBounds (bar.removeFromLeft (74));
+    ungroupButton.setBounds (bar.removeFromLeft (34));
 
     // The buttons that open windows (Table..., Table..., Settings...) are in one column at the right end of the rows.
     settingsButton.setBounds (bar.removeFromRight (80));

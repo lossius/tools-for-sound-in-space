@@ -171,8 +171,8 @@ private:
     juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.
     IconButton zoomInButton { IconButton::Icon::ZoomIn, "Zoom In" };     ///< Zooms the pad towards the speakers (a magnifying glass with a plus).
     IconButton zoomOutButton { IconButton::Icon::ZoomOut, "Zoom Out" };  ///< Zooms the pad back out (a magnifying glass with a minus).
-    juce::TextButton groupButton { "Group" };            ///< Groups the selected sources.
-    juce::TextButton ungroupButton { "Ungroup" };        ///< Dissolves the groups of the selected sources.
+    IconButton groupButton { IconButton::Icon::Group, "Group" };         ///< Groups the selected sources (dots inside an outline).
+    IconButton ungroupButton { IconButton::Icon::Ungroup, "Ungroup" };   ///< Dissolves the groups of the selected sources (dots inside a dashed outline).
     juce::TextButton exportSourcesButton  { "Export sources..." };   ///< Saves source positions.
     juce::TextButton importSourcesButton  { "Import sources..." };   ///< Loads source positions.
     juce::TextButton exportSpeakersButton { "Export speakers..." };  ///< Saves speaker positions.
