@@ -616,6 +616,13 @@ static void testSpeakerLayouts (const juce::File& dir)
         p.processBlock (buf, midi);
         CHECK (allFinite (buf, 64));
         CHECK (std::abs (totalEnergy (buf, 64) - inE) < 1e-3 * inE);
+
+        // The LFE (channel 4) of the 5.1 and 7.1 presets is excluded: silent, and the other speakers all get signal.
+        if (file.getFileName() == "5.1.xml" || file.getFileName() == "7.1.xml")
+        {
+            CHECK (p.isSpeakerExcluded (3) && channelEnergy (buf, 3) == 0.0);
+            CHECK (channelEnergy (buf, 0) > 0.0 && channelEnergy (buf, 4) > 0.0 && channelEnergy (buf, 5) > 0.0);
+        }
         ++count;
     }
 

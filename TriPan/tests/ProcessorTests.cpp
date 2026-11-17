@@ -499,7 +499,7 @@ static void testUnusedSpeakersAreSilentImmediately()
 static void testSpeakerPresets (const juce::File& dir)
 {
     struct Expected { const char* file; int count; int manualVirtual; }; // manualVirtual 0: the file says virtual="auto"
-    const Expected expected[] = { { "Quad.xml", 4, 0 }, { "5.1.xml", 5, 0 }, { "7.1.xml", 7, 0 },
+    const Expected expected[] = { { "Quad.xml", 4, 0 }, { "5.1.xml", 6, 0 }, { "7.1.xml", 8, 0 },
                                   { "Hexagon-front-centre.xml", 6, 0 }, { "Hexagon-symmetric.xml", 6, 0 },
                                   { "Octagon-front-centre.xml", 8, 0 }, { "Octagon-symmetric.xml", 8, 0 },
                                   { "Grid-3x3.xml", 9, 0 }, { "Grid-4x4.xml", 16, 0 }, { "Random-16.xml", 16, 0 },
@@ -638,7 +638,8 @@ static void testSpeakerPresets (const juce::File& dir)
     load ("5.1.xml", v);
     CHECK (std::abs (v[2].x) < 1e-3 && std::abs (v[2].y - 5.0) < 1e-3);                  // centre
     CHECK (std::abs (azimuth (v[0]) + 30.0) < 0.1 && std::abs (azimuth (v[1]) - 30.0) < 0.1);
-    CHECK (std::abs (azimuth (v[3]) + 110.0) < 0.1 && std::abs (azimuth (v[4]) - 110.0) < 0.1);
+    CHECK (std::abs (azimuth (v[4]) + 110.0) < 0.1 && std::abs (azimuth (v[5]) - 110.0) < 0.1);   // surrounds, after the LFE (channel 4)
+    CHECK (std::abs (v[3].x) < 1e-3 && std::abs (v[3].y - 2.5) < 1e-3);                  // the LFE, halfway to the centre
 
     load ("Quad.xml", v);
     CHECK (std::abs (azimuth (v[0]) + 45.0) < 0.1 && std::abs (azimuth (v[3]) - 135.0) < 0.1);
@@ -773,10 +774,9 @@ static void testMirrorSymmetryWithVirtualSpeakers (const juce::File& dir)
         tlos::io::ImportReport r;
         CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, dir.getChildFile (file), r).wasOk());
 
-        std::vector<tripan::Vec2> speakers;
-        for (int i = 0; i < r.applied; ++i)
-            speakers.push_back ({ (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'x'))->load(),
-                                  (double) p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, 'y'))->load() });
+        // The speakers that take part in the panning (an LFE in a 5.1 or 7.1 preset is excluded).
+        const auto speakers = p.getIncludedSpeakers().positions;
+        CHECK ((int) speakers.size() == r.applied - (std::string (file) == "5.1.xml" || std::string (file) == "7.1.xml" ? 1 : 0));
 
         const auto virtualSpeakers = p.getVirtualSpeakers();
         CHECK (! virtualSpeakers.empty());

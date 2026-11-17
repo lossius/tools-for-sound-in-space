@@ -7,7 +7,9 @@ Run from anywhere:  python3 scripts/make_speaker_presets.py
 
 Conventions (same as the plugin): metres, +y is front, +x is right. Angles are azimuths measured
 clockwise from the front (positive = right). Speakers are placed on a circle of RADIUS metres.
-The LFE channel of 5.1 / 7.1 is not a speaker position and is left out.
+The LFE channel of 5.1 / 7.1 has no real position. It is channel 4 (the usual film order L R C LFE Ls Rs), placed
+halfway between the listener and the centre speaker and marked excluded="1", so it takes no part in the panning
+(its output stays silent); un-exclude it in the speaker table or on the pad if a sub should be fed.
 The output format is identical to the plugin's "Export speakers" files (3 decimals, padded).
 """
 import math
@@ -34,16 +36,19 @@ def number(v):
     return text.rjust(7)
 
 
-def write(name, title, description, points, virtual_speakers=None):
+def write(name, title, description, points, virtual_speakers=None, excluded=()):
     """Writes one preset. Without virtual_speakers the file says virtual="auto" (loading a preset switches the
     virtual speakers to Auto, which most layouts are designed for). With a list of positions it says
-    virtual="manual" and lists them as <VirtualSpeaker> entries, like the plugin's own export."""
+    virtual="manual" and lists them as <VirtualSpeaker> entries, like the plugin's own export. `excluded` is a list of
+    1-based speaker numbers that are excluded from the panning (all speakers then get an excluded="0" or "1" attribute,
+    as in the plugin's own export)."""
     lines = ['<?xml version="1.0" encoding="UTF-8"?>', ""]
     mode = "auto" if virtual_speakers is None else "manual"
     lines.append(f'<TriPanSpeakers version="1" count="{len(points)}" virtual="{mode}">')
     lines.append(f"  <!-- {title}: {description} -->")
     for i, (x, y) in enumerate(points, start=1):
-        lines.append(f'  <Speaker index="{str(i).rjust(2)}" x="{number(x)}" y="{number(y)}"/>')
+        flag = f' excluded="{1 if i in excluded else 0}"' if excluded else ""
+        lines.append(f'  <Speaker index="{str(i).rjust(2)}" x="{number(x)}" y="{number(y)}"{flag}/>')
     for i, (x, y) in enumerate(virtual_speakers or [], start=1):
         lines.append(f'  <VirtualSpeaker index="{str(i).rjust(2)}" x="{number(x)}" y="{number(y)}"/>')
     lines.append("</TriPanSpeakers>")
@@ -89,11 +94,15 @@ def main():
     write("Quad", "Quad", "FL, FR, BL, BR at -45, 45, -135, 135 degrees",
           circle([-45, 45, -135, 135]))
 
-    write("5.1", "5.1 (ITU-R BS.775, no LFE)", "L, R, C, Ls, Rs at -30, 30, 0, -110, 110 degrees",
-          circle([-30, 30, 0, -110, 110]))
+    lfe = (0.0, RADIUS / 2)
 
-    write("7.1", "7.1 (no LFE)", "L, R, C, Lss, Rss, Lrs, Rrs at -30, 30, 0, -90, 90, -150, 150 degrees",
-          circle([-30, 30, 0, -90, 90, -150, 150]))
+    write("5.1", "5.1 (ITU-R BS.775)",
+          "L, R, C, LFE, Ls, Rs; the speakers at -30, 30, 0, -110, 110 degrees; the LFE (4) is excluded from the panning",
+          circle([-30, 30, 0]) + [lfe] + circle([-110, 110]), excluded=(4,))
+
+    write("7.1", "7.1",
+          "L, R, C, LFE, Lss, Rss, Lrs, Rrs; the speakers at -30, 30, 0, -90, 90, -150, 150 degrees; the LFE (4) is excluded from the panning",
+          circle([-30, 30, 0]) + [lfe] + circle([-90, 90, -150, 150]), excluded=(4,))
 
     write("Hexagon-front-centre", "Hexagon, speaker at front centre",
           "6 speakers every 60 degrees clockwise from the front (0, 60, 120, 180, 240, 300)",

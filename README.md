@@ -233,8 +233,10 @@ kind is set to Edit or View.
 ## Speaker presets
 The `speaker layouts/` folder has ready-made speaker layouts in the same XML format. Load one with
 "Import speakers...". Number of Speakers is adjusted to
-the preset automatically when the track has enough outputs. Angles are azimuths clockwise from the front, speakers are on a 5 m circle, and the LFE
-channel is left out.
+the preset automatically when the track has enough outputs. Angles are azimuths clockwise from the front and speakers are on a 5 m circle. The 5.1 and 7.1
+presets have the usual channel order (L, R, C, LFE, Ls, Rs ...); the LFE is placed halfway between you and the centre speaker
+and is **excluded** from the panning, so it stays silent and takes no part. Un-exclude it (Excl. column of the speaker table, or
+right-click it on the pad) if you want it to be fed.
 
 | File | Speakers | Layout |
 |---|---|---|
