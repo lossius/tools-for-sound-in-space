@@ -1612,8 +1612,8 @@ int main (int argc, char** argv)
         CHECK (virtualTable->setValueFromText (1, Col::xColumn, "4") == "4.000");
         CHECK (virtualTable->setValueFromText (0, Col::yColumn, "-199") == "-100.000");
         const auto manual = p.getManualVirtualSpeakers();
-        CHECK (manual.size() == 2 && std::abs (manual[1].x - 4.0) < 1e-9 && std::abs (manual[1].y - 0.5) < 1e-9
-               && std::abs (manual[0].x - 1.0) < 1e-9 && std::abs (manual[0].y + 100.0) < 1e-9);
+        CHECK (manual.size() == 2 && std::abs (manual[1].x - 4.0) < 1e-4 && std::abs (manual[1].y - 0.5) < 1e-4
+               && std::abs (manual[0].x - 1.0) < 1e-4 && std::abs (manual[0].y + 100.0) < 1e-4);   // parameters are floats
 
         // The menu in the window changes the mode; Auto removes the table and the window narrows again.
         speakers.getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Auto, juce::sendNotificationSync);

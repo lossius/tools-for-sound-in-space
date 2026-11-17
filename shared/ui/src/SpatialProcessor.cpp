@@ -68,9 +68,9 @@ int clampCount (float parameterValue, int channels) noexcept
 namespace
 {
 /** The shared parameters followed by the plugin's own. */
-juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (std::vector<std::unique_ptr<juce::RangedAudioParameter>> extra)
+juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (std::vector<std::unique_ptr<juce::RangedAudioParameter>> extra, bool virtualSpeakers)
 {
-    auto layout = params::createLayout();
+    auto layout = params::createLayout (virtualSpeakers);
     for (auto& parameter : extra)
         layout.add (std::move (parameter));
     return layout;
@@ -78,9 +78,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (std::vector<std:
 }
 
 SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::String& stateType,
-                                    std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters)
+                                    std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters,
+                                    bool virtualSpeakerParameters)
     : AudioProcessor (buses),
-      apvts (*this, nullptr, stateType, makeLayout (std::move (extraParameters)))
+      apvts (*this, nullptr, stateType, makeLayout (std::move (extraParameters), virtualSpeakerParameters)),
+      hasVirtualParameters (virtualSpeakerParameters)
 {
     for (int i = 0; i < kMaxChannels; ++i)
     {
@@ -95,6 +97,19 @@ SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::St
         spkTrim[(size_t) i] = apvts.getRawParameterValue (params::speakerTrimId (i));
         spkMute[(size_t) i] = apvts.getRawParameterValue (params::speakerMuteId (i));
         spkSolo[(size_t) i] = apvts.getRawParameterValue (params::speakerSoloId (i));
+        srcGroup[(size_t) i] = apvts.getRawParameterValue (params::sourceGroupId (i));
+        spkExclude[(size_t) i] = apvts.getRawParameterValue (params::speakerExcludeId (i));
+    }
+
+    if (hasVirtualParameters)
+    {
+        virtualModeParam = apvts.getRawParameterValue (params::kVirtualModeId);
+        virtualCountParam = apvts.getRawParameterValue (params::kNumVirtualId);
+        for (int i = 0; i < kMaxVirtualSpeakers; ++i)
+        {
+            virtualX[(size_t) i] = apvts.getRawParameterValue (params::virtualId (i, 'x'));
+            virtualY[(size_t) i] = apvts.getRawParameterValue (params::virtualId (i, 'y'));
+        }
     }
 
     numSourcesParam  = apvts.getRawParameterValue (params::kNumSourcesId);
@@ -181,6 +196,30 @@ std::vector<Vec2> SpatialProcessor::getActiveSpeakerPositions() const
     return speakers;
 }
 
+void SpatialProcessor::writeParameters (const std::vector<std::pair<juce::String, float>>& changes, bool gestures)
+{
+    std::vector<std::pair<juce::RangedAudioParameter*, float>> todo;
+
+    for (const auto& [id, value] : changes)
+        if (auto* parameter = apvts.getParameter (id))
+        {
+            const float normalised = parameter->convertTo0to1 (value);
+            if (std::abs (parameter->getValue() - normalised) > 1e-6f)
+                todo.emplace_back (parameter, normalised);
+        }
+
+    if (gestures)
+        for (auto& change : todo)
+            change.first->beginChangeGesture();
+
+    for (auto& change : todo)
+        change.first->setValueNotifyingHost (change.second);
+
+    if (gestures)
+        for (auto& change : todo)
+            change.first->endChangeGesture();
+}
+
 void SpatialProcessor::getChannelGains (ChannelGains& gains) const noexcept
 {
     const auto fill = [] (std::array<float, kMaxChannels>& out, int used,
@@ -206,9 +245,8 @@ void SpatialProcessor::getChannelGains (ChannelGains& gains) const noexcept
 std::array<bool, kMaxChannels> SpatialProcessor::getExcludedSpeakers() const
 {
     std::array<bool, kMaxChannels> out {};
-    const auto text = apvts.state.getProperty (kExcludedSpeakers).toString();
-    for (int i = 0; i < kMaxChannels && i < text.length(); ++i)
-        out[(size_t) i] = text[i] == '1';
+    for (int i = 0; i < kMaxChannels; ++i)
+        out[(size_t) i] = spkExclude[(size_t) i]->load() >= 0.5f;
     return out;
 }
 
@@ -217,25 +255,17 @@ void SpatialProcessor::setExcludedSpeakers (const std::array<bool, kMaxChannels>
     if (excluded == getExcludedSpeakers())
         return;
 
-    juce::String text;
-    bool any = false;
-    for (const bool e : excluded)
-    {
-        text << (e ? '1' : '0');
-        any = any || e;
-    }
+    std::vector<std::pair<juce::String, float>> changes;
+    for (int i = 0; i < kMaxChannels; ++i)
+        changes.emplace_back (params::speakerExcludeId (i), excluded[(size_t) i] ? 1.0f : 0.0f);
 
-    if (any)
-        apvts.state.setProperty (kExcludedSpeakers, text, nullptr);
-    else
-        apvts.state.removeProperty (kExcludedSpeakers, nullptr);
-
+    writeParameters (changes);
     refreshLayout();
 }
 
 bool SpatialProcessor::isSpeakerExcluded (int index) const
 {
-    return index >= 0 && index < kMaxChannels && getExcludedSpeakers()[(size_t) index];
+    return index >= 0 && index < kMaxChannels && spkExclude[(size_t) index]->load() >= 0.5f;
 }
 
 void SpatialProcessor::setSpeakerExcluded (int index, bool excluded)
@@ -243,9 +273,8 @@ void SpatialProcessor::setSpeakerExcluded (int index, bool excluded)
     if (index < 0 || index >= kMaxChannels)
         return;
 
-    auto all = getExcludedSpeakers();
-    all[(size_t) index] = excluded;
-    setExcludedSpeakers (all);
+    writeParameters ({ { params::speakerExcludeId (index), excluded ? 1.0f : 0.0f } });
+    refreshLayout();
 }
 
 IncludedSpeakers SpatialProcessor::getIncludedSpeakers() const
@@ -373,15 +402,18 @@ void SpatialProcessor::setEditorWidth (int width)
 
 VirtualMode SpatialProcessor::getVirtualMode() const
 {
-    if (! supportsVirtualSpeakers())
+    if (! supportsVirtualSpeakers() || virtualModeParam == nullptr)
         return VirtualMode::Off;
 
-    const int value = (int) apvts.state.getProperty (kVirtualMode, (int) VirtualMode::Auto);
+    const int value = 1 + (int) std::lround (virtualModeParam->load());
     return value >= (int) VirtualMode::Auto && value <= (int) VirtualMode::Off ? (VirtualMode) value : VirtualMode::Auto;
 }
 
 void SpatialProcessor::setVirtualMode (VirtualMode mode)
 {
+    if (! hasVirtualParameters)
+        return;
+
     if (mode == VirtualMode::Manual && getVirtualMode() != VirtualMode::Manual && getManualVirtualSpeakers().empty())
     {
         // Start from what is in effect now: the automatic speakers that are at least half in effect.
@@ -389,10 +421,11 @@ void SpatialProcessor::setVirtualMode (VirtualMode mode)
         for (const auto& v : getVirtualSpeakers())
             if (v.strength >= 0.5)
                 start.push_back (v.position);
-        setManualVirtualSpeakers (start);
+        setVirtualLayout (mode, &start);
+        return;
     }
 
-    apvts.state.setProperty (kVirtualMode, (int) mode, nullptr);
+    writeParameters ({ { params::kVirtualModeId, (float) ((int) mode - 1) } });
     refreshLayout();
 }
 
@@ -404,44 +437,68 @@ bool SpatialProcessor::canEditVirtualSpeakers() const
 std::vector<Vec2> SpatialProcessor::getManualVirtualSpeakers() const
 {
     std::vector<Vec2> out;
-    const auto tokens = juce::StringArray::fromTokens (apvts.state.getProperty (kManualVirtual).toString(), " ", "");
+    if (! hasVirtualParameters)
+        return out;
 
-    for (int i = 0; i + 1 < tokens.size() && (int) out.size() < kMaxVirtualSpeakers; i += 2)
-    {
-        const double x = tokens[i].getDoubleValue(), y = tokens[i + 1].getDoubleValue();
-        if (std::isfinite (x) && std::isfinite (y))
-            out.push_back ({ x, y });
-    }
+    const int count = juce::jlimit (0, (int) kMaxVirtualSpeakers, (int) std::lround (virtualCountParam->load()));
+    for (int i = 0; i < count; ++i)
+        out.push_back ({ (double) virtualX[(size_t) i]->load(), (double) virtualY[(size_t) i]->load() });
 
     return out;
 }
 
-void SpatialProcessor::storeManualVirtualSpeakers (const std::vector<Vec2>& list)
+void SpatialProcessor::setManualVirtualSpeakers (const std::vector<Vec2>& list, bool ownGesture)
 {
-    juce::StringArray tokens;
-    const double limit = params::kCoordRange;
+    if (! hasVirtualParameters)
+        return;
 
-    for (size_t i = 0; i < list.size() && (int) i < kMaxVirtualSpeakers; ++i)
+    const int oldCount = juce::jlimit (0, (int) kMaxVirtualSpeakers, (int) std::lround (virtualCountParam->load()));
+    const int count = juce::jmin ((int) list.size(), (int) kMaxVirtualSpeakers);
+
+    std::vector<std::pair<juce::String, float>> changes;
+    changes.emplace_back (params::kNumVirtualId, (float) count);
+    for (int i = 0; i < count; ++i)
     {
-        tokens.add (juce::String (juce::jlimit (-limit, limit, list[i].x), 4));
-        tokens.add (juce::String (juce::jlimit (-limit, limit, list[i].y), 4));
+        changes.emplace_back (params::virtualId (i, 'x'), std::isfinite (list[(size_t) i].x) ? (float) list[(size_t) i].x : 0.0f);
+        changes.emplace_back (params::virtualId (i, 'y'), std::isfinite (list[(size_t) i].y) ? (float) list[(size_t) i].y : 0.0f);
+    }
+    for (int i = count; i < oldCount; ++i) // what was deleted goes back to 0, so that nothing stale is left behind
+    {
+        changes.emplace_back (params::virtualId (i, 'x'), 0.0f);
+        changes.emplace_back (params::virtualId (i, 'y'), 0.0f);
     }
 
-    apvts.state.setProperty (kManualVirtual, tokens.joinIntoString (" "), nullptr);
+    writeParameters (changes, ownGesture);
+    refreshLayout();
 }
 
-void SpatialProcessor::setManualVirtualSpeakers (const std::vector<Vec2>& list)
+void SpatialProcessor::beginVirtualSpeakerGesture (int index)
 {
-    storeManualVirtualSpeakers (list);
-    refreshLayout();
+    if (hasVirtualParameters && index >= 0 && index < (int) kMaxVirtualSpeakers)
+    {
+        apvts.getParameter (params::virtualId (index, 'x'))->beginChangeGesture();
+        apvts.getParameter (params::virtualId (index, 'y'))->beginChangeGesture();
+    }
+}
+
+void SpatialProcessor::endVirtualSpeakerGesture (int index)
+{
+    if (hasVirtualParameters && index >= 0 && index < (int) kMaxVirtualSpeakers)
+    {
+        apvts.getParameter (params::virtualId (index, 'x'))->endChangeGesture();
+        apvts.getParameter (params::virtualId (index, 'y'))->endChangeGesture();
+    }
 }
 
 void SpatialProcessor::setVirtualLayout (VirtualMode mode, const std::vector<Vec2>* manualList)
 {
-    if (manualList != nullptr)
-        storeManualVirtualSpeakers (*manualList);
+    if (! hasVirtualParameters)
+        return;
 
-    apvts.state.setProperty (kVirtualMode, (int) mode, nullptr);
+    if (manualList != nullptr)
+        setManualVirtualSpeakers (*manualList, false); // together with the mode below, in one step for the host's undo
+
+    writeParameters ({ { params::kVirtualModeId, (float) ((int) mode - 1) } });
     refreshLayout();
 }
 
@@ -474,15 +531,68 @@ std::vector<VirtualSpeaker> SpatialProcessor::getVirtualSpeakers() const
 
 SourceGroups SpatialProcessor::getSourceGroups() const
 {
-    return SourceGroups::fromString (apvts.state.getProperty (kSourceGroups, juce::String()).toString().toStdString());
+    SourceGroups::Ids ids {};
+    for (int i = 0; i < kMaxChannels; ++i)
+        ids[(size_t) i] = (int) std::lround (srcGroup[(size_t) i]->load());
+
+    return SourceGroups (ids); // invalid ids and groups of one are dropped
 }
 
 void SpatialProcessor::setSourceGroups (const SourceGroups& groups)
 {
-    if (groups.any())
-        apvts.state.setProperty (kSourceGroups, juce::String (groups.toString()), nullptr);
-    else
-        apvts.state.removeProperty (kSourceGroups, nullptr);
+    std::vector<std::pair<juce::String, float>> changes;
+    for (int i = 0; i < kMaxChannels; ++i)
+        changes.emplace_back (params::sourceGroupId (i), (float) groups.groupOf (i));
+
+    writeParameters (changes);
+}
+
+void SpatialProcessor::migrateLegacyState()
+{
+    auto& state = apvts.state;
+
+    // Sessions saved by earlier versions kept these in the state, not in parameters.
+    if (state.hasProperty (kSourceGroups))
+    {
+        const auto groups = SourceGroups::fromString (state.getProperty (kSourceGroups).toString().toStdString());
+        state.removeProperty (kSourceGroups, nullptr);
+        std::vector<std::pair<juce::String, float>> changes;
+        for (int i = 0; i < kMaxChannels; ++i)
+            changes.emplace_back (params::sourceGroupId (i), (float) groups.groupOf (i));
+        writeParameters (changes, false);
+    }
+
+    if (state.hasProperty (kExcludedSpeakers))
+    {
+        const auto text = state.getProperty (kExcludedSpeakers).toString();
+        state.removeProperty (kExcludedSpeakers, nullptr);
+        std::vector<std::pair<juce::String, float>> changes;
+        for (int i = 0; i < kMaxChannels; ++i)
+            changes.emplace_back (params::speakerExcludeId (i), i < text.length() && text[i] == '1' ? 1.0f : 0.0f);
+        writeParameters (changes, false);
+    }
+
+    if (state.hasProperty (kVirtualMode) || state.hasProperty (kManualVirtual))
+    {
+        const auto mode = (int) state.getProperty (kVirtualMode, (int) VirtualMode::Auto);
+        const auto tokens = juce::StringArray::fromTokens (state.getProperty (kManualVirtual).toString(), " ", "");
+        state.removeProperty (kVirtualMode, nullptr);
+        state.removeProperty (kManualVirtual, nullptr);
+
+        if (hasVirtualParameters)
+        {
+            std::vector<Vec2> list;
+            for (int i = 0; i + 1 < tokens.size() && (int) list.size() < (int) kMaxVirtualSpeakers; i += 2)
+            {
+                const double x = tokens[i].getDoubleValue(), y = tokens[i + 1].getDoubleValue();
+                if (std::isfinite (x) && std::isfinite (y))
+                    list.push_back ({ x, y });
+            }
+
+            setManualVirtualSpeakers (list, false);
+            writeParameters ({ { params::kVirtualModeId, (float) (juce::jlimit (1, 3, mode) - 1) } }, false);
+        }
+    }
 }
 
 void SpatialProcessor::getStateInformation (juce::MemoryBlock& destData)
@@ -498,6 +608,7 @@ void SpatialProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
             apvts.state.setProperty (kLayoutInitialised, true, nullptr);
+            migrateLegacyState();
             osc->configure (getOscSettings());
             stateRestored();
         }

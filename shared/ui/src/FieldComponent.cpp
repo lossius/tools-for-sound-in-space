@@ -425,7 +425,7 @@ void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
         const auto pos = fromView (p);
         const float limit = (float) roomHalf();
         list[(size_t) h.index] = { (double) juce::jlimit (-limit, limit, (float) pos.x), (double) juce::jlimit (-limit, limit, (float) pos.y) };
-        processor.setManualVirtualSpeakers (list);
+        processor.setManualVirtualSpeakers (list, false);   // a drag has its own change gesture (pressAt() .. release())
         refresh();
         return;
     }
@@ -970,7 +970,11 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
         return;
     }
 
-    if (! dragging->isVirtual)
+    if (dragging->isVirtual)
+    {
+        processor.beginVirtualSpeakerGesture (dragging->index);
+    }
+    else
     {
         parameter (*dragging, 'x')->beginChangeGesture();
         parameter (*dragging, 'y')->beginChangeGesture();
@@ -1074,7 +1078,11 @@ void FieldComponent::release()
             srcYp[(size_t) member]->endChangeGesture();
         }
     }
-    else if (! dragging->isVirtual)
+    else if (dragging->isVirtual)
+    {
+        processor.endVirtualSpeakerGesture (dragging->index);
+    }
+    else
     {
         parameter (*dragging, 'x')->endChangeGesture();
         parameter (*dragging, 'y')->endChangeGesture();

@@ -35,7 +35,7 @@ TriPanAudioProcessor::TriPanAudioProcessor()
     : SpatialProcessor (BusesProperties()
                             .withInput  ("Sources",  juce::AudioChannelSet::stereo(), true)
                             .withOutput ("Speakers", juce::AudioChannelSet::stereo(), true),
-                        "TriPan")
+                        "TriPan", {}, true)
 {
 }
 

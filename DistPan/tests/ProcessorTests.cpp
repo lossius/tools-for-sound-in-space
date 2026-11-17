@@ -107,16 +107,16 @@ static void testParameterOrder()
 {
     DistPanAudioProcessor p;
     const auto& parameters = p.getParameters();
-    const int total = 2 + 64 * 6 + 64 * 5 + 1 + 2 + 64;
+    const int total = 2 + 64 * 7 + 64 * 6 + 1 + 2 + 64;
 
     CHECK (parameters.size() == total);
 
     const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
     CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId);
     CHECK (idOf (2) == tlos::params::sourceId (0, 'x'));
-    CHECK (idOf (2 + 64 * 6) == tlos::params::speakerId (0, 'x'));
-    const int outsideIndex = 2 + 64 * 6 + 64 * 5;
-    CHECK (idOf (outsideIndex - 1) == tlos::params::speakerSoloId (63));
+    CHECK (idOf (2 + 64 * 7) == tlos::params::speakerId (0, 'x'));
+    const int outsideIndex = 2 + 64 * 7 + 64 * 6;
+    CHECK (idOf (outsideIndex - 1) == tlos::params::speakerExcludeId (63));
     CHECK (idOf (outsideIndex) == tlos::params::kOutsideRolloffId);
     CHECK (idOf (outsideIndex + 1) == distpan::params::kRolloffId && idOf (outsideIndex + 2) == distpan::params::kBlurId);
     CHECK (parameters[outsideIndex + 1]->getName (64) == "Rolloff" && parameters[outsideIndex + 2]->getName (64) == "Blur");
@@ -624,6 +624,54 @@ static void testOscExtras()
     p.setOscSettings (s);
 }
 
+/** Groups and exclusions are host parameters in DistPan too (undo, automation), and an old session's state moves into them; DistPan has no virtual speakers. */
+static void testHostUndoAndMigration()
+{
+    DistPanAudioProcessor p;
+    CHECK (configure (p, 6, 6, 256));
+    CHECK (! p.supportsVirtualSpeakers() && p.getVirtualMode() == tlos::VirtualMode::Off && p.getManualVirtualSpeakers().empty());
+    p.setVirtualMode (tlos::VirtualMode::Manual);                       // nothing to set
+    p.setManualVirtualSpeakers ({ { 1.0, 1.0 } });
+    CHECK (p.getVirtualMode() == tlos::VirtualMode::Off && p.getManualVirtualSpeakers().empty());
+    CHECK (p.getValueTreeState().getParameter (tlos::params::kVirtualModeId) == nullptr);   // no such parameters here
+
+    std::vector<float> before;
+    for (auto* parameter : p.getParameters()) before.push_back (parameter->getValue());
+
+    tlos::SourceGroups groups;
+    groups.group ({ 1, 2 });
+    p.setSourceGroups (groups);
+    p.setSpeakerExcluded (4, true);
+    CHECK (p.getSourceGroups() == groups && p.isSpeakerExcluded (4) && p.getIncludedSpeakers().positions.size() == 5);
+
+    const auto& parameters = p.getParameters();                          // the host's undo
+    for (int i = 0; i < parameters.size(); ++i)
+        parameters[i]->setValueNotifyingHost (before[(size_t) i]);
+    p.refreshLayout();
+    CHECK (! p.getSourceGroups().any() && ! p.isSpeakerExcluded (4) && p.getIncludedSpeakers().positions.size() == 6);
+
+    // Old state: groups and exclusions are taken over; the virtual speaker properties are dropped.
+    juce::MemoryBlock fresh;
+    p.getStateInformation (fresh);
+    auto xml = juce::AudioProcessor::getXmlFromBinary (fresh.getData(), (int) fresh.getSize());
+    CHECK (xml != nullptr);
+    if (xml == nullptr)
+        return;
+    xml->setAttribute ("sourceGroups", "0 1 1 0 0 0");
+    xml->setAttribute ("excludedSpeakers", "000001");
+    xml->setAttribute ("virtualMode", 1);
+    xml->setAttribute ("manualVirtual", "1 2");
+    juce::MemoryBlock old;
+    juce::AudioProcessor::copyXmlToBinary (*xml, old);
+    DistPanAudioProcessor q;
+    q.setStateInformation (old.getData(), (int) old.getSize());
+    CHECK (q.getSourceGroups().groupOf (1) == 1 && q.getSourceGroups().groupOf (2) == 1 && q.isSpeakerExcluded (5));
+    juce::MemoryBlock saved;
+    q.getStateInformation (saved);
+    const auto xml2 = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+    CHECK (xml2 != nullptr && ! xml2->hasAttribute ("virtualMode") && ! xml2->hasAttribute ("sourceGroups") && ! xml2->hasAttribute ("excludedSpeakers"));
+}
+
 /** 64 sources to 64 speakers: one source at a time keeps its energy, and the output is finite. */
 static void testFullSize64x64()
 {
@@ -746,6 +794,7 @@ int main (int argc, char** argv)
     testExclude();
     testSpeakerWeights();
     testOscExtras();
+    testHostUndoAndMigration();
     testSpeakerUpdate();
     testNumberOfSourcesAndSpeakersInUse();
     testStateRoundTrip();

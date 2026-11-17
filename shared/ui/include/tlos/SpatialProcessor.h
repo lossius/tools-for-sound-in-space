@@ -9,6 +9,7 @@
 #include "tlos/Groups.h"
 #include "tlos/Limits.h"
 #include "tlos/OscControl.h"
+#include "tlos/Parameters.h"
 #include "tlos/Speakers.h"
 #include "tlos/Vec2.h"
 
@@ -72,9 +73,12 @@ public:
         @param stateType        The tag of the saved state. Keep it unchanged between versions of a plugin: it
                                 is how an old session is recognised.
         @param extraParameters  Parameters that belong to the plugin's panning method (for example a rolloff).
-                                They come after the shared ones in the host's list. */
+                                They come after the shared ones in the host's list.
+        @param virtualSpeakerParameters  Whether the plugin has virtual speakers, and so the parameters for their mode,
+                                number and positions. */
     SpatialProcessor (const BusesProperties& buses, const juce::String& stateType,
-                      std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters = {});
+                      std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters = {},
+                      bool virtualSpeakerParameters = false);
 
     /** Stops the timer. */
     ~SpatialProcessor() override;
@@ -140,7 +144,7 @@ public:
 
     /** Message thread. Whether speaker `index` (zero-based) is excluded from the panning: the panning is
         computed as if it did not exist (use this for an LFE channel or a broken speaker). Unlike mute, the
-        others then share its signal. Saved with the state, not a host parameter. */
+        others then share its signal. A host parameter ("Speaker N Exclude"), so the host's undo covers it. */
     bool isSpeakerExcluded (int index) const;
     /** Excludes or includes a speaker, and calls refreshLayout(). */
     void setSpeakerExcluded (int index, bool excluded);
@@ -173,11 +177,12 @@ public:
     /** Sets whether speaker positions can be edited in the editor. Message thread. */
     void setSpeakersEditable (bool);
 
-    /** Message thread. Source groups: sources in a group are moved together in the editor. They are not
-        host parameters; the assignment is saved with the state (and so survives closing the project).
+    /** Message thread. Source groups: sources in a group are moved together in the editor. The assignment is kept
+        in host parameters ("Source N Group": 0 = none, 1 to 32), so it is saved with the project and the host's undo
+        covers it.
         @return Which sources are grouped. */
     SourceGroups getSourceGroups() const;
-    /** Replaces the source groups (saved with the state). */
+    /** Replaces the source groups: writes the group parameters that differ, in one gesture. */
     void setSourceGroups (const SourceGroups&);
 
     /** Message thread. Width of the editor window in pixels (0 if never set); saved with the state
@@ -188,7 +193,7 @@ public:
     void setEditorWidth (int width);
 
     /** The most virtual speakers in the manual list. */
-    static constexpr int kMaxVirtualSpeakers = 64;
+    static constexpr int kMaxVirtualSpeakers = params::kMaxVirtualSpeakers;
 
     /** @return The per-speaker parameter of the panning method, if the plugin has one (the default is none). */
     virtual std::optional<SpeakerColumn> getSpeakerColumn() const { return std::nullopt; }
@@ -206,11 +211,11 @@ public:
     /** @return The OSC control (the settings panel and the tests use it). */
     OscControl& getOscControl() noexcept { return *osc; }
 
-    /** @return Whether the plugin uses virtual (imaginary) speakers. If not (the default), the editor has
-        no menu for them and getVirtualMode() is always Off. */
-    virtual bool supportsVirtualSpeakers() const noexcept { return false; }
+    /** @return Whether the plugin uses virtual (imaginary) speakers (it was created with their parameters). If not
+        (the default), the editor has no menu for them and getVirtualMode() is always Off. */
+    virtual bool supportsVirtualSpeakers() const noexcept { return hasVirtualParameters; }
 
-    /** @return The current virtual speaker mode (saved with the state, not a host parameter). */
+    /** @return The current virtual speaker mode (a host parameter, "Virtual Speakers"). */
     VirtualMode getVirtualMode() const;
     /** @return Whether the user can currently add, move and delete virtual speakers by hand: the mode is
         Manual and the speakers are set to Edit. */
@@ -220,8 +225,16 @@ public:
     void setVirtualMode (VirtualMode);
     /** @return The user's own virtual speaker positions (used in Manual mode), in metres. */
     std::vector<Vec2> getManualVirtualSpeakers() const;
-    /** Replaces the manual list (at most #kMaxVirtualSpeakers, coordinates limited to +-10 m). */
-    void setManualVirtualSpeakers (const std::vector<Vec2>&);
+    /** Replaces the manual list (at most #kMaxVirtualSpeakers, coordinates limited to the parameter range): the
+        number of virtual speakers and the positions are host parameters, and the ones that differ are written.
+        @param list         The new list.
+        @param ownGesture   Whether to wrap the change in change gestures (what the host's undo needs). Pass false while a
+                            drag is in progress, which has its own gesture (see beginVirtualSpeakerGesture()). */
+    void setManualVirtualSpeakers (const std::vector<Vec2>& list, bool ownGesture = true);
+    /** Starts a change gesture for the position of manual virtual speaker `index` (zero-based), for a drag. */
+    void beginVirtualSpeakerGesture (int index);
+    /** Ends the change gesture started by beginVirtualSpeakerGesture(). */
+    void endVirtualSpeakerGesture (int index);
     /** Sets the mode and, if `manualList` is given, the manual list in one go (used when a speaker file
         is imported). Unlike setVirtualMode(), it never copies the automatic speakers into the list. */
     void setVirtualLayout (VirtualMode, const std::vector<Vec2>* manualList);
@@ -263,6 +276,13 @@ protected:
     std::array<std::atomic<float>*, kMaxChannels> spkTrim {};   ///< Raw values of the speaker trim parameters (dB).
     std::array<std::atomic<float>*, kMaxChannels> spkMute {};   ///< Raw values of the speaker mute switches (0 or 1).
     std::array<std::atomic<float>*, kMaxChannels> spkSolo {};   ///< Raw values of the speaker solo switches (0 or 1).
+    std::array<std::atomic<float>*, kMaxChannels> srcGroup {};  ///< Raw values of the source group numbers.
+    std::array<std::atomic<float>*, kMaxChannels> spkExclude {}; ///< Raw values of the speaker exclude switches (0 or 1).
+    std::array<std::atomic<float>*, kMaxVirtualSpeakers> virtualX {};  ///< Raw values of the manual virtual speaker x positions (plugins with virtual speakers).
+    std::array<std::atomic<float>*, kMaxVirtualSpeakers> virtualY {};  ///< Raw values of the manual virtual speaker y positions.
+    std::atomic<float>* virtualModeParam = nullptr;  ///< Raw value of the virtual speaker mode (0 Auto, 1 Manual, 2 Off).
+    std::atomic<float>* virtualCountParam = nullptr; ///< Raw value of the number of manual virtual speakers.
+    bool hasVirtualParameters = false;               ///< Whether the plugin has virtual speakers.
     std::atomic<float>* numSourcesParam = nullptr;  ///< Raw value of "Number of Sources".
     std::atomic<float>* numSpeakersParam = nullptr; ///< Raw value of "Number of Speakers".
     std::atomic<float>* outsideRolloffParam = nullptr; ///< Raw value of "Outside Rolloff".
@@ -270,8 +290,13 @@ protected:
 private:
     /** Timer callback (30 Hz, message thread): calls refreshLayout(). */
     void timerCallback() override { refreshLayout(); }
-    /** Writes the manual virtual speaker list to the saved state. */
-    void storeManualVirtualSpeakers (const std::vector<Vec2>&);
+    /** Sets parameters to real values: only those that differ are written, and with `gestures` all inside change
+        gestures that are begun together and ended together (one step for the host's undo).
+        @param changes   Parameter IDs and their new real values.
+        @param gestures  Whether to wrap the writes in change gestures. */
+    void writeParameters (const std::vector<std::pair<juce::String, float>>& changes, bool gestures = true);
+    /** Moves what older versions kept in the saved state (groups, exclusions, virtual speakers) into the parameters. */
+    void migrateLegacyState();
 
     std::unique_ptr<OscControl> osc;   ///< OSC in and out.
 

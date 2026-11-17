@@ -126,14 +126,14 @@ warnings; keep it that way when adding code.
   (continuous in the speaker positions, no state; up to 17 triangulations, ~0.5 ms/block worst case for 64
   sources). `LayoutExchange` hands the immutable `SpeakerLayout` to the audio thread (hazard pointer). The audio
   thread skips sources whose position and layout `id()` are unchanged. Processor mode Auto/Manual/Off
-  (`virtualMode`, `manualVirtual` in the state, max 64, not host parameters; manual ones have strength 1);
+  (host parameters `virtualMode` (choice), `numVirtualSpeakers` and `vspk<N>x/y`, max 64, only in plugins created with `virtualSpeakerParameters`; manual ones have strength 1);
   Manual ones are edited on the pad (double-click add/delete, drag) when speakers are set to Edit. Known limit:
   cocircular grid cells (3x3, 4x4) still have arbitrary diagonals.
 - Source groups: `tlos::SourceGroups` (shared/core/Groups: group id per source, 0 = none, 1..32; groups of one are dissolved;
   `group()` merges touched groups whole and keeps the smallest id, `ungroup()` dissolves whole groups, `membersOf(source, activeCount)`;
   text form "0 0 1 1 ..." (64 numbers)) plus `clampTranslation` (rigid move limited to +-room half extent per axis, so the group slides along a wall),
-  `clampSpreadChange` (common spread change limited to 0..50) and `convexHull` (for drawing). The assignment is saved in the plugin
-  state as `sourceGroups` (not a host parameter; `getSourceGroups/setSourceGroups`). On the pad (`FieldComponent`): the selection is
+  `clampSpreadChange` (common spread change limited to 0..50) and `convexHull` (for drawing). The assignment is kept in the host
+  parameters `src<N>group` (0 = none, 1..32; `getSourceGroups/setSourceGroups`; the text form is only used to read old sessions). On the pad (`FieldComponent`): the selection is
   GUI state only (not saved). Click = select the source and its group; Shift-click toggles (with group); rectangle on empty space
   selects (Shift extends); dragging a selected source moves `movingSet()` (the selection, else its group) with offsets taken from
   the positions at the press (nothing stored, so automation/table edits/imports never desync a group). Drag modes are chosen from the
@@ -185,10 +185,16 @@ warnings; keep it that way when adding code.
   triangulation. The GUI shows them at the top with their maximum set to the channel count.
 - Parameter order (as listed by hosts, set by the order in `createLayout`): Number of Sources, Number of Speakers, then
   per source x, y, spread, trim, mute, solo (source 1, 2, ...), then per speaker x, y, trim, mute, solo (speaker 1, 2, ...), then `outsideRolloff`, then the plugin's own parameters (DistPan: `rolloff`, `blur`). `ProcessorTests` checks it.
+- **Everything a user can change is a host parameter, so the host's undo (and automation) covers it**: positions, spread, trim, mute, solo, source group, speaker exclude, the virtual speaker mode, number and positions,
+  the outside rolloff, the plugin's own. Only settings that are not edits of the sound stay in the session state (Edit/View modes, editor width, room size, OSC settings). `SpatialProcessor::writeParameters` writes only the values that
+  differ, with all change gestures begun together and ended together, so one editor action is one undo step (`setSourceGroups`, `setSpeakerExcluded`, `setManualVirtualSpeakers`, `setVirtualLayout`); a drag passes `ownGesture = false`
+  and has its own `begin/endVirtualSpeakerGesture`. `migrateLegacyState()` (called by `setStateInformation`) moves the old state properties `sourceGroups`, `excludedSpeakers`, `virtualMode`, `manualVirtual` into the parameters and removes
+  them. Values are floats now (a typed 0.5 comes back as 0.50000003): compare with a tolerance. The parameter order is: counts; per source x y spread trim mute solo group; per speaker x y trim mute solo exclude; outsideRolloff;
+  (virtual: mode, number, vspk x y pairs); the plugin's own.
 - Trim, mute, solo, exclude (both plugins; `shared/ui` + the processors): per source and per speaker the host parameters `src<N>trim|mute|solo` and `spk<N>trim|mute|solo` (trim -60..+12 dB default 0,
-  mute/solo are bools; 700 host parameters in all). `SpatialProcessor::getChannelGains` turns them into linear gains per block (mute wins over solo; sources and speakers solo separately;
+  mute/solo are bools; about 970 host parameters in TriPan, 900 in DistPan, in all). `SpatialProcessor::getChannelGains` turns them into linear gains per block (mute wins over solo; sources and speakers solo separately;
   channels not in use get 0); the processors multiply them into their per-block gain ramps (source gain x speaker gain on top of the *cached pure panning gains*, so a switch never invalidates the cache and
-  gets a linear ramp, no click). **Mute** silences an output but its share is lost (the others keep their levels); **Exclude** (speakers only, session state `excludedSpeakers`, "0101..." text, not a host parameter)
+  gets a linear ramp, no click). **Mute** silences an output but its share is lost (the others keep their levels); **Exclude** (speakers only, host parameter `spk<N>exclude`; older sessions kept it in the state as `excludedSpeakers`, migrated on load; not a host parameter)
   removes the speaker from the panning: `getIncludedSpeakers()` gives positions + `channelOf`, the layout/DBAP/hull/automatic virtual speakers are built from those only, and gains are mapped back to
   output channels (TriPan: `LayoutSnapshot{layout, channelOf}`; DistPan: `SpeakerSet::channelOf`). Excluding everything gives silence. UI: Trim/Mute/Solo(/Excl.) columns in the tables (check boxes), right-click menu on the pad
   (Mute, Solo, Exclude; works in View mode too; `toggleMute/toggleSolo/toggleExclude`), dimmed + M/S badge, hollow struck-through excluded speakers, links scaled by the gains. Files: optional `trim`, `mute`, `solo`

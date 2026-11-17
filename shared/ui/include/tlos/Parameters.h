@@ -65,13 +65,29 @@ inline juce::String speakerTrimId (int index) { return "spk" + juce::String (ind
 inline juce::String speakerMuteId (int index) { return "spk" + juce::String (index + 1) + "mute"; }
 /** @return The parameter ID of the solo switch of speaker `index` (zero-based), for example "spk1solo". */
 inline juce::String speakerSoloId (int index) { return "spk" + juce::String (index + 1) + "solo"; }
+/** @return The parameter ID of the group number (0 = none, 1 to 32) of source `index` (zero-based), for example "src1group". */
+inline juce::String sourceGroupId (int index) { return "src" + juce::String (index + 1) + "group"; }
+/** @return The parameter ID of the "excluded from the panning" switch of speaker `index` (zero-based), for example "spk1exclude". */
+inline juce::String speakerExcludeId (int index) { return "spk" + juce::String (index + 1) + "exclude"; }
+
+/** ID of the virtual speaker mode (Auto, Manual, Off) parameter, which only plugins with virtual speakers have. */
+inline const juce::String kVirtualModeId { "virtualMode" };
+/** ID of the number of manual virtual speakers parameter (0 to kMaxVirtualSpeakers), which only plugins with virtual speakers have. */
+inline const juce::String kNumVirtualId { "numVirtualSpeakers" };
+/** The most manual virtual speakers. */
+inline constexpr int kMaxVirtualSpeakers = 64;
+/** @return The parameter ID of the x or y (`axis`) coordinate of manual virtual speaker `index` (zero-based), for example "vspk1x". */
+inline juce::String virtualId (int index, char axis) { return "vspk" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
+
 /** @return The parameter ID of the x or y (`axis`) coordinate of speaker `index` (zero-based), for example "spk1x". */
 inline juce::String speakerId (int index, char axis) { return "spk" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
 
-/** @return All host parameters, in the order a host lists them: the two counts, then x, y, spread, trim, mute
-    and solo of every source, then x, y, trim, mute and solo of every speaker, then the outside rolloff. The IDs are
-    part of the saved sessions: never change them. */
-inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
+/** @param withVirtualSpeakers  Whether to include the virtual speaker parameters (for a plugin that has virtual speakers).
+    @return All host parameters, in the order a host lists them: the two counts, then x, y, spread, trim, mute, solo and
+    group of every source, then x, y, trim, mute, solo and exclude of every speaker, then the outside rolloff and, with
+    virtual speakers, their mode, their number and the position of each. Everything a user can change is a parameter, so
+    that the host's undo covers it. The IDs are part of the saved sessions: never change them. */
+inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout (bool withVirtualSpeakers = false)
 {
     using juce::AudioParameterFloat;
     using juce::NormalisableRange;
@@ -115,6 +131,7 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         addTrim (sourceTrimId (i), "Source " + juce::String (i + 1) + " Trim");
         addSwitch (sourceMuteId (i), "Source " + juce::String (i + 1) + " Mute");
         addSwitch (sourceSoloId (i), "Source " + juce::String (i + 1) + " Solo");
+        layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { sourceGroupId (i), 1 }, "Source " + juce::String (i + 1) + " Group", 0, kMaxChannels / 2, 0));
     }
 
     for (int i = 0; i < kMaxChannels; ++i)
@@ -124,11 +141,24 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         addTrim (speakerTrimId (i), "Speaker " + juce::String (i + 1) + " Trim");
         addSwitch (speakerMuteId (i), "Speaker " + juce::String (i + 1) + " Mute");
         addSwitch (speakerSoloId (i), "Speaker " + juce::String (i + 1) + " Solo");
+        addSwitch (speakerExcludeId (i), "Speaker " + juce::String (i + 1) + " Exclude");
     }
 
     layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { kOutsideRolloffId, 1 }, "Outside Rolloff",
                                                        NormalisableRange<float> (0.0f, kMaxOutsideRolloff), kDefaultOutsideRolloff,
                                                        juce::AudioParameterFloatAttributes().withLabel ("dB")));
+
+    if (withVirtualSpeakers)
+    {
+        layout.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { kVirtualModeId, 1 }, "Virtual Speakers",
+                                                                  juce::StringArray { "Auto", "Manual", "Off" }, 0));
+        layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { kNumVirtualId, 1 }, "Number of Virtual Speakers", 0, kMaxVirtualSpeakers, 0));
+        for (int i = 0; i < kMaxVirtualSpeakers; ++i)
+        {
+            add (virtualId (i, 'x'), "Virtual Speaker " + juce::String (i + 1) + " X");
+            add (virtualId (i, 'y'), "Virtual Speaker " + juce::String (i + 1) + " Y");
+        }
+    }
 
     return layout;
 }

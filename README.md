@@ -58,6 +58,14 @@ speakers, or speakers on one line (a stereo pair), there is no inside to leave a
 In TriPan the sound outside the layout is panned as if the source stood on the nearest edge of the layout; the
 rolloff comes on top of that. Sessions saved before this setting existed get the default (6 dB) when they are opened.
 
+## Undo
+
+Everything you change in the plugin is a host parameter: positions, spreads, trim, mute, solo, groups, exclusions and the
+virtual speakers (mode, number and positions). So the host's undo (and its automation) covers all of it, not only the positions. One editor
+action, for example grouping a selection or deleting a virtual speaker, is one undo step. Sessions saved by an earlier version, which kept
+groups, exclusions and virtual speakers in the plugin's own state, open as before: they are moved into the parameters when loaded. The
+settings that are not edits of the sound stay with the session only: the Edit/View menus, the window size, the room size and the OSC settings.
+
 ## Trim, mute, solo and exclude
 
 Every source and every speaker has a **Trim** (-60 to +12 dB), a **Mute** switch and a **Solo** switch, all host parameters
@@ -69,12 +77,12 @@ so switching never clicks.
 Muting a speaker silences its output but does not move its share to the others: the level of the other speakers stays
 as it was. To take a speaker out of the panning altogether, **exclude** it: the panning is then computed as if the speaker
 did not exist, so the others share its signal and the total power stays constant. Use it for a broken speaker or one that should
-not take part (a subwoofer). Exclude applies to speakers only and is saved with the session (not a host parameter).
+not take part (a subwoofer). Exclude applies to speakers only ("Speaker N Exclude" in the host's parameter list).
 
 Set them in the tables (Trim, Mute, Solo and, for speakers, Excl. columns), or right-click a source or speaker on the pad for
 a menu with Mute, Solo and Exclude from panning. Muted or silenced sources and speakers are drawn dimmed with an M (muted) or S
 (soloed) badge; excluded speakers are hollow and struck through. The position files carry the settings too (see
-*Saving and loading positions*). Note that the plugins now have about 700 host parameters, which some hosts list slowly.
+*Saving and loading positions*). Note that the plugins now have a lot of host parameters (about 970 in TriPan, 900 in DistPan), which some hosts list slowly.
 
 ## Settings window
 
@@ -182,8 +190,7 @@ it leave the spread unchanged.
 
 ## Source groups
 Two or more sources can be grouped, so that they move together and keep their positions relative to each
-other. Several groups can exist side by side. The groups are saved with the plug-in state (and so with your
-project), but they are not host parameters: they only affect how you move sources in the editor. The sources'
+other. Several groups can exist side by side. The groups are saved with your project as host parameters ("Source N Group"), so the host's undo covers grouping and ungrouping, and they can be automated, but they only affect how you move sources in the editor. The sources'
 x and y positions stay ordinary parameters, so a move is recorded as automation of every member, and
 automation or table edits of one source do not need the group.
 
@@ -245,7 +252,7 @@ menu on the fourth row selects where they come from:
 
 Virtual speakers are drawn as hollow amber squares ("v1", "v2", ...). The price is that sources
 inside a ring are spread more widely than the strict three speakers of plain triangulation; switch to
-Off if you prefer that. They are not host parameters. They are saved with the session, and a speaker
+Off if you prefer that. The mode, the number of manual virtual speakers and their positions are host parameters ("Virtual Speakers", "Number of Virtual Speakers", "Virtual Speaker N X/Y"), so the host's undo covers adding, moving and deleting them. They are saved with the session, and a speaker
 XML file records the setting and, for Manual, the virtual speakers (see below).
 
 ## Zooming

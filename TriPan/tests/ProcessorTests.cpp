@@ -973,6 +973,7 @@ static void testParameterOrder()
         expected.push_back (tlos::params::sourceTrimId (i));
         expected.push_back (tlos::params::sourceMuteId (i));
         expected.push_back (tlos::params::sourceSoloId (i));
+        expected.push_back (tlos::params::sourceGroupId (i));
     }
     for (int i = 0; i < tlos::kMaxChannels; ++i)
     {
@@ -981,11 +982,19 @@ static void testParameterOrder()
         expected.push_back (tlos::params::speakerTrimId (i));
         expected.push_back (tlos::params::speakerMuteId (i));
         expected.push_back (tlos::params::speakerSoloId (i));
+        expected.push_back (tlos::params::speakerExcludeId (i));
     }
     expected.push_back (tlos::params::kOutsideRolloffId);
+    expected.push_back (tlos::params::kVirtualModeId);
+    expected.push_back (tlos::params::kNumVirtualId);
+    for (int i = 0; i < tlos::params::kMaxVirtualSpeakers; ++i)
+    {
+        expected.push_back (tlos::params::virtualId (i, 'x'));
+        expected.push_back (tlos::params::virtualId (i, 'y'));
+    }
 
     CHECK ((size_t) parameters.size() == expected.size());
-    CHECK (expected.size() == 2 + 64 * 6 + 64 * 5 + 1);
+    CHECK (expected.size() == 2 + 64 * 7 + 64 * 6 + 1 + 2 + 128);
 
     bool inOrder = parameters.size() == (int) expected.size();
     for (int i = 0; inOrder && i < parameters.size(); ++i)
@@ -1003,11 +1012,14 @@ static void testParameterOrder()
     CHECK (parameters[0]->getName (64) == "Number of Sources" && parameters[1]->getName (64) == "Number of Speakers");
     CHECK (parameters[2]->getName (64) == "Source 1 X" && parameters[3]->getName (64) == "Source 1 Y" && parameters[4]->getName (64) == "Source 1 Spread");
     CHECK (parameters[5]->getName (64) == "Source 1 Trim" && parameters[6]->getName (64) == "Source 1 Mute" && parameters[7]->getName (64) == "Source 1 Solo");
-    CHECK (parameters[8]->getName (64) == "Source 2 X");
-    CHECK (parameters[2 + 64 * 6]->getName (64) == "Speaker 1 X" && parameters[2 + 64 * 6 + 1]->getName (64) == "Speaker 1 Y");
-    CHECK (parameters[2 + 64 * 6 + 2]->getName (64) == "Speaker 1 Trim" && parameters[2 + 64 * 6 + 4]->getName (64) == "Speaker 1 Solo");
-    CHECK (parameters[parameters.size() - 5]->getName (64) == "Speaker 64 Y" && parameters[parameters.size() - 3]->getName (64) == "Speaker 64 Mute");
-    CHECK (parameters[parameters.size() - 1]->getName (64) == "Outside Rolloff");
+    CHECK (parameters[8]->getName (64) == "Source 1 Group" && parameters[9]->getName (64) == "Source 2 X");
+    const int speakers = 2 + 64 * 7;
+    CHECK (parameters[speakers]->getName (64) == "Speaker 1 X" && parameters[speakers + 1]->getName (64) == "Speaker 1 Y");
+    CHECK (parameters[speakers + 2]->getName (64) == "Speaker 1 Trim" && parameters[speakers + 4]->getName (64) == "Speaker 1 Solo" && parameters[speakers + 5]->getName (64) == "Speaker 1 Exclude");
+    const int outside = speakers + 64 * 6;
+    CHECK (parameters[outside]->getName (64) == "Outside Rolloff" && parameters[outside + 1]->getName (64) == "Virtual Speakers");
+    CHECK (parameters[outside + 2]->getName (64) == "Number of Virtual Speakers" && parameters[outside + 3]->getName (64) == "Virtual Speaker 1 X");
+    CHECK (parameters[parameters.size() - 1]->getName (64) == "Virtual Speaker 64 Y");
 }
 
 /** The limit of 64 manual virtual speakers: with 64 sources and 64 speakers the output stays finite and keeps its power, and the cost of a block is reported. */
@@ -1615,6 +1627,176 @@ static void testOscPanel()
     CHECK (! p.getOscSettings().send && p.getOscStatus() == "off");
 }
 
+/** Records what a host would see of one parameter: its changes and its gestures, in order. */
+struct ParameterRecorder final : juce::AudioProcessorParameter::Listener
+{
+    /** Starts recording `parameter`. */
+    explicit ParameterRecorder (juce::AudioProcessorParameter& p) : parameter (p) { parameter.addListener (this); }
+    /** Stops recording. */
+    ~ParameterRecorder() override { parameter.removeListener (this); }
+
+    /** Notes a value change. */
+    void parameterValueChanged (int, float) override { events.add ("value"); }
+    /** Notes the start or the end of a gesture. */
+    void parameterGestureChanged (int, bool starting) override { events.add (starting ? "begin" : "end"); }
+
+    juce::AudioProcessorParameter& parameter;   ///< The parameter that is recorded.
+    juce::StringArray events;                   ///< "begin", "value" and "end", in the order the host got them.
+};
+
+/** The values of every parameter (normalised), as a host's undo would store them. */
+static std::vector<float> snapshotOf (juce::AudioProcessor& p)
+{
+    std::vector<float> values;
+    for (auto* parameter : p.getParameters())
+        values.push_back (parameter->getValue());
+    return values;
+}
+
+/** Puts the parameters back to the values of a snapshot, as a host's undo would. */
+static void restoreSnapshot (juce::AudioProcessor& p, const std::vector<float>& values)
+{
+    const auto& parameters = p.getParameters();
+    for (int i = 0; i < parameters.size() && (size_t) i < values.size(); ++i)
+        if (std::abs (parameters[i]->getValue() - values[(size_t) i]) > 1e-9f)
+            parameters[i]->setValueNotifyingHost (values[(size_t) i]);
+}
+
+/** Groups, exclusions and manual virtual speakers are host parameters: they are changed inside gestures, the host's undo can put them back, and host automation drives them. */
+static void testHostUndo()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 6, 8, 256));
+
+    // Gestures: what the host sees when the plugin changes things.
+    {
+        ParameterRecorder exclude (*p.getValueTreeState().getParameter (tlos::params::speakerExcludeId (2)));
+        p.setSpeakerExcluded (2, true);
+        CHECK (exclude.events.joinIntoString (",") == "begin,value,end");
+        p.setSpeakerExcluded (2, true);                              // nothing changed: nothing is sent
+        CHECK (exclude.events.size() == 3);
+        p.setSpeakerExcluded (2, false);
+        CHECK (exclude.events.size() == 6);
+    }
+    {
+        ParameterRecorder first (*p.getValueTreeState().getParameter (tlos::params::sourceGroupId (0)));
+        ParameterRecorder second (*p.getValueTreeState().getParameter (tlos::params::sourceGroupId (1)));
+        ParameterRecorder other (*p.getValueTreeState().getParameter (tlos::params::sourceGroupId (4)));
+        tlos::SourceGroups groups;
+        groups.group ({ 0, 1 });
+        p.setSourceGroups (groups);
+        CHECK (first.events.joinIntoString (",") == "begin,value,end" && second.events.joinIntoString (",") == "begin,value,end");
+        CHECK (other.events.isEmpty());                              // only what changes is written
+        CHECK (p.getSourceGroups() == groups);
+        p.setSourceGroups (tlos::SourceGroups());
+        CHECK (! p.getSourceGroups().any());
+    }
+    {
+        ParameterRecorder count (*p.getValueTreeState().getParameter (tlos::params::kNumVirtualId));
+        ParameterRecorder x (*p.getValueTreeState().getParameter (tlos::params::virtualId (0, 'x')));
+        p.setManualVirtualSpeakers ({ { 1.0, 2.0 } });
+        CHECK (count.events.joinIntoString (",") == "begin,value,end" && x.events.joinIntoString (",") == "begin,value,end");
+        x.events.clear();
+        p.setManualVirtualSpeakers ({ { 3.0, 2.0 } }, false);          // inside a drag: the drag has the gestures
+        CHECK (x.events.joinIntoString (",") == "value");
+        p.beginVirtualSpeakerGesture (0);
+        p.endVirtualSpeakerGesture (0);
+        CHECK (x.events.joinIntoString (",") == "value,begin,end");
+        p.setManualVirtualSpeakers ({});
+    }
+
+    // Undo and redo: put every parameter back to what it was, and the plugin follows.
+    const auto before = snapshotOf (p);
+    tlos::SourceGroups groups;
+    groups.group ({ 0, 2, 3 });
+    groups.group ({ 4, 5 });
+    p.setSourceGroups (groups);
+    p.setSpeakerExcluded (1, true);
+    p.setSpeakerExcluded (6, true);
+    p.setVirtualMode (tlos::VirtualMode::Manual);
+    p.setManualVirtualSpeakers ({ { 1.5, -2.0 }, { -3.0, 4.0 }, { 0.0, 0.0 } });
+    const auto after = snapshotOf (p);
+    CHECK (p.getSourceGroups() == groups && p.isSpeakerExcluded (1) && p.isSpeakerExcluded (6));
+    CHECK (p.getVirtualMode() == tlos::VirtualMode::Manual && p.getManualVirtualSpeakers().size() == 3);
+
+    restoreSnapshot (p, before);                                     // the host's undo
+    p.refreshLayout();
+    CHECK (! p.getSourceGroups().any() && ! p.isSpeakerExcluded (1) && ! p.isSpeakerExcluded (6));
+    CHECK (p.getVirtualMode() == tlos::VirtualMode::Auto && p.getManualVirtualSpeakers().empty());
+    CHECK (p.getIncludedSpeakers().positions.size() == 8);
+
+    restoreSnapshot (p, after);                                      // and redo
+    p.refreshLayout();
+    CHECK (p.getSourceGroups() == groups && p.isSpeakerExcluded (1) && p.isSpeakerExcluded (6));
+    CHECK (p.getVirtualMode() == tlos::VirtualMode::Manual);
+    const auto list = p.getManualVirtualSpeakers();
+    CHECK (list.size() == 3 && std::abs (list[0].x - 1.5) < 1e-4 && std::abs (list[1].y - 4.0) < 1e-4);
+    CHECK (p.getIncludedSpeakers().positions.size() == 6);
+
+    // Host automation: writing the parameters directly is the same as using the plugin's functions.
+    restoreSnapshot (p, before);
+    setParam (p, tlos::params::sourceGroupId (0), 3.0f);
+    setParam (p, tlos::params::sourceGroupId (1), 3.0f);
+    setParam (p, tlos::params::sourceGroupId (5), 7.0f);                // a group of one is no group
+    const auto automated = p.getSourceGroups();
+    CHECK (automated.groupOf (0) == 3 && automated.groupOf (1) == 3 && automated.groupOf (5) == 0);
+    setParam (p, tlos::params::speakerExcludeId (3), 1.0f);
+    p.refreshLayout();
+    CHECK (p.isSpeakerExcluded (3) && p.getIncludedSpeakers().channelOf.size() == 7);
+    setParam (p, tlos::params::kVirtualModeId, 2.0f);                   // the choice parameter's index: 2 = Off
+    CHECK (p.getVirtualMode() == tlos::VirtualMode::Off);
+
+    // And everything survives a save and a restore (it is in the parameters now).
+    p.setVirtualMode (tlos::VirtualMode::Manual);
+    p.setManualVirtualSpeakers ({ { 2.0, 2.0 } });
+    juce::MemoryBlock state;
+    p.getStateInformation (state);
+    TriPanAudioProcessor q;
+    q.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (q.getSourceGroups() == p.getSourceGroups() && q.isSpeakerExcluded (3) && q.getVirtualMode() == tlos::VirtualMode::Manual);
+    CHECK (q.getManualVirtualSpeakers().size() == 1);
+    const auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+    CHECK (xml != nullptr && ! xml->hasAttribute ("sourceGroups") && ! xml->hasAttribute ("excludedSpeakers") && ! xml->hasAttribute ("manualVirtual"));
+}
+
+/** A session saved by an earlier version kept groups, exclusions and virtual speakers in the state: they move into the parameters. */
+static void testLegacyStateMigration()
+{
+    TriPanAudioProcessor a;
+    juce::MemoryBlock fresh;
+    a.getStateInformation (fresh);
+    auto xml = juce::AudioProcessor::getXmlFromBinary (fresh.getData(), (int) fresh.getSize());
+    CHECK (xml != nullptr);
+    if (xml == nullptr)
+        return;
+
+    xml->setAttribute ("sourceGroups", "0 0 1 1 0 2 2 0");
+    xml->setAttribute ("excludedSpeakers", "0010000100");
+    xml->setAttribute ("virtualMode", 2);
+    xml->setAttribute ("manualVirtual", "1.5 -2.5 3 4 nan 1 5");
+    juce::MemoryBlock old;
+    juce::AudioProcessor::copyXmlToBinary (*xml, old);
+
+    TriPanAudioProcessor b;
+    b.setStateInformation (old.getData(), (int) old.getSize());
+    const auto groups = b.getSourceGroups();
+    CHECK (groups.groupOf (2) == 1 && groups.groupOf (3) == 1 && groups.groupOf (5) == 2 && groups.groupOf (6) == 2 && groups.groupOf (0) == 0);
+    CHECK (b.isSpeakerExcluded (2) && b.isSpeakerExcluded (7) && ! b.isSpeakerExcluded (0));
+    CHECK (b.getVirtualMode() == tlos::VirtualMode::Manual);
+    const auto list = b.getManualVirtualSpeakers();
+    CHECK (list.size() == 2 && std::abs (list[0].x - 1.5) < 1e-4 && std::abs (list[0].y + 2.5) < 1e-4 && std::abs (list[1].y - 4.0) < 1e-4);   // the "nan" pair is skipped
+
+    // Saved again, it is in the parameters and the old properties are gone.
+    juce::MemoryBlock saved;
+    b.getStateInformation (saved);
+    const auto xml2 = juce::AudioProcessor::getXmlFromBinary (saved.getData(), (int) saved.getSize());
+    CHECK (xml2 != nullptr && ! xml2->hasAttribute ("sourceGroups") && ! xml2->hasAttribute ("excludedSpeakers")
+           && ! xml2->hasAttribute ("virtualMode") && ! xml2->hasAttribute ("manualVirtual"));
+    TriPanAudioProcessor c;
+    c.setStateInformation (saved.getData(), (int) saved.getSize());
+    CHECK (c.getSourceGroups() == groups && c.isSpeakerExcluded (7) && c.getManualVirtualSpeakers().size() == 2 && c.getVirtualMode() == tlos::VirtualMode::Manual);
+}
+
 /** Runs all processor tests. @param argc,argv  argv[1] is the folder with the speaker layouts. @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
@@ -1626,6 +1808,8 @@ int main (int argc, char** argv)
     testMuteHasNoClick();
     testExclude();
     testCalibrationFiles();
+    testHostUndo();
+    testLegacyStateMigration();
     testOscReceive();
     testOscSend();
     testOscState();
