@@ -44,7 +44,7 @@ distance from it, g_i = k / d_i^a, with k chosen so that the total power is cons
 
 Unlike TriPan, DistPan needs no triangulation and has no virtual speakers; it works with any number of speakers (1 to 64),
 also collinear or irregular layouts, and sources outside the speakers. On the pad, links are drawn to the speakers that get
-a share within 20 dB of the strongest one. The **Show hull** toggle draws the convex hull of the speakers that take part in the panning as a dashed outline: the edge of
+a share within 20 dB of the strongest one. The pad always draws the convex hull of the speakers that take part in the panning as thin lines, like TriPan's triangulation: the edge of
 the layout, where the level starts to fall off for a source outside it (see *Level outside the speakers*).
 
 ## Level outside the speakers

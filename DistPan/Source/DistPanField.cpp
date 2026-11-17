@@ -37,20 +37,13 @@ void DistPanField::paintOverlay (juce::Graphics& g)
             outline.lineTo (p);
     }
 
-    const auto colour = juce::Colour (0xffe6b450);
     if (speakerHull.hasArea())
-    {
         outline.closeSubPath();
-        g.setColour (colour.withAlpha (0.06f));
-        g.fillPath (outline);
-    }
 
-    // A dashed outline: the layout's edge, where the level starts to fall off for a source outside it.
-    juce::Path dashed;
-    const float pattern[] = { 6.0f, 4.0f };
-    juce::PathStrokeType (1.4f).createDashedStroke (dashed, outline, pattern, 2);
-    g.setColour (colour.withAlpha (0.8f));
-    g.fillPath (dashed);
+    // Thin lines in the colour of TriPan's triangulation: the edge of the layout, where the level starts to fall off
+    // for a source outside it. No fill.
+    g.setColour (juce::Colour (0xff7aa2c8).withAlpha (0.55f));
+    g.strokePath (outline, juce::PathStrokeType (1.0f));
 }
 
 tlos::SourceGains DistPanField::getLinkGains (int, tlos::Vec2 position, double spread) const

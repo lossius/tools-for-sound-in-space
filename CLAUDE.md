@@ -77,7 +77,7 @@ warnings; keep it that way when adding code.
   which also carries them in speaker files (`weight` attribute, same "any entry defines it for all" rule as trim). IDs and the state tag `DistPan` are part of saved sessions.
 - Processor: `refreshLayout()` publishes the speaker positions (`SpeakerSet` with an id) through `tlos::Exchange`; `processBlock` computes dense per-source gain rows
   (cache key: position, spread, rolloff, blur, set id), ramps linearly per block, fades speakers that leave "Number of Speakers". No virtual speakers (`supportsVirtualSpeakers()` is false).
-- Editor: `DistPanField` draws the convex hull of the included speakers as its overlay (`paintOverlay`: dashed amber outline + faint fill; toggle "Show hull", its width follows its text) and links only for gains within 20 dB of the strongest; two sliders (DBAP rolloff, DBAP blur) are in the settings window.
+- Editor: `DistPanField` always draws the convex hull of the included speakers as its overlay (`paintOverlay`: 1 px lines in TriPan's triangulation colour 0xff7aa2c8 at alpha 0.55, no fill, no toggle) and links only for gains within 20 dB of the strongest; two sliders (DBAP rolloff, DBAP blur) are in the settings window.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.

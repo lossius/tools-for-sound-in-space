@@ -13,8 +13,8 @@
 #include <vector>
 
 /** The pad of DistPan. Everything that every plugin's pad does comes from tlos::FieldComponent; this class
-    adds the convex hull of the speakers that take part in the panning (the edge of the layout, where the level
-    starts to fall off for a source outside it) and the links from each source to the speakers that get a
+    always draws the convex hull of the speakers that take part in the panning (the edge of the layout, where the level
+    starts to fall off for a source outside it) as thin lines, like TriPan's triangulation, and adds the links from each source to the speakers that get a
     noticeable share of it. With DBAP every speaker gets something, so links are drawn only for the speakers
     within 20 dB of the strongest one. */
 class DistPanField final : public tlos::FieldComponent
@@ -27,7 +27,7 @@ protected:
     /** Remembers the speakers in use, for getLinkGains(). */
     void updateOverlay (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
 
-    /** Draws the convex hull of the speakers: a dashed outline with a faint fill. */
+    /** Draws the convex hull of the speakers: a thin outline, no fill. */
     void paintOverlay (juce::Graphics& g) override;
 
     /** The speakers a source feeds according to DBAP with the current rolloff and blur (the strong ones only). */
