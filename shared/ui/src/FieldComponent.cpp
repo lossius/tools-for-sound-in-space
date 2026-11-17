@@ -18,11 +18,17 @@ namespace tlos
 
 namespace
 {
-/// The full view shows +-kFullHalf metres.
-constexpr double kFullHalf = params::kCoordRange;
+/** The largest 1, 2 or 5 times a power of ten that is not more than `x` (x must be positive). */
+double niceStepBelow (double x)
+{
+    const double base = std::pow (10.0, std::floor (std::log10 (x)));
+    const double m = x / base;
+    return (m >= 5.0 ? 5.0 : m >= 2.0 ? 2.0 : 1.0) * base;
+}
+
 /// View size ratio between two zoom levels.
 constexpr double kZoomStep = 1.5;
-/// Never zoom in closer than +-2 m.
+/// Never zoom in closer than +-2 m (or the whole room, if that is smaller).
 constexpr double kMinHalf = 2.0;
 /// Mouse grab distance in pixels for speakers and virtual speakers (sources use FieldComponent::kSourceRadius).
 constexpr float kGrabRadius = 13.0f;
@@ -66,6 +72,7 @@ FieldComponent::FieldComponent (SpatialProcessor& p)
     setTooltip (baseTooltip);
     setWantsKeyboardFocus (true);
 
+    viewHalf = lastRoomHalf = roomHalf();
     timerCallback();
     startTimerHz (30);
 }
@@ -326,9 +333,9 @@ juce::String FieldComponent::getTooltip()
 
 void FieldComponent::writeDragPositions (const std::vector<Vec2>& positions)
 {
-    const auto set = [] (juce::RangedAudioParameter* prm, double v)
+    const auto set = [this] (juce::RangedAudioParameter* prm, double v)
     {
-        const float clamped = juce::jlimit (-params::kCoordRange, params::kCoordRange, (float) v);
+        const float clamped = juce::jlimit (-(float) roomHalf(), (float) roomHalf(), (float) v);
         prm->setValueNotifyingHost (prm->convertTo0to1 (clamped));
     };
 
@@ -348,7 +355,7 @@ void FieldComponent::moveSelectionTo (juce::Point<float> p)
     // limited as a whole, so that the shape never changes when a member would leave the pad.
     const auto pos = fromView (p);
     const auto delta = tlos::clampTranslation (dragStart, { pos.x - dragGrabStart.x, pos.y - dragGrabStart.y },
-                                                 (double) params::kCoordRange);
+                                                 roomHalf());
 
     auto moved = dragStart;
     for (auto& q : moved)
@@ -388,7 +395,7 @@ bool FieldComponent::addVirtualSpeakerAt (juce::Point<float> p)
         return false;
 
     const auto pos = fromView (p);
-    const float limit = params::kCoordRange;
+    const float limit = (float) roomHalf();
     list.push_back ({ (double) juce::jlimit (-limit, limit, (float) pos.x), (double) juce::jlimit (-limit, limit, (float) pos.y) });
     processor.setManualVirtualSpeakers (list);
     refresh();
@@ -416,7 +423,7 @@ void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
             return;
 
         const auto pos = fromView (p);
-        const float limit = params::kCoordRange;
+        const float limit = (float) roomHalf();
         list[(size_t) h.index] = { (double) juce::jlimit (-limit, limit, (float) pos.x), (double) juce::jlimit (-limit, limit, (float) pos.y) };
         processor.setManualVirtualSpeakers (list);
         refresh();
@@ -427,9 +434,9 @@ void FieldComponent::moveHandle (const Handle& h, juce::Point<float> p)
         return;
 
     const auto pos = fromView (p);
-    const auto set = [] (juce::RangedAudioParameter* prm, double v)
+    const auto set = [this] (juce::RangedAudioParameter* prm, double v)
     {
-        const float clamped = juce::jlimit (-params::kCoordRange, params::kCoordRange, (float) v);
+        const float clamped = juce::jlimit (-(float) roomHalf(), (float) roomHalf(), (float) v);
         prm->setValueNotifyingHost (prm->convertTo0to1 (clamped));
     };
 
@@ -453,7 +460,7 @@ std::optional<FieldComponent::View> FieldComponent::fittedView() const
 
     View v;
     v.centre = { 0.5 * (minX + maxX), 0.5 * (minY + maxY) };
-    v.half = std::clamp (std::max (maxX - minX, maxY - minY) * 0.5 * 1.1 + 0.5, kMinHalf, kFullHalf);
+    v.half = std::clamp (std::max (maxX - minX, maxY - minY) * 0.5 * 1.1 + 0.5, std::min (kMinHalf, roomHalf()), roomHalf());
     return v;
 }
 
@@ -465,7 +472,7 @@ bool FieldComponent::canZoomIn() const
 
 bool FieldComponent::canZoomOut() const
 {
-    return viewHalf < kFullHalf - 1e-6;
+    return viewHalf < roomHalf() - 1e-6;
 }
 
 void FieldComponent::zoomIn()
@@ -486,11 +493,12 @@ void FieldComponent::zoomOut()
     if (! canZoomOut())
         return;
 
-    const double newHalf = std::min (kFullHalf, viewHalf * kZoomStep);
-    const double fraction = (newHalf - viewHalf) / (kFullHalf - viewHalf); // how far to the full view
+    const double fullHalf = roomHalf();
+    const double newHalf = std::min (fullHalf, viewHalf * kZoomStep);
+    const double fraction = (newHalf - viewHalf) / (fullHalf - viewHalf); // how far to the full view
     viewCentre = viewCentre * (1.0 - fraction);
     viewHalf = newHalf;
-    if (viewHalf >= kFullHalf - 1e-9)
+    if (viewHalf >= fullHalf - 1e-9)
         viewCentre = {};
     repaint();
 }
@@ -501,6 +509,15 @@ void FieldComponent::timerCallback()
 
     size_t hash = std::hash<int> {} (n * 1000 + m);
     const auto mix = [&] (double v) { hash = hash * 1000003u ^ std::hash<double> {} (v); };
+
+    // A new room size shows the whole room again.
+    if (! juce::approximatelyEqual (roomHalf(), lastRoomHalf))
+    {
+        lastRoomHalf = roomHalf();
+        viewHalf = lastRoomHalf;
+        viewCentre = {};
+    }
+    mix (lastRoomHalf);
 
     excludedSpeakers = processor.getExcludedSpeakers();
 
@@ -565,8 +582,8 @@ void FieldComponent::paint (juce::Graphics& g)
 
     // Grid. The spacing follows the zoom: minor lines every 1 / 0.5 / 0.25 m, stronger major lines
     // every 5 / 2 / 1 m, and the axes (x = 0, y = 0) strongest. Major lines are labelled at the edges.
-    const double minorStep = viewHalf >= 5.0 ? 1.0 : (viewHalf >= 2.5 ? 0.5 : 0.25);
-    const double majorStep = viewHalf >= 5.0 ? 5.0 : (viewHalf >= 2.5 ? 2.0 : 1.0);
+    const double minorStep = niceStepBelow (viewHalf / 6.0);   // 1 m for the default room, 10 m for a 100 m room
+    const double majorStep = 5.0 * minorStep;
 
     const auto formatMetres = [] (double v) { return juce::String (v, juce::approximatelyEqual (std::fmod (std::abs (v), 1.0), 0.0) ? 0 : 1) + " m"; };
 
@@ -998,7 +1015,7 @@ void FieldComponent::dragTo (juce::Point<float> p)
         // Vertical drags, relative to the press and limited at every step (no dead zone at the limits).
         const double up = (double) (lastSpreadDragY - p.y);
         lastSpreadDragY = p.y;
-        const double limit = (double) params::kCoordRange;
+        const double limit = roomHalf();
 
         auto result = dragStart;
         if (dragMode == DragMode::Scale)

@@ -9,6 +9,7 @@
 #include "../Source/PluginProcessor.h"
 
 #include <cmath>
+#include <limits>
 #include <cstdio>
 
 /** Number of failed checks so far; the exit code of main(). */
@@ -236,10 +237,10 @@ static void testGroups (const char* snapshotPath)
     field.dragTo (at (2) + up (1.0));
     field.release();
     CHECK (std::abs (spread (1) - 3.0) < 0.03 && std::abs (spread (2) - 6.0) < 0.03 && std::abs (spread (5) - 7.0) < 0.03);
-    field.pressAt (at (2), alt);                       // far up: all stop when the largest reaches 10
-    field.dragTo (at (2) + up (50.0));
+    field.pressAt (at (2), alt);                       // far up: all stop when the largest reaches the maximum (50)
+    field.dragTo (at (2) + up (60.0));
     field.release();
-    CHECK (std::abs (spread (5) - 10.0) < 0.03 && std::abs (spread (2) - 9.0) < 0.05 && std::abs (spread (1) - 6.0) < 0.05);
+    CHECK (std::abs (spread (5) - 50.0) < 0.05 && std::abs (spread (2) - 49.0) < 0.1 && std::abs (spread (1) - 46.0) < 0.1);
     field.pressAt (at (2), alt);                       // far down: all stop when the smallest reaches 0
     field.dragTo (at (2) + up (-50.0));
     field.release();
@@ -555,6 +556,90 @@ static void testCalibrationInterface (const char* snapshotPath)
     editor.reset();
 }
 
+/** The room size: the pad shows and limits dragging to it; positions beyond it stay possible; it is saved with the session. */
+static void testRoomSize()
+{
+    TriPanAudioProcessor p;
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (3));
+    layout.outputBuses.add (juce::AudioChannelSet::discreteChannels (4));
+    CHECK (p.setBusesLayout (layout));
+    p.setPlayConfigDetails (3, 4, 48000.0, 512);
+    p.prepareToPlay (48000.0, 512);
+
+    std::unique_ptr<TriPanAudioProcessorEditor> editor (static_cast<TriPanAudioProcessorEditor*> (p.createEditor()));
+    editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
+    auto& field = editor->getField();
+
+    // Default: +-10 m, and the position parameters reach +-100 m so that hosts show real metres.
+    CHECK (std::abs (p.getRoomHalfExtent() - 10.0) < 1e-9 && std::abs (field.getViewHalfExtent() - 10.0) < 1e-9);
+    CHECK (std::abs (editor->getRoomSlider().getValue() - 10.0) < 1e-9);
+    setParam (p, tlos::params::sourceId (0, 'x'), 80.0f);
+    CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 80.0f) < 1e-3f);
+    setParam (p, tlos::params::sourceId (0, 'x'), 0.0f);
+
+    // A bigger room: the pad shows it all, and dragging stops at its edge (not at 10 m, not at 100 m).
+    p.setRoomHalfExtent (30.0);
+    field.refresh();
+    CHECK (std::abs (field.getViewHalfExtent() - 30.0) < 1e-9 && ! field.canZoomOut());
+    const auto before = field.toView (value (p, tlos::params::sourceId (0, 'x')), value (p, tlos::params::sourceId (0, 'y')));
+    field.pressAt (before, juce::ModifierKeys());
+    field.dragTo (field.toView (25.0, -20.0));
+    CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 25.0f) < 0.3f && std::abs (value (p, tlos::params::sourceId (0, 'y')) + 20.0f) < 0.3f);
+    field.dragTo (field.toView (40.0, 50.0) );                               // outside the room: the pad cannot even point there; it is clamped
+    CHECK (value (p, tlos::params::sourceId (0, 'x')) <= 30.001f && value (p, tlos::params::sourceId (0, 'y')) <= 30.001f);
+    field.release();
+
+    // Beyond the room is possible from tables and files, and the sound does not care.
+    auto& sources = editor->showTableWindow (tlos::io::Kind::Sources).getContent();
+    CHECK (sources.getMainTable().setValueFromText (1, tlos::PositionTable::xColumn, "55") == "55.000");
+    CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 55.0f) < 1e-3f);
+
+    // The room slider writes the setting; the view follows and starts fully zoomed out; a change from elsewhere moves the slider.
+    editor->getRoomSlider().setValue (15.0, juce::sendNotificationSync);
+    field.refresh();
+    CHECK (std::abs (p.getRoomHalfExtent() - 15.0) < 1e-9 && std::abs (field.getViewHalfExtent() - 15.0) < 1e-9);
+    p.setRoomHalfExtent (4.0);
+    editor->syncControls();
+    CHECK (std::abs (editor->getRoomSlider().getValue() - 4.0) < 1e-9);
+    field.refresh();
+    field.zoomIn();                                                          // the fitted view cannot be wider than the room
+    CHECK (field.getViewHalfExtent() <= 4.0 + 1e-9);
+    p.setRoomHalfExtent (12.0);
+    field.refresh();
+    CHECK (std::abs (field.getViewHalfExtent() - 12.0) < 1e-9 && ! field.canZoomOut());   // a new room size shows it all again
+
+    // Limits.
+    p.setRoomHalfExtent (0.1);
+    CHECK (std::abs (p.getRoomHalfExtent() - 2.0) < 1e-9);
+    p.setRoomHalfExtent (5000.0);
+    CHECK (std::abs (p.getRoomHalfExtent() - 100.0) < 1e-9);
+    p.setRoomHalfExtent (std::numeric_limits<double>::quiet_NaN());
+    CHECK (std::abs (p.getRoomHalfExtent() - 100.0) < 1e-9);
+
+    // Saved with the session.
+    p.setRoomHalfExtent (42.5);
+    juce::MemoryBlock state;
+    p.getStateInformation (state);
+    TriPanAudioProcessor q;
+    q.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (std::abs (q.getRoomHalfExtent() - 42.5) < 1e-9);
+    TriPanAudioProcessor fresh;
+    CHECK (std::abs (fresh.getRoomHalfExtent() - 10.0) < 1e-9);               // a session without it: the default
+
+    // The default layout follows the room: speakers on half of it, sources on a quarter of it.
+    TriPanAudioProcessor big;
+    big.setRoomHalfExtent (40.0);
+    juce::AudioProcessor::BusesLayout bigLayout;
+    bigLayout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (2));
+    bigLayout.outputBuses.add (juce::AudioChannelSet::discreteChannels (4));
+    CHECK (big.setBusesLayout (bigLayout));
+    big.setPlayConfigDetails (2, 4, 48000.0, 512);
+    big.prepareToPlay (48000.0, 512);
+    CHECK (std::abs (value (big, tlos::params::speakerId (0, 'y')) - 20.0f) < 1e-3f);   // the first speaker, at the front, on a radius of 20 m
+    editor.reset();
+}
+
 /** Runs the editor tests; with argv[1] writes a PNG snapshot of the editor there (argv[2] optionally names a speaker file to load first). @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
@@ -780,14 +865,14 @@ int main (int argc, char** argv)
         // 7 speakers in use (applied, but not counted as in use). The count setting is untouched.
         const auto mixed = dir.getChildFile ("mixed.xml");
         juce::String text = "<TriPanSpeakers version=\"1\"><Speaker index=\"2\" x=\"1.5\" y=\"-2.5\"/>"
-                            "<Speaker index=\"3\" x=\"99\" y=\"0\"/><Speaker index=\"4\" x=\"1\"/>"
+                            "<Speaker index=\"3\" x=\"199\" y=\"0\"/><Speaker index=\"4\" x=\"1\"/>"
                             "<Speaker index=\"12\" x=\"4\" y=\"4\"/></TriPanSpeakers>";
         mixed.replaceWithText (text);
         tlos::io::ImportReport report;
         CHECK (tlos::io::load (p, Kind::Speakers, mixed, report).wasOk());
         CHECK (report.applied == 3 && report.inUse == 2 && report.clamped == 1 && report.skipped == 1);
         CHECK (std::abs (value (p, tlos::params::speakerId (1, 'x')) - 1.5f) < 1e-3f);
-        CHECK (std::abs (value (p, tlos::params::speakerId (2, 'x')) - 10.0f) < 1e-3f);
+        CHECK (std::abs (value (p, tlos::params::speakerId (2, 'x')) - 100.0f) < 1e-3f);
         CHECK (std::abs (value (p, tlos::params::speakerId (11, 'y')) - 4.0f) < 1e-3f);
         CHECK (p.getActiveSpeakers() == 7);
 
@@ -833,7 +918,7 @@ int main (int argc, char** argv)
                                  "<Source index=\"3\" x=\"2\" y=\"1\" spread=\"abc\"/></TriPanSources>");
             setParam (p, tlos::params::spreadId (2), 5.0f);
             CHECK (tlos::io::load (p, Kind::Sources, odd, spreadReport).wasOk());
-            CHECK (std::abs (value (p, tlos::params::spreadId (0)) - 10.0f) < 1e-3f && std::abs (value (p, tlos::params::spreadId (1))) < 1e-3f);
+            CHECK (std::abs (value (p, tlos::params::spreadId (0)) - tlos::params::kMaxSpread) < 1e-3f && std::abs (value (p, tlos::params::spreadId (1))) < 1e-3f);
             CHECK (std::abs (value (p, tlos::params::spreadId (2)) - 5.0f) < 1e-3f && spreadReport.clamped == 2 && spreadReport.spreadApplied == 2);
 
             for (int i = 0; i < 3; ++i) setParam (p, tlos::params::spreadId (i), 0.0f);
@@ -910,7 +995,7 @@ int main (int argc, char** argv)
             // Limits: at most 64 entries (extra ones are skipped), bad entries skipped, positions clamped.
             juce::String many = "<TriPanSpeakers version=\"1\" virtual=\"manual\"><Speaker index=\"1\" x=\"0\" y=\"5\"/>"
                                 "<Speaker index=\"2\" x=\"5\" y=\"0\"/><Speaker index=\"3\" x=\"-5\" y=\"0\"/>"
-                                "<VirtualSpeaker x=\"99\" y=\"-99\"/><VirtualSpeaker x=\"1\"/><VirtualSpeaker x=\"nan\" y=\"2\"/>";
+                                "<VirtualSpeaker x=\"199\" y=\"-199\"/><VirtualSpeaker x=\"1\"/><VirtualSpeaker x=\"nan\" y=\"2\"/>";
             for (int i = 0; i < 70; ++i)
                 many << "<VirtualSpeaker x=\"" << (i % 5) << "\" y=\"" << (i % 3) << "\"/>";
             many << "</TriPanSpeakers>";
@@ -919,7 +1004,7 @@ int main (int argc, char** argv)
             CHECK (tlos::io::load (p, Kind::Speakers, manyFile, r).wasOk());
             CHECK (r.virtualCount == TriPanAudioProcessor::kMaxVirtualSpeakers && r.skipped >= 2 + 3 && r.clamped == 1);
             list = p.getManualVirtualSpeakers();
-            CHECK ((int) list.size() == TriPanAudioProcessor::kMaxVirtualSpeakers && std::abs (list[0].x - 10.0) < 1e-3 && std::abs (list[0].y + 10.0) < 1e-3);
+            CHECK ((int) list.size() == TriPanAudioProcessor::kMaxVirtualSpeakers && std::abs (list[0].x - 100.0) < 1e-3 && std::abs (list[0].y + 100.0) < 1e-3);
             setParam (p, tlos::params::kNumSpeakersId, 7.0f);
 
             // "manual" with no entries means no virtual speakers (not a copy of the automatic ones).
@@ -1194,10 +1279,10 @@ int main (int argc, char** argv)
         CHECK (spread (0) < 1e-6f);
         pointer = stay (pointer, up (0.5));    field.dragTo (pointer);          // up again: increases at once (no dead zone)
         CHECK (std::abs (spread (0) - 0.5f) < 0.03f);
-        pointer = stay (pointer, up (30.0));   field.dragTo (pointer);          // far up: stops at the maximum
-        CHECK (std::abs (spread (0) - 10.0f) < 1e-3f);
+        pointer = stay (pointer, up (80.0));   field.dragTo (pointer);          // far up: stops at the maximum
+        CHECK (std::abs (spread (0) - tlos::params::kMaxSpread) < 1e-3f);
         pointer = stay (pointer, up (-1.0));   field.dragTo (pointer);          // and down again at once
-        CHECK (std::abs (spread (0) - 9.0f) < 0.03f);
+        CHECK (std::abs (spread (0) - (tlos::params::kMaxSpread - 1.0f)) < 0.03f);
         field.release();
         CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 0.5f) < 0.02f && std::abs (value (p, tlos::params::sourceId (0, 'y')) - 1.0f) < 0.02f);
 
@@ -1250,7 +1335,7 @@ int main (int argc, char** argv)
         field.setSpread (0, 3.0);                                               // allowed again, and limited to the range
         CHECK (std::abs (spread (0) - 3.0f) < 1e-3f);
         field.setSpread (0, 99.0);
-        CHECK (std::abs (spread (0) - 10.0f) < 1e-3f);
+        CHECK (std::abs (spread (0) - tlos::params::kMaxSpread) < 1e-3f);
         field.setSpread (0, -4.0);
         CHECK (spread (0) < 1e-6f);
 
@@ -1340,12 +1425,12 @@ int main (int argc, char** argv)
         // Editing: typed text goes to the parameters, limited to the range; rubbish is rejected.
         CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "2.5") == "2.500");
         CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 2.5f) < 1e-4f);
-        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "99") == "10.000");
-        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
-        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "abc") == "10.000");
-        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "") == "10.000");
-        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 10.0f) < 1e-4f);
-        CHECK (sources.getMainTable().setValueFromText (0, Col::spreadColumn, "-3") == "0.000");     // spread is 0..10
+        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "199") == "100.000");
+        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 100.0f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "abc") == "100.000");
+        CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "") == "100.000");
+        CHECK (std::abs (value (p, tlos::params::sourceId (1, 'x')) - 100.0f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (0, Col::spreadColumn, "-3") == "0.000");     // spread is 0..50
         CHECK (sources.getMainTable().setValueFromText (0, Col::spreadColumn, "4.25") == "4.250");
         CHECK (std::abs (value (p, tlos::params::spreadId (0)) - 4.25f) < 1e-4f);
         CHECK (speakers.getMainTable().setValueFromText (4, Col::yColumn, "-1.5") == "-1.500");
@@ -1397,10 +1482,10 @@ int main (int argc, char** argv)
         CHECK (virtualTable != nullptr && virtualTable->getRowCount() == 2);
         CHECK (virtualTable->getTable().getHeader().getNumColumns (true) == 3);
         CHECK (virtualTable->setValueFromText (1, Col::xColumn, "4") == "4.000");
-        CHECK (virtualTable->setValueFromText (0, Col::yColumn, "-99") == "-10.000");
+        CHECK (virtualTable->setValueFromText (0, Col::yColumn, "-199") == "-100.000");
         const auto manual = p.getManualVirtualSpeakers();
         CHECK (manual.size() == 2 && std::abs (manual[1].x - 4.0) < 1e-9 && std::abs (manual[1].y - 0.5) < 1e-9
-               && std::abs (manual[0].x - 1.0) < 1e-9 && std::abs (manual[0].y + 10.0) < 1e-9);
+               && std::abs (manual[0].x - 1.0) < 1e-9 && std::abs (manual[0].y + 100.0) < 1e-9);
 
         // The menu in the window changes the mode; Auto removes the table and the window narrows again.
         speakers.getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Auto, juce::sendNotificationSync);
@@ -1560,6 +1645,7 @@ int main (int argc, char** argv)
 
     base.reset();
 
+    testRoomSize();
     testCalibrationInterface (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-calibration.png").getFullPathName().toRawUTF8() : nullptr);
     testGroups (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-groups.png").getFullPathName().toRawUTF8() : nullptr);
 

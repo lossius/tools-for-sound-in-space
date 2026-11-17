@@ -746,7 +746,7 @@ static void testVirtualSpeakerModes()
     CHECK (q.getManualVirtualSpeakers().size() == 1);
 
     // Mode and manual list are saved with the state; limits are enforced.
-    q.setManualVirtualSpeakers ({ { 1.5, -2.25 }, { 99.0, 0.0 } });
+    q.setManualVirtualSpeakers ({ { 1.5, -2.25 }, { 199.0, 0.0 } });
     juce::MemoryBlock state;
     q.getStateInformation (state);
     TriPanAudioProcessor r;
@@ -754,7 +754,7 @@ static void testVirtualSpeakerModes()
     CHECK (configure (r, 2, 8, 256));
     CHECK (r.getVirtualMode() == tlos::VirtualMode::Manual);
     const auto manual = r.getManualVirtualSpeakers();
-    CHECK (manual.size() == 2 && std::abs (manual[0].x - 1.5) < 1e-3 && std::abs (manual[0].y + 2.25) < 1e-3 && std::abs (manual[1].x - 10.0) < 1e-3);
+    CHECK (manual.size() == 2 && std::abs (manual[0].x - 1.5) < 1e-3 && std::abs (manual[0].y + 2.25) < 1e-3 && std::abs (manual[1].x - 100.0) < 1e-3);
     std::vector<tripan::Vec2> tooMany (100, tripan::Vec2 { 1.0, 1.0 });
     r.setManualVirtualSpeakers (tooMany);
     CHECK ((int) r.getManualVirtualSpeakers().size() == TriPanAudioProcessor::kMaxVirtualSpeakers);

@@ -19,8 +19,9 @@ namespace tlos
     All controls live in a child component laid out at the base size (kBaseWidth x kBaseHeight) and
     scaled uniformly with the window, which has a fixed aspect ratio. Rows from the top: sources,
     speakers, display options (an optional overlay toggle, links, reset, zoom, groups), the virtual speaker
-    menu (only if the processor supports them) with the outside rolloff slider, the plugin's own controls
-    with the status text, then the FieldComponent pad and a footer.
+    menu (only if the processor supports them) with the outside rolloff slider, the room size slider with the
+    status text, then (for a plugin that has controls of its own, `extraRows`) the row of those controls, and
+    the FieldComponent pad and a footer.
 
     A plugin derives from this class and passes its own FieldComponent (which draws what is specific to
     its panning method) and the text of the toggle that shows or hides that drawing. */
@@ -33,9 +34,11 @@ public:
         @param padComponent         The pad, usually a subclass of FieldComponent; the editor owns it.
         @param overlayToggleText    Text of the toggle for FieldComponent::setShowOverlay() (for example
                                     "Show triangulation"), or empty for no toggle.
-        @param overlayToggleTip     Tooltip of that toggle. */
+        @param overlayToggleTip     Tooltip of that toggle.
+        @param extraRows            Rows of controls of the plugin's own (see layoutExtraControls()); each makes the
+                                    window 32 pixels higher at the base size. */
     SpatialEditor (SpatialProcessor& processor, std::unique_ptr<FieldComponent> padComponent,
-                   const juce::String& overlayToggleText, const juce::String& overlayToggleTip = {});
+                   const juce::String& overlayToggleText, const juce::String& overlayToggleTip = {}, int extraRows = 0);
 
     /** Stops the timer and detaches from the parameters. */
     ~SpatialEditor() override;
@@ -43,7 +46,7 @@ public:
     /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
         window is resized. The base size is also the smallest allowed size. */
     static constexpr int kBaseWidth = 700;   ///< Width in pixels at scale 1.
-    static constexpr int kBaseHeight = 892;  ///< Height in pixels at scale 1.
+    static constexpr int kBaseHeight = 892;  ///< Height in pixels at scale 1 for a window without extra rows.
     static constexpr int kMaxScale = 3;      ///< The window can grow to this multiple of the base size.
 
     /** Fills the background. */
@@ -51,6 +54,9 @@ public:
 
     /** Applies the scale transform to the content and remembers the window width. */
     void resized() override;
+
+    /** @return The height in pixels at scale 1: kBaseHeight plus 32 for every extra row. */
+    int getBaseHeight() const noexcept { return baseHeight; }
 
     /** Current display scale (1.0 at the base size). */
     float getScale() const noexcept { return scale; }
@@ -63,6 +69,7 @@ public:
     juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }            ///< Edit/View menu for sources.
     juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }          ///< Edit/View menu for speakers.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }            ///< Auto/Manual/Off menu.
+    juce::Slider& getRoomSlider() noexcept { return roomSlider; }                      ///< "Room size" slider.
     juce::Slider& getOutsideSlider() noexcept { return outsideSlider; }                ///< "Outside rolloff" slider.
     juce::ToggleButton& getOverlayButton() noexcept { return overlayButton; }          ///< The overlay toggle (e.g. "Show triangulation").
     juce::ToggleButton& getShowLinksButton() noexcept { return showLinksButton; }      ///< "Show links".
@@ -100,9 +107,8 @@ public:
 
 protected:
     /** Hook for the controls of the plugin's panning method (for example a rolloff slider): positions them
-        in the row that also holds the status text, taking the space they need
-        off `row` (base-size pixels; the status text gets what is left). Add the controls themselves with
-        addToContent() in the constructor. The default has none. */
+        in the extra row (base-size pixels; `row` is the whole row). Only called if the editor was created with
+        extra rows. Add the controls themselves with addToContent() in the constructor. The default has none. */
     virtual void layoutExtraControls (juce::Rectangle<int>& row);
 
     /** Adds a child to the area that is laid out at the base size and scaled with the window. */
@@ -142,6 +148,8 @@ private:
     // All controls live in `content`, which is laid out at the base size and scaled by a transform.
     // (Declared before the controls so that it is destroyed after them.)
     juce::Component content;       ///< Parent of all controls, laid out at the base size.
+    int baseHeight = kBaseHeight;  ///< Height at scale 1, see getBaseHeight().
+    int extraRowCount = 0;         ///< Rows of controls of the plugin's own.
     float scale = 1.0f;            ///< Current display scale, see getScale().
     bool sizeIsRestored = false;   ///< True once the saved window size has been applied.
 
@@ -156,6 +164,8 @@ private:
     juce::ComboBox speakersModeBox;  ///< "Edit" / "View" for speakers.
     juce::Label virtualLabel { {}, "Virtual speakers" }; ///< Caption of the virtual speaker menu.
     juce::ComboBox virtualModeBox;                       ///< Auto / Manual / Off (only if the processor supports virtual speakers).
+    juce::Label roomLabel { {}, "Room size" };           ///< Caption of the room size slider.
+    juce::Slider roomSlider;                             ///< Half the width of the room in metres (see SpatialProcessor::getRoomHalfExtent()).
     juce::Label outsideLabel { {}, "Outside rolloff" };  ///< Caption of the outside rolloff slider.
     juce::Slider outsideSlider;                          ///< Level drop in dB per doubling of the distance outside the speakers.
     std::unique_ptr<juce::SliderParameterAttachment> outsideAttachment; ///< Ties the slider to its parameter.

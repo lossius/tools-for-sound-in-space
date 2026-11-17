@@ -156,7 +156,8 @@ public:
     void doubleClickAt (juce::Point<float> p, const juce::ModifierKeys& mods);
     /// @}
 
-    /** Zoom. The full view shows the whole +-10 m plane. Zoom in moves a step towards the area that
+    /** Zoom. The full view shows the whole room (+-10 m by default, see SpatialProcessor::getRoomHalfExtent());
+        it comes back by itself when the room size is changed. Zoom in moves a step towards the area that
         contains all speakers in use (and stops there); zoom out moves a step back towards the full
         view. The view is fixed once set, so it does not shift while speakers are dragged. */
     void zoomIn();
@@ -259,6 +260,8 @@ private:
     };
     /** The view that just shows all speakers in use, if there are any. */
     std::optional<View> fittedView() const;
+    /** The room half extent in metres (what the pad shows when fully zoomed out, and where dragged things stop). */
+    double roomHalf() const { return processor.getRoomHalfExtent(); }
     /** Number of sources in use. */
     int activeSources() const;
     /** Number of speakers in use. */
@@ -281,7 +284,8 @@ private:
     size_t lastStateHash = 0;                                  ///< Hash of what was last drawn, to skip repaints.
     bool showOverlay = true;                                   ///< Whether the plugin's overlay is drawn.
     bool showLinks = true;                                     ///< Whether the source-to-speaker lines are drawn.
-    double viewHalf = (double) params::kCoordRange;    ///< Half extent of the view in metres, see zoomIn().
+    double viewHalf = params::kDefaultRoomHalf;        ///< Half extent of the view in metres, see zoomIn().
+    double lastRoomHalf = params::kDefaultRoomHalf;    ///< The room half extent the view was last set for.
     juce::Point<double> viewCentre;                            ///< Centre of the view in metres.
 
     std::optional<Handle> dragging;     ///< The handle being dragged, if any.

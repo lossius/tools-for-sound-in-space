@@ -98,13 +98,13 @@ warnings; keep it that way when adding code.
   (not host parameters; the old single `editMode` property from earlier versions is still read) and queried with
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, and "Reset layout" only resets kinds set to Edit (disabled if both are View).
   Host automation of the position parameters is unaffected.
-- Spread: parameter `src<N>spread` (0..10 m, default 0, host-visible). `computeGains(layout, pos, spread)` (TriPan/core/SpeakerLayout)
+- Spread: parameter `src<N>spread` (0..50 m, default 0, host-visible). `computeGains(layout, pos, spread)` (TriPan/core/SpeakerLayout)
   pans from the position plus 8 points on a circle of radius `spread` (rotated 22.5 deg, mirror-symmetric) and averages the
   squared gains (MDAP-like, constant power, continuous in position and spread; spread <= 0 = plain). The audio thread's
   gain cache key includes the spread. On the pad (`FieldComponent`): semi-transparent circle of radius spread, drawn under
   the sources; only the inner circle (`kSourceRadius` 9 px) is a mouse target. Option (Alt) + vertical
   drag from a source changes the spread (of its `movingSet`; with Cmd of the source alone, see the group modes below) relative to its value at the press (up = more, down = less, sideways ignored,
-  limited to 0..10 m at every step so there is no dead zone), Option + double-click resets it. The mouse handlers
+  limited to 0..50 m at every step so there is no dead zone), Option + double-click resets it. The mouse handlers
   delegate to `pressAt/dragTo/release/doubleClickAt` so tests need no real mouse events. Source XML has an optional `spread` attribute.
   `TooltipWindow` in the editor makes all tooltips visible. `readNumber` in PositionIO rejects non-numeric attributes.
 - Virtual (imaginary) speakers: `Triangulation(real, virtual)` triangulates real + virtual points (real first);
@@ -124,8 +124,8 @@ warnings; keep it that way when adding code.
   cocircular grid cells (3x3, 4x4) still have arbitrary diagonals.
 - Source groups: `tlos::SourceGroups` (shared/core/Groups: group id per source, 0 = none, 1..32; groups of one are dissolved;
   `group()` merges touched groups whole and keeps the smallest id, `ungroup()` dissolves whole groups, `membersOf(source, activeCount)`;
-  text form "0 0 1 1 ..." (64 numbers)) plus `clampTranslation` (rigid move limited to +-10 m per axis, so the group slides along a wall),
-  `clampSpreadChange` (common spread change limited to 0..10) and `convexHull` (for drawing). The assignment is saved in the plugin
+  text form "0 0 1 1 ..." (64 numbers)) plus `clampTranslation` (rigid move limited to +-room half extent per axis, so the group slides along a wall),
+  `clampSpreadChange` (common spread change limited to 0..50) and `convexHull` (for drawing). The assignment is saved in the plugin
   state as `sourceGroups` (not a host parameter; `getSourceGroups/setSourceGroups`). On the pad (`FieldComponent`): the selection is
   GUI state only (not saved). Click = select the source and its group; Shift-click toggles (with group); rectangle on empty space
   selects (Shift extends); dragging a selected source moves `movingSet()` (the selection, else its group) with offsets taken from
@@ -140,7 +140,7 @@ warnings; keep it that way when adding code.
   keyboard focus; `keyPressed`), Group/Ungroup buttons in row 3, Group column in the sources table, optional `group` attribute in source
   XML (an import where any entry has it replaces all groups). Groups and moving need sources on Edit; members above `numSources` keep
   their group but are ignored when moving. Drawing: every member takes the own colour of the lowest-numbered member (`FieldComponent::sourceColour(source, groups)`; ungrouping restores the individual colours), also for the ring, spread circle, links, widened hull band, "G<n>" tag and the table swatch.
-- Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-10 m
+- Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-room half extent (10 m by default)
   centred on 0. Zoom In steps by 1.5x towards `fittedView()` (bounding box of the speakers in use, min +-2 m) and
   stops there; Zoom Out steps back to the full view. The view is fixed once set (it doesn't follow dragged
   speakers) and not saved. `toView/fromView` and the grid use it, so hit-testing and dragging work zoomed.
@@ -155,7 +155,7 @@ warnings; keep it that way when adding code.
   x, y, spread for the sources in use; speakers: x, y for the speakers in use, plus a second table to the right with
   the manual virtual speakers while `canEditVirtualSpeakers()` (mode Manual and speakers on Edit). Top row: count
   slider (the same parameter as in the main window) and, in the speakers window, the Auto/Manual/Off menu. Cells are
-  edited by a click, Return commits; non-numbers are rejected, values are limited to +-10 m (spread 0..10) and go
+  edited by a click, Return commits; non-numbers are rejected, values are limited to +-100 m, the parameter range (spread 0..50) and go
   through the parameters with change gestures. The table edits regardless of the Edit/View menus (like import does).
   Width is fixed to what the content needs (changes when the virtual table appears), height is resizable between 4 rows
   and all rows (limited to the screen; the limits include the native title bar); the `TableListBox` header stays put
@@ -165,7 +165,7 @@ warnings; keep it that way when adding code.
   (`<TriPanSpeakers virtual="auto|manual|off">/<Speaker>`, plus `<VirtualSpeaker>` children when manual; an import
   without the `virtual` attribute leaves the virtual setting alone, an unknown value fails the import; manual lists are
   capped at 64 and clamped; `setVirtualLayout` applies mode + list without copying the automatic speakers). Export writes the channels in use, coordinates rounded to 3 decimals and left-padded to a fixed width (columns align; import ignores the spaces); import validates the whole file
-  first, writes every valid entry (index 1..64, clamped to +-10 m). Speaker imports set `numSpeakers` to the highest
+  first, writes every valid entry (index 1..64, clamped to +-100 m). Speaker imports set `numSpeakers` to the highest
   index in the file if the track has that many outputs (else unchanged); source imports never change `numSources`.
   Import and export are always enabled, in Edit and in View (View only locks dragging and reset). The file dialogs
   (async `juce::FileChooser`) are not exercised by tests, only `exportPositionsTo/importPositionsFrom`.
@@ -193,12 +193,12 @@ warnings; keep it that way when adding code.
   and no falloff at all if the hull has no area (fewer than 3 speakers or collinear: a stereo pair must keep its level). TriPan applies it to each of the 9 spread positions before the squared
   gains are averaged (`tripan::computeGains(layout, pos, spread, outsideRolloffDb)`); DistPan applies it to the centre only (`distpan::computeGains(speakers, hull, ...)`; spread acts through the blur).
   Power is therefore no longer 1 outside the layout. The processors' gain cache keys include the setting. Tests that check constant power with sources outside the speakers set the parameter to 0.
-- Parameters (shared/ui/include/tlos/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±10, +y front.
+- Parameters (shared/ui/include/tlos/Parameters.h): `src<N>x/y` and `spk<N>x/y`, N = 1..64, metres, range ±100 (so hosts show real metres), +y front. The **room** (session state `roomHalfExtent`, 2..100 m, default 10, `getRoomHalfExtent()`, slider in row 5) is what the pad shows, where dragged things stop and the group/scale/rotate limit; the default rings scale with it (speakers on half, sources on a quarter). Positions beyond the room are possible from tables, files and the host.
   Speaker changes are picked up by a 30 Hz message-thread timer (`refreshTriangulation`), which
   publishes an immutable Triangulation through `TriangulationExchange` (hazard-pointer handover).
   processBlock computes per-source gains each block and ramps linearly from the previous block's gains.
 - First run only (flag `layoutInitialised` in saved state): active channels get default rings.
-- Editor: `shared/ui/.../FieldComponent.*` (with TriPan's `TriPan/Source/TriPanField.*`) draws the plane (±10 m), triangulation, source-to-speaker links
+- Editor: `shared/ui/.../FieldComponent.*` (with TriPan's `TriPan/Source/TriPanField.*`) draws the plane (the room, ±10 m by default), triangulation, source-to-speaker links
   and drags handles through the parameters (with change gestures). `TriPan/tests/EditorTests.cpp` tests
   hit-testing/dragging/groups and, given a path argument, writes a PNG snapshot Claude can look at:
   `build/TriPan/Debug/TriPanEditorTests /path/out.png` (Xcode) or `build/TriPan/TriPanEditorTests` (Ninja).

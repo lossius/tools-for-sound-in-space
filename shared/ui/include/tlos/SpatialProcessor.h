@@ -135,8 +135,15 @@ public:
     /** @return The speakers in use that are not excluded, with the channel of each. */
     IncludedSpeakers getIncludedSpeakers() const;
 
-    /** Message thread. Places the active sources and/or speakers on rings (speakers on radius 5 m,
-        sources on radius 2.5 m, first speaker at front). */
+    /** Message thread. The room: half the width of the square, in metres, that the pad shows and keeps sources
+        and speakers in when they are dragged (default 10, so +-10 m). Positions outside it are still possible (the
+        parameters, tables and files allow +-100 m) and sound as usual. Saved with the state, not a host parameter. */
+    double getRoomHalfExtent() const;
+    /** Sets the room half extent, limited to tlos::params::kMinRoomHalf .. kMaxRoomHalf. */
+    void setRoomHalfExtent (double metres);
+
+    /** Message thread. Places the active sources and/or speakers on rings (speakers on half the room half extent,
+        5 m in the default room; sources on a quarter of it; first speaker at front). */
     void resetLayoutToRings (bool resetSources = true, bool resetSpeakers = true);
 
     /** Message thread. Whether the editor lets the user change the source / speaker positions

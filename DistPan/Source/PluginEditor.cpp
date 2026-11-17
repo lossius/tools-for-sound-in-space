@@ -8,7 +8,7 @@
 #include "DistPanParameters.h"
 
 DistPanAudioProcessorEditor::DistPanAudioProcessorEditor (DistPanAudioProcessor& p)
-    : SpatialEditor (p, std::make_unique<DistPanField> (p), {}), dbapProcessor (p)
+    : SpatialEditor (p, std::make_unique<DistPanField> (p), {}, {}, 1), dbapProcessor (p)
 {
     setUpSlider (rolloffSlider, rolloffLabel, "Rolloff", " dB",
                  "How fast a speaker's share falls with distance: the level drop in dB for each doubling of the distance "

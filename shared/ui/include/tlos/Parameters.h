@@ -12,12 +12,21 @@
 
 namespace tlos::params
 {
-/** Coordinates are in metres, in the range [-kCoordRange, kCoordRange]. +y is front, +x is right. */
-inline constexpr float kCoordRange = 10.0f;
+/** Coordinates are in metres, in the range [-kCoordRange, kCoordRange]. +y is front, +x is right. This is the range of
+    the host parameters, so a host shows real metres. The pad works within the room (see kDefaultRoomHalf), which is smaller. */
+inline constexpr float kCoordRange = 100.0f;
+
+/** The room: the area the pad shows and keeps the sources and speakers in when they are dragged is a square of
+    +-"room half extent" metres. It is a setting saved with the session (not a host parameter), by default 10 m. */
+inline constexpr double kDefaultRoomHalf = 10.0;
+/** Smallest room half extent in metres. */
+inline constexpr double kMinRoomHalf = 2.0;
+/** Largest room half extent in metres (the range of the position parameters). */
+inline constexpr double kMaxRoomHalf = (double) kCoordRange;
 
 /** Per-source spread: the radius in metres of the circle around a source over which its sound is
     spread (0 = a point source). */
-inline constexpr float kMaxSpread = 10.0f;
+inline constexpr float kMaxSpread = 50.0f;
 
 /** How many of the host's input/output channels are used as sources/speakers. The parameter range
     is fixed at 1..kMaxChannels (hosts cannot change it per track); the effective value is clamped to

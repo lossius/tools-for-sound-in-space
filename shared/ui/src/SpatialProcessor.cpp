@@ -30,6 +30,8 @@ const juce::Identifier kVirtualMode { "virtualMode" };
 const juce::Identifier kManualVirtual { "manualVirtual" };
 /// State property: excluded speakers as text of 0 and 1, one character per speaker.
 const juce::Identifier kExcludedSpeakers { "excludedSpeakers" };
+/// State property: the room half extent in metres.
+const juce::Identifier kRoomHalf { "roomHalfExtent" };
 /// State property: group id per source as text, "0 0 1 1 ..." (see SourceGroups).
 const juce::Identifier kSourceGroups { "sourceGroups" };
 
@@ -231,7 +233,7 @@ void SpatialProcessor::resetLayoutToRings (bool resetSources, bool resetSpeakers
     if (resetSources)
         for (int i = 0; i < n; ++i)
         {
-            const auto p = ringPosition (i, n, 2.5f);
+            const auto p = ringPosition (i, n, (float) (0.25 * getRoomHalfExtent()));
             setParameterValue (params::sourceId (i, 'x'), p.x);
             setParameterValue (params::sourceId (i, 'y'), p.y);
         }
@@ -239,7 +241,7 @@ void SpatialProcessor::resetLayoutToRings (bool resetSources, bool resetSpeakers
     if (resetSpeakers)
         for (int i = 0; i < m; ++i)
         {
-            const auto p = ringPosition (i, m, 5.0f);
+            const auto p = ringPosition (i, m, (float) (0.5 * getRoomHalfExtent()));
             setParameterValue (params::speakerId (i, 'x'), p.x);
             setParameterValue (params::speakerId (i, 'y'), p.y);
         }
@@ -298,6 +300,20 @@ void SpatialProcessor::setSpeakersEditable (bool editable)
     apvts.state.setProperty (kEditSources, sources, nullptr);
     apvts.state.setProperty (kEditSpeakers, editable, nullptr);
     apvts.state.removeProperty (kLegacyEditMode, nullptr);
+}
+
+double SpatialProcessor::getRoomHalfExtent() const
+{
+    const double value = (double) apvts.state.getProperty (kRoomHalf, params::kDefaultRoomHalf);
+    return std::isfinite (value) ? juce::jlimit (params::kMinRoomHalf, params::kMaxRoomHalf, value) : params::kDefaultRoomHalf;
+}
+
+void SpatialProcessor::setRoomHalfExtent (double metres)
+{
+    if (! std::isfinite (metres))
+        return;
+
+    apvts.state.setProperty (kRoomHalf, juce::jlimit (params::kMinRoomHalf, params::kMaxRoomHalf, metres), nullptr);
 }
 
 int SpatialProcessor::getEditorWidth() const

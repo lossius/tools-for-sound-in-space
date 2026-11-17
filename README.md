@@ -69,6 +69,14 @@ a menu with Mute, Solo and Exclude from panning. Muted or silenced sources and s
 (soloed) badge; excluded speakers are hollow and struck through. The position files carry the settings too (see
 *Saving and loading positions*). Note that the plugins now have about 700 host parameters, which some hosts list slowly.
 
+## Room size
+
+The **Room size** slider (2 to 100 m, default 10) sets the half-width of the room: the pad shows that much on each side of the
+listener, with a grid that follows, and sources and speakers stop at its edge when you drag them. It is saved with the session. Positions
+outside the room are still possible, typed in the tables, loaded from files, or automated by the host, and sound as usual: the room
+only limits the pad. The position parameters reach +-100 m, so the host shows real metres. A new room size shows the whole room again,
+and "Reset layout" places the speakers on a circle of half the room half-width and the sources on a quarter of it.
+
 ## API documentation
 
 The code is documented with Doxygen. Install it (`brew install doxygen`), run `doxygen Doxyfile` in the repository root and
@@ -89,7 +97,7 @@ On macOS the VST3 is also copied to `~/Library/Audio/Plug-Ins/VST3` and the Audi
 
 ## Source spread
 Each source has a **spread**: the radius, in metres, of a circle around it over which its sound is
-spread (0 to 10 m, default 0 = a point source). It is a host parameter per source ("Source N Spread"), so it can
+spread (0 to 50 m, default 0 = a point source). It is a host parameter per source ("Source N Spread"), so it can
 be automated and is saved with the session.
 
 On the pad the spread is drawn as a semi-transparent circle around the source, in the source's colour,
@@ -98,7 +106,7 @@ and the source itself keeps its solid inner circle.
 * **Set the spread:** hold **Option** (Alt on Windows) and drag the source **vertically**: moving the mouse
   up increases the spread, moving it down decreases it, and sideways movement has no effect. The change is
   relative to the value when you press, so you can start a drag anywhere on the inner circle. The spread is
-  limited to 0..10 m at every step, so dragging down to 0 and further, then up again, increases the spread at
+  limited to 0..50 m at every step, so dragging down to 0 and further, then up again, increases the spread at
   once, which makes it easy to bring the spread back to 0 (just drag down). A readout shows the value while you
   drag, and the source does not move. If the source is in a group (or part of a selection) the spread of all of
   them changes by the same amount; add **Cmd** (Ctrl on Windows) to change only the source you grab.
@@ -137,9 +145,9 @@ automation or table edits of one source do not need the group.
 
   | Drag | macOS / Windows | Effect |
   |---|---|---|
-  | plain | | Moves the whole group, keeping its shape. Every member stays inside the +-10 m pad: the group stops at the wall (and slides along it) without being deformed. |
+  | plain | | Moves the whole group, keeping its shape. Every member stays inside the room (the pad, +-10 m by default): the group stops at the wall (and slides along it) without being deformed. |
   | **Cmd** | Cmd / Ctrl | Moves the source you grab only. It stays in the group, which gets a new shape. |
-  | **Option** | Option / Alt | Changes the spread of the whole group by the same amount (up = more). No member goes below 0 or above 10 m. |
+  | **Option** | Option / Alt | Changes the spread of the whole group by the same amount (up = more). No member goes below 0 or above 50 m. |
   | **Option + Cmd** | Option+Cmd / Alt+Ctrl | Changes the spread of the grabbed source only. |
   | **Option + Shift** | Option+Shift / Alt+Shift | Scales the group around its centre of gravity: up = the sources move apart, down = closer together (about 0.5 % per pixel, not below 5 % of the size at the press). The shape is kept, and expansion stops when a member reaches the wall. |
   | **Cmd + Shift** | Cmd+Shift / Ctrl+Shift | Rotates the group around its centre of gravity: up = counter-clockwise, down = clockwise (one degree per pixel). The rotation stops where a member would leave the pad, and you can turn back at once. |
@@ -190,7 +198,7 @@ XML file records the setting and, for Manual, the virtual speakers (see below).
 ## Zooming
 **Zoom In** and **Zoom Out** (third row) change the visible area of the pad. Each press of Zoom In
 zooms a step towards the area that contains all speakers in use and stops when they just fill the pad;
-Zoom Out zooms back in steps until the entire +-10 m area is shown again, as at start. The view stays
+Zoom Out zooms back in steps until the entire room is shown again, as at start. The view stays
 where it is while you drag speakers, so press Zoom In again after moving them if you want it refitted.
 The grid labels follow the zoom. The zoom is not saved with the session.
 
@@ -211,7 +219,7 @@ file dialog each time. Sources and speakers are separate files:
   <VirtualSpeaker index=" 1" x="  0.000" y="  0.000"/>
 </TriPanSpeakers>
 ```
-(`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-10.
+(`<TriPanSources>` / `<Source>` for sources.) Coordinates are metres, +y is front, range +-100.
 
 A speaker file also records the virtual speaker setting in the optional `virtual` attribute (`auto`, `manual` or `off`). With `manual`
 the file lists your own virtual speakers as `<VirtualSpeaker>` entries (at most 64); with `auto` or `off`

@@ -53,7 +53,7 @@ int main (int argc, char** argv)
 
     std::unique_ptr<DistPanAudioProcessorEditor> editor (static_cast<DistPanAudioProcessorEditor*> (p.createEditor()));
     CHECK (editor != nullptr);
-    editor->setSize (tlos::SpatialEditor::kBaseWidth, tlos::SpatialEditor::kBaseHeight);
+    editor->setSize (tlos::SpatialEditor::kBaseWidth, editor->getBaseHeight());
     editor->syncControls();
 
     // What this plugin does not have is hidden: there is no overlay to toggle and no virtual speakers.
