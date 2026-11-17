@@ -11,6 +11,7 @@
 #include "tripan/Triangulation.h"
 #include "tripan/VirtualSpeakers.h"
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <vector>
@@ -64,12 +65,30 @@ public:
     const tlos::Hull& hull() const noexcept { return realHull; }
 
 private:
+    /** An axis-aligned box in the plane. */
+    struct Box
+    {
+        double minX;   ///< Left edge.
+        double minY;   ///< Bottom edge.
+        double maxX;   ///< Right edge.
+        double maxY;   ///< Top edge.
+    };
+
     /** One nested triangulation and its blend weight. */
     struct Layer
     {
         Triangulation triangulation; ///< Real speakers plus the strongest virtual ones.
         double weight;               ///< Share of this layer in the blended gains.
+
+        /** Where this layer's gains can differ from those of the previous layer: boxes around the triangles that are new
+            (or that touch a virtual speaker whose neighbours changed). A source outside all of them gets the previous layer's gains
+            unchanged, which saves a search through all triangles for each of the (possibly many) layers. */
+        std::vector<Box> changed;
+        bool everywhere = true;      ///< True if the previous layer cannot be reused anywhere (the first layer, or the hull changed).
     };
+
+    friend SourceGains computeGainsReference (const SpeakerLayout& layout, Vec2 source) noexcept;
+    friend SourceGains computeGains (const SpeakerLayout& layout, Vec2 source) noexcept;
 
     std::uint64_t layoutId = 0;         ///< See id().
     std::vector<Layer> layers;          ///< Layer 0 first.
@@ -82,6 +101,10 @@ private:
     @param source  Source position in metres.
     @return        Gains for the real speakers. */
 SourceGains computeGains (const SpeakerLayout& layout, Vec2 source) noexcept;
+
+/** The same as computeGains(layout, source), but evaluating every layer from scratch. Slower; used by the tests to
+    check that the shortcut in computeGains() gives the same result. */
+SourceGains computeGainsReference (const SpeakerLayout& layout, Vec2 source) noexcept;
 
 /** Largest spread radius in metres that is used (larger values are limited to this). */
 inline constexpr double kMaxSpreadRadius = 100.0;

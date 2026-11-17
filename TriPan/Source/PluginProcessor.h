@@ -14,6 +14,7 @@
 
 #include <array>
 #include <atomic>
+#include <mutex>
 #include <vector>
 
 /** TriPan's audio processor.
@@ -59,6 +60,13 @@ protected:
     std::vector<tlos::VirtualSpeaker> findAutomaticVirtualSpeakers (const std::vector<tlos::Vec2>& speakers) const override;
 
 private:
+    /** The last input and result of findAutomaticVirtualSpeakers(): the pad, the tables and refreshLayout() all ask
+        every 30 ms with the same speakers, and the search is not free. */
+    mutable std::mutex automaticCacheLock;
+    mutable std::vector<tlos::Vec2> automaticCacheInput;                 ///< The speakers the cached result is for.
+    mutable std::vector<tlos::VirtualSpeaker> automaticCacheResult;      ///< The cached result.
+    mutable bool automaticCacheValid = false;                            ///< Whether the two above hold anything.
+
     /** What the audio thread gets from the message thread: the layout of the speakers that take part in the
         panning, and the output channel of each of them (they differ from the channel numbers when speakers are excluded). */
     struct LayoutSnapshot

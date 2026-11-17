@@ -127,8 +127,11 @@ warnings; keep it that way when adding code.
   sources). `LayoutExchange` hands the immutable `SpeakerLayout` to the audio thread (hazard pointer). The audio
   thread skips sources whose position and layout `id()` are unchanged. Processor mode Auto/Manual/Off
   (host parameters `virtualMode` (choice), `numVirtualSpeakers` and `vspk<N>x/y`, max 64, only in plugins created with `virtualSpeakerParameters`; manual ones have strength 1);
-  Manual ones are edited on the pad (double-click add/delete, drag) when speakers are set to Edit. Known limit:
-  cocircular grid cells (3x3, 4x4) still have arbitrary diagonals.
+  Manual ones are edited on the pad (double-click add/delete, drag) when speakers are set to Edit. Face centres (automatic mode, listener-independent): every face of the Delaunay
+  subdivision with 4+ (nearly) cocircular corners (grid cells, polygons, arcs) gets a virtual speaker, so no arbitrary diagonal decides the panning. Strength = 1 - smoothstep of the
+  fourth point's deviation from the circle through three others (`VirtualSpeakerOptions::faceFullDeviation` 0.003 .. `faceZeroDeviation` 0.03, relative to the radius), min over a face; >= `faceSnapStrength` 0.999 snaps to 1;
+  merged with listener-based ones within 1 % of the size. Partial strengths cost one nested layer each (about 50-80 ms layout build in a sloppy 8x8 grid, off the audio thread);
+  `computeGains` evaluates a layer only inside the boxes where it differs from the previous one (`computeGainsReference` = every layer, for tests). `TriPanAudioProcessor::findAutomaticVirtualSpeakers` caches its last result.
 - Source groups: `tlos::SourceGroups` (shared/core/Groups: group id per source, 0 = none, 1..32; groups of one are dissolved;
   `group()` merges touched groups whole and keeps the smallest id, `ungroup()` dissolves whole groups, `membersOf(source, activeCount)`;
   text form "0 0 1 1 ..." (64 numbers)) plus `clampTranslation` (rigid move limited to +-room half extent per axis, so the group slides along a wall),

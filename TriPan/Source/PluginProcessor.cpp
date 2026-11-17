@@ -65,7 +65,20 @@ void TriPanAudioProcessor::refreshLayout()
 
 std::vector<tlos::VirtualSpeaker> TriPanAudioProcessor::findAutomaticVirtualSpeakers (const std::vector<tlos::Vec2>& speakers) const
 {
-    return tripan::findVirtualSpeakers (speakers);
+    {
+        const std::lock_guard<std::mutex> lock (automaticCacheLock);
+        if (automaticCacheValid && automaticCacheInput.size() == speakers.size()
+            && std::equal (speakers.begin(), speakers.end(), automaticCacheInput.begin(), [] (const tlos::Vec2& a, const tlos::Vec2& b) { return ! (a.x < b.x || a.x > b.x || a.y < b.y || a.y > b.y); }))
+            return automaticCacheResult;
+    }
+
+    auto result = tripan::findVirtualSpeakers (speakers);
+
+    const std::lock_guard<std::mutex> lock (automaticCacheLock);
+    automaticCacheInput = speakers;
+    automaticCacheResult = result;
+    automaticCacheValid = true;
+    return result;
 }
 
 void TriPanAudioProcessor::stateRestored()

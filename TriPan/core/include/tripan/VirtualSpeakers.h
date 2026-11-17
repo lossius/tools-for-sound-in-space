@@ -44,6 +44,18 @@ struct VirtualSpeakerOptions
 
     bool fillGaps = true;   ///< Add virtual speakers in wide angular gaps.
     bool addCentre = true;  ///< Add a virtual speaker at the listener for ring layouts.
+    bool addFaceCentres = true; ///< Add a virtual speaker in every face of four or more (nearly) cocircular speakers.
+
+    /** Two neighbouring triangles of the triangulation belong to one face if the fourth point lies this close to
+        the circle through the other three (the distance from the circle, as a fraction of its radius). Up to this
+        deviation the face is fully a face. A grid typed with three decimals is far inside it. */
+    double faceFullDeviation = 0.003;
+    /** From this deviation on the triangles are not a face (the strength is 0); in between it fades out smoothly,
+        so that the panning changes continuously while speakers are moved through the cocircular position. */
+    double faceZeroDeviation = 0.03;
+
+    /** Face strengths above this are taken as exactly 1 (a grid with rounding noise then needs one triangulation, not one per cell). */
+    double faceSnapStrength = 0.999;
 };
 
 /** Finds where virtual (imaginary) speakers are useful, for a listener at `listener`.
@@ -56,9 +68,20 @@ struct VirtualSpeakerOptions
        triangulation qualifies, so the result is arbitrary and asymmetric); with a centre speaker
        every triangle is "centre + two neighbours", which is symmetric.
 
-    Both only apply if the listener is enclosed by the speakers, because only then is there an
+    3. Face centres: speakers that lie on one circle (the corners of a grid cell, a regular polygon, an arc)
+       have no unique Delaunay triangulation: the diagonals are an arbitrary choice and the panning is
+       lopsided. Where the triangulation has neighbouring triangles whose fourth point lies on (or nearly
+       on) the circle of the other three, they are one face, and a virtual speaker is placed inside the
+       face (at its centre, see below), so that the face is split into a symmetric fan. The strength follows how
+       cocircular the face is (FaceFullDeviation .. FaceZeroDeviation), so there is no jump when speakers are
+       moved through the cocircular position. This does not depend on the listener: a grid in front of the
+       listener gets its cell centres too. The point is the centre of the circle if that lies well inside the
+       face, and otherwise (an arc) the average of the corners, blended smoothly.
+
+    1 and 2 only apply if the listener is enclosed by the speakers, because only then is there an
     intention to surround the listener. Each speaker has a strength in (0, 1] from the soft
-    thresholds in `options`; speakers with no strength are not returned.
+    thresholds in `options`; speakers with no strength are not returned. A face centre that coincides with
+    another virtual speaker (the centre of a ring) is merged with it, keeping the larger strength.
 
     Non-finite and coincident positions are ignored. The result depends only on the speaker
     positions, so it is deterministic and has no memory. Layout changes only (allocates).

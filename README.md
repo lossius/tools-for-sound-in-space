@@ -245,6 +245,13 @@ menu on the fourth row selects where they come from:
   dragging or automating a speaker never makes the sound jump when a threshold is crossed. (With hard
   thresholds, a surround speaker moving across 100 degrees changed a source's gain by up to 0.12 in one
   step; with the blend the largest step is 0.0001.) Weak virtual speakers are drawn faded.
+
+  Auto also fills every **cocircular cell**: where four or more speakers lie on a common circle (grid
+  cells, regular polygons, an arc), the triangulation could choose either diagonal, and that arbitrary
+  choice would pan a source differently on either side of the grid. Auto puts a virtual speaker in the
+  middle of such a cell, so grids, rings and arcs are panned symmetrically. The strength fades in as the
+  corners approach a common circle (within 0.3 % of the radius it is full, beyond 3 % it is gone), so
+  moving a speaker through a cocircular position makes no jump. Works for any layout, with the listener anywhere.
 * **Manual**: you place them. Set the speakers menu to Edit, then double-click empty space on the pad
   to add one, drag to move, double-click one to delete it (at most 64). Switching from Auto to
   Manual starts from the current automatic set. Positions are saved with the session.
