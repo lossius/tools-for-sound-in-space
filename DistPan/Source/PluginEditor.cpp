@@ -8,7 +8,10 @@
 #include "DistPanParameters.h"
 
 DistPanAudioProcessorEditor::DistPanAudioProcessorEditor (DistPanAudioProcessor& p)
-    : SpatialEditor (p, std::make_unique<DistPanField> (p), {}), dbapProcessor (p)
+    : SpatialEditor (p, std::make_unique<DistPanField> (p), "Show hull",
+                     "Draw the convex hull of the speakers that take part in the panning: the edge of the layout, where the level "
+                     "starts to fall off for a source outside it (Outside rolloff in the settings)."),
+      dbapProcessor (p)
 {
     setUpSlider (rolloffSlider, "DBAP rolloff", " dB",
                  "How fast a speaker's share falls with distance: the level drop in dB for each doubling of the distance "

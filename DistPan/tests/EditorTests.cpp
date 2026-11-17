@@ -64,7 +64,14 @@ int main (int argc, char** argv)
     editor->syncControls();
 
     // What this plugin does not have is hidden: there is no overlay to toggle and no virtual speakers.
-    CHECK (! editor->getOverlayButton().isVisible());
+    CHECK (editor->getOverlayButton().isVisible() && editor->getOverlayButton().getButtonText() == "Show hull" && editor->getOverlayButton().getToggleState());
+    CHECK (editor->getField().getShowOverlay());
+    editor->getOverlayButton().setToggleState (false, juce::sendNotificationSync);          // the toggle hides the hull
+    editor->getOverlayButton().onClick();
+    CHECK (! editor->getField().getShowOverlay());
+    editor->getOverlayButton().setToggleState (true, juce::sendNotificationSync);
+    editor->getOverlayButton().onClick();
+    CHECK (editor->getField().getShowOverlay());
     CHECK (! editor->getVirtualModeBox().isVisible());
     CHECK (editor->getShowLinksButton().isVisible() && editor->getResetButton().isVisible());
 

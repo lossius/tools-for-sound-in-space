@@ -11,7 +11,7 @@
 #include "tlos/SpatialEditor.h"
 
 /** DistPan's editor window. All the controls of the family come from tlos::SpatialEditor; DistPan adds its
-    pad and two sliders (rolloff and blur), which are in the settings window under Panning. */
+    pad (with the convex hull of the speakers, switched by "Show hull") and two sliders (rolloff and blur), which are in the settings window under Panning. */
 class DistPanAudioProcessorEditor final : public tlos::SpatialEditor
 {
 public:

@@ -433,7 +433,13 @@ void SpatialEditor::layoutContent()
     // Third row: display options and zoom.
     auto bar = nextRow();
     if (overlayButton.isVisible())
-        overlayButton.setBounds (bar.removeFromLeft (140));
+    {
+        // As wide as its text needs (the tick box and some space around it): "Show triangulation" fills 140 px, "Show hull" much less.
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText (juce::FontOptions (15.0f), overlayButton.getButtonText(), 0.0f, 0.0f);
+        const int textWidth = juce::roundToInt (std::ceil (glyphs.getBoundingBox (0, -1, true).getWidth()));
+        overlayButton.setBounds (bar.removeFromLeft (std::min (140, textWidth + 36)));
+    }
     showLinksButton.setBounds (bar.removeFromLeft (105));
     resetButton.setBounds (bar.removeFromLeft (90));
     bar.removeFromLeft (8);
