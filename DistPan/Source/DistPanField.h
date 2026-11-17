@@ -23,14 +23,14 @@ public:
 
 protected:
     /** Remembers the speakers in use, for getLinkGains(). */
-    void updateOverlay (const std::vector<tlos::Vec2>& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
+    void updateOverlay (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
 
     /** The speakers a source feeds according to DBAP with the current rolloff and blur (the strong ones only). */
     tlos::SourceGains getLinkGains (int source, tlos::Vec2 position, double spread) const override;
 
 private:
     DistPanAudioProcessor& dbapProcessor;      ///< The processor, for the rolloff and the blur.
-    std::vector<tlos::Vec2> speakerPositions;  ///< Speakers in use as of the last timer tick.
+    tlos::IncludedSpeakers includedSpeakers;   ///< Speakers that take part in the panning as of the last timer tick.
     tlos::Hull speakerHull;                    ///< Their hull, for the falloff outside the layout.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DistPanField)

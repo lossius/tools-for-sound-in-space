@@ -28,6 +28,8 @@ const juce::Identifier kEditorWidth { "editorWidth" };
 const juce::Identifier kVirtualMode { "virtualMode" };
 /// State property: manual virtual speakers as text, "x1 y1 x2 y2 ...".
 const juce::Identifier kManualVirtual { "manualVirtual" };
+/// State property: excluded speakers as text of 0 and 1, one character per speaker.
+const juce::Identifier kExcludedSpeakers { "excludedSpeakers" };
 /// State property: group id per source as text, "0 0 1 1 ..." (see SourceGroups).
 const juce::Identifier kSourceGroups { "sourceGroups" };
 
@@ -73,6 +75,12 @@ SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::St
         srcSpread[(size_t) i] = apvts.getRawParameterValue (params::spreadId (i));
         spkX[(size_t) i] = apvts.getRawParameterValue (params::speakerId (i, 'x'));
         spkY[(size_t) i] = apvts.getRawParameterValue (params::speakerId (i, 'y'));
+        srcTrim[(size_t) i] = apvts.getRawParameterValue (params::sourceTrimId (i));
+        srcMute[(size_t) i] = apvts.getRawParameterValue (params::sourceMuteId (i));
+        srcSolo[(size_t) i] = apvts.getRawParameterValue (params::sourceSoloId (i));
+        spkTrim[(size_t) i] = apvts.getRawParameterValue (params::speakerTrimId (i));
+        spkMute[(size_t) i] = apvts.getRawParameterValue (params::speakerMuteId (i));
+        spkSolo[(size_t) i] = apvts.getRawParameterValue (params::speakerSoloId (i));
     }
 
     numSourcesParam  = apvts.getRawParameterValue (params::kNumSourcesId);
@@ -124,6 +132,89 @@ std::vector<Vec2> SpatialProcessor::getActiveSpeakerPositions() const
         speakers.push_back ({ (double) spkX[(size_t) i]->load(), (double) spkY[(size_t) i]->load() });
 
     return speakers;
+}
+
+void SpatialProcessor::getChannelGains (ChannelGains& gains) const noexcept
+{
+    const auto fill = [] (std::array<float, kMaxChannels>& out, int used,
+                          const std::array<std::atomic<float>*, kMaxChannels>& trim,
+                          const std::array<std::atomic<float>*, kMaxChannels>& mute,
+                          const std::array<std::atomic<float>*, kMaxChannels>& solo)
+    {
+        bool anySolo = false;
+        for (int i = 0; i < used; ++i)
+            anySolo = anySolo || solo[(size_t) i]->load() >= 0.5f;
+
+        for (int i = 0; i < kMaxChannels; ++i)
+        {
+            const bool audible = i < used && mute[(size_t) i]->load() < 0.5f && (! anySolo || solo[(size_t) i]->load() >= 0.5f);
+            out[(size_t) i] = audible ? juce::Decibels::decibelsToGain (trim[(size_t) i]->load()) : 0.0f;
+        }
+    };
+
+    fill (gains.sources,  getActiveSources(),  srcTrim, srcMute, srcSolo);
+    fill (gains.speakers, getActiveSpeakers(), spkTrim, spkMute, spkSolo);
+}
+
+std::array<bool, kMaxChannels> SpatialProcessor::getExcludedSpeakers() const
+{
+    std::array<bool, kMaxChannels> out {};
+    const auto text = apvts.state.getProperty (kExcludedSpeakers).toString();
+    for (int i = 0; i < kMaxChannels && i < text.length(); ++i)
+        out[(size_t) i] = text[i] == '1';
+    return out;
+}
+
+void SpatialProcessor::setExcludedSpeakers (const std::array<bool, kMaxChannels>& excluded)
+{
+    if (excluded == getExcludedSpeakers())
+        return;
+
+    juce::String text;
+    bool any = false;
+    for (const bool e : excluded)
+    {
+        text << (e ? '1' : '0');
+        any = any || e;
+    }
+
+    if (any)
+        apvts.state.setProperty (kExcludedSpeakers, text, nullptr);
+    else
+        apvts.state.removeProperty (kExcludedSpeakers, nullptr);
+
+    refreshLayout();
+}
+
+bool SpatialProcessor::isSpeakerExcluded (int index) const
+{
+    return index >= 0 && index < kMaxChannels && getExcludedSpeakers()[(size_t) index];
+}
+
+void SpatialProcessor::setSpeakerExcluded (int index, bool excluded)
+{
+    if (index < 0 || index >= kMaxChannels)
+        return;
+
+    auto all = getExcludedSpeakers();
+    all[(size_t) index] = excluded;
+    setExcludedSpeakers (all);
+}
+
+IncludedSpeakers SpatialProcessor::getIncludedSpeakers() const
+{
+    const int m = getActiveSpeakers();
+    const auto excluded = getExcludedSpeakers();
+
+    IncludedSpeakers out;
+    for (int i = 0; i < m; ++i)
+        if (! excluded[(size_t) i])
+        {
+            out.positions.push_back ({ (double) spkX[(size_t) i]->load(), (double) spkY[(size_t) i]->load() });
+            out.channelOf.push_back (i);
+        }
+
+    return out;
 }
 
 void SpatialProcessor::setParameterValue (const juce::String& id, float realValue)
@@ -317,7 +408,7 @@ std::vector<VirtualSpeaker> SpatialProcessor::getVirtualSpeakers() const
             break;
     }
 
-    return findAutomaticVirtualSpeakers (getActiveSpeakerPositions());
+    return findAutomaticVirtualSpeakers (getIncludedSpeakers().positions); // excluded speakers do not exist for the panning
 }
 
 SourceGroups SpatialProcessor::getSourceGroups() const

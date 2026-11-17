@@ -8,7 +8,8 @@
 
 #include "tlos/SpatialProcessor.h"
 #include "tripan/Gains.h"
-#include "tripan/LayoutExchange.h"
+#include "tlos/Exchange.h"
+#include "tripan/SpeakerLayout.h"
 #include "tripan/VirtualSpeakers.h"
 
 #include <array>
@@ -58,14 +59,27 @@ protected:
     std::vector<tlos::VirtualSpeaker> findAutomaticVirtualSpeakers (const std::vector<tlos::Vec2>& speakers) const override;
 
 private:
+    /** What the audio thread gets from the message thread: the layout of the speakers that take part in the
+        panning, and the output channel of each of them (they differ from the channel numbers when speakers are excluded). */
+    struct LayoutSnapshot
+    {
+        /** Builds the layout of the included speakers and the virtual speakers. Allocates. */
+        LayoutSnapshot (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers)
+            : layout (speakers.positions, virtualSpeakers), channelOf (speakers.channelOf) {}
+
+        tripan::SpeakerLayout layout;  ///< The triangulations (indices are positions in the included speakers).
+        std::vector<int> channelOf;    ///< Output channel of each included speaker.
+    };
+
     // Message thread -> audio thread
-    tripan::LayoutExchange exchange;                       ///< Hands layouts to the audio thread.
-    std::vector<tlos::Vec2> publishedSpeakers;             ///< Speakers of the last published layout (message thread only).
+    tlos::Exchange<LayoutSnapshot> exchange;               ///< Hands layouts to the audio thread.
+    tlos::IncludedSpeakers publishedSpeakers;              ///< Speakers of the last published layout (message thread only).
     std::vector<tlos::VirtualSpeaker> publishedVirtual;    ///< Virtual speakers of the last published layout (message thread only).
     bool havePublished = false;                            ///< Whether anything has been published (message thread only).
 
     // Audio thread only
-    std::array<tripan::SourceGains, tlos::kMaxChannels> prevGains {}; ///< Gains at the end of the previous block, per source.
+    std::array<tripan::SourceGains, tlos::kMaxChannels> prevGains {}; ///< Gains at the end of the previous block, per source (with trim, mute and solo).
+    std::array<tripan::SourceGains, tlos::kMaxChannels> panGains {};  ///< The panning gains of each source alone, per output channel: what the cache holds.
     int prevUsedSpeakers = 0;                                         ///< Speakers in use in the previous block.
 
     /** What prevGains[s] was computed from, so unchanged sources need no new computation. */

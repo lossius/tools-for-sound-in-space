@@ -15,7 +15,7 @@ TriPanField::TriPanField (TriPanAudioProcessor& p)
     refresh(); // the base class could not call updateOverlay() while it was being constructed
 }
 
-void TriPanField::updateOverlay (const std::vector<tlos::Vec2>& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers)
+void TriPanField::updateOverlay (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers)
 {
     const auto samePosition = [] (const tlos::Vec2& p, const tlos::Vec2& q) { return juce::exactlyEqual (p.x, q.x) && juce::exactlyEqual (p.y, q.y); };
     const auto sameVirtual = [&] (const tlos::VirtualSpeaker& p, const tlos::VirtualSpeaker& q)
@@ -24,14 +24,15 @@ void TriPanField::updateOverlay (const std::vector<tlos::Vec2>& speakers, const 
     };
 
     const bool changed = triangulation == nullptr
-                      || speakers.size() != triangulatedSpeakers.size()
-                      || ! std::equal (speakers.begin(), speakers.end(), triangulatedSpeakers.begin(), samePosition)
+                      || speakers.channelOf != triangulatedSpeakers.channelOf
+                      || speakers.positions.size() != triangulatedSpeakers.positions.size()
+                      || ! std::equal (speakers.positions.begin(), speakers.positions.end(), triangulatedSpeakers.positions.begin(), samePosition)
                       || virtualSpeakers.size() != triangulatedVirtual.size()
                       || ! std::equal (virtualSpeakers.begin(), virtualSpeakers.end(), triangulatedVirtual.begin(), sameVirtual);
 
     if (changed)
     {
-        triangulation = std::make_unique<tripan::SpeakerLayout> (speakers, virtualSpeakers);
+        triangulation = std::make_unique<tripan::SpeakerLayout> (speakers.positions, virtualSpeakers);
         triangulatedSpeakers = speakers;
         triangulatedVirtual = virtualSpeakers;
     }
@@ -64,5 +65,11 @@ tlos::SourceGains TriPanField::getLinkGains (int, tlos::Vec2 position, double sp
     if (triangulation == nullptr)
         return {};
 
-    return tripan::computeGains (*triangulation, position, spread, processor.getOutsideRolloff());
+    auto gains = tripan::computeGains (*triangulation, position, spread, processor.getOutsideRolloff());
+
+    // The triangulation numbers the speakers that take part; the pad wants output channels.
+    for (int i = 0; i < gains.count; ++i)
+        gains.speaker[(size_t) i] = triangulatedSpeakers.channelOf[(size_t) gains.speaker[(size_t) i]];
+
+    return gains;
 }

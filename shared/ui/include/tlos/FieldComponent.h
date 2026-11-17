@@ -11,6 +11,7 @@
 #include "tlos/SourceGains.h"
 
 #include <array>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -178,8 +179,9 @@ public:
 
     /** Plane coordinates (metres) -> component coordinates. */
     juce::Point<float> toView (double x, double y) const;
-    /** Topmost handle within grab distance of p (component coordinates), sources before speakers. */
-    std::optional<Handle> findHandleAt (juce::Point<float> p) const;
+    /** Topmost handle within grab distance of p (component coordinates), sources before speakers. Handles that
+        the Edit/View menus lock are not found, unless `ignoreEditModes` is set (the context menu works on them too). */
+    std::optional<Handle> findHandleAt (juce::Point<float> p, bool ignoreEditModes = false) const;
     /** Sets the handle's parameters from a component-coordinate position (clamped to the range). */
     void moveHandle (const Handle& handle, juce::Point<float> p);
 
@@ -191,6 +193,20 @@ public:
     bool addVirtualSpeakerAt (juce::Point<float> p);
     /** Deletes manual virtual speaker `index`. @return false if not possible. */
     bool removeVirtualSpeaker (int index);
+
+    /// @name Mute, solo and exclude
+    /// Right-click a source or a speaker for a menu with Mute, Solo and (speakers) Exclude from panning. They work
+    /// whatever the Edit/View menus say. Mute and solo are host parameters; exclude is saved with the session.
+    /// @{
+    /** Toggles the mute switch of a source or speaker (inside a change gesture). Virtual speakers have none. */
+    void toggleMute (const Handle& handle);
+    /** Toggles the solo switch of a source or speaker (inside a change gesture). Virtual speakers have none. */
+    void toggleSolo (const Handle& handle);
+    /** Toggles whether speaker `index` (zero-based) is excluded from the panning. */
+    void toggleExclude (int speaker);
+    /** Shows the menu for a handle at the mouse position. */
+    void showHandleMenu (const Handle& handle);
+    /// @}
 
     /** Draws grid, overlay, group bands, spread circles, links, speakers and sources. */
     void paint (juce::Graphics&) override;
@@ -213,17 +229,18 @@ public:
     juce::Rectangle<float> planeBounds() const;
 
 protected:
-    /** Hook, called by the timer (and refresh()) with the speakers in use and the virtual speakers in
-        effect: follow them, for example by rebuilding a drawn layout when they changed. The default does nothing.
+    /** Hook, called by the timer (and refresh()) with the speakers that take part in the panning (the ones in
+        use that are not excluded, with their output channels) and the virtual speakers in effect: follow them, for
+        example by rebuilding a drawn layout when they changed. The default does nothing.
         Not called during construction; a subclass calls refresh() at the end of its own constructor. */
-    virtual void updateOverlay (const std::vector<Vec2>& speakers, const std::vector<VirtualSpeaker>& virtualSpeakers);
+    virtual void updateOverlay (const IncludedSpeakers& speakers, const std::vector<VirtualSpeaker>& virtualSpeakers);
 
     /** Hook: draws what lies under the group bands and spread circles, if the overlay is switched on
         (setShowOverlay()). Clipped to the plane; use toView() for coordinates. The default draws nothing. */
     virtual void paintOverlay (juce::Graphics& g);
 
-    /** Hook: the speakers a source at `position` with the given spread feeds and their gains, drawn as
-        links when "Show links" is on. The default returns no speakers (no links). */
+    /** Hook: the speakers a source at `position` with the given spread feeds and their gains (indexed by output
+        channel), drawn as links when "Show links" is on. The default returns no speakers (no links). */
     virtual SourceGains getLinkGains (int source, Vec2 position, double spread) const;
 
     SpatialProcessor& processor; ///< The processor whose parameters are shown and edited.
@@ -256,6 +273,11 @@ private:
     std::array<juce::RangedAudioParameter*, tlos::kMaxChannels> spkYp {};      ///< Speaker y parameters.
 
     std::vector<VirtualSpeaker> virtualSpeakers;               ///< Virtual speakers in effect, refreshed by the timer.
+    std::array<bool, tlos::kMaxChannels> excludedSpeakers {};  ///< Excluded speakers, refreshed by the timer.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> srcMuteRaw {};  ///< Raw values of the source mute switches.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> srcSoloRaw {};  ///< Raw values of the source solo switches.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> spkMuteRaw {};  ///< Raw values of the speaker mute switches.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> spkSoloRaw {};  ///< Raw values of the speaker solo switches.
     size_t lastStateHash = 0;                                  ///< Hash of what was last drawn, to skip repaints.
     bool showOverlay = true;                                   ///< Whether the plugin's overlay is drawn.
     bool showLinks = true;                                     ///< Whether the source-to-speaker lines are drawn.
@@ -280,6 +302,9 @@ private:
     juce::Point<float> marqueeOrigin;           ///< Where the selection rectangle started.
     std::vector<int> marqueeBase;               ///< Selection to extend (Shift) or empty.
     juce::String baseTooltip;                   ///< Tooltip text without the group note.
+
+    /** Toggles a mute or solo switch parameter inside a change gesture. */
+    void toggleSwitch (const juce::String& parameterId);
 
     /** Sets the x and y parameters of `dragSources` to `positions` (same order). */
     void writeDragPositions (const std::vector<tlos::Vec2>& positions);

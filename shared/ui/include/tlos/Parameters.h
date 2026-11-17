@@ -35,15 +35,33 @@ inline constexpr float kMaxOutsideRolloff = 24.0f;
 /** Default outside rolloff in dB (the free-field value). */
 inline constexpr float kDefaultOutsideRolloff = 6.0f;
 
+/** Range of a trim in dB: the gain of a source (before the panning) or of a speaker (after it). 0 dB = unchanged. */
+inline constexpr float kMinTrimDb = -60.0f;
+/** Largest trim in dB. */
+inline constexpr float kMaxTrimDb = 12.0f;
+
 /** @return The parameter ID of the x or y (`axis`) coordinate of source `index` (zero-based), for example "src1x". */
 inline juce::String sourceId  (int index, char axis) { return "src" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
 /** @return The parameter ID of the spread of source `index` (zero-based), for example "src1spread". */
 inline juce::String spreadId (int index) { return "src" + juce::String (index + 1) + "spread"; }
+/** @return The parameter ID of the trim (dB) of source `index` (zero-based), for example "src1trim". */
+inline juce::String sourceTrimId (int index) { return "src" + juce::String (index + 1) + "trim"; }
+/** @return The parameter ID of the mute switch of source `index` (zero-based), for example "src1mute". */
+inline juce::String sourceMuteId (int index) { return "src" + juce::String (index + 1) + "mute"; }
+/** @return The parameter ID of the solo switch of source `index` (zero-based), for example "src1solo". */
+inline juce::String sourceSoloId (int index) { return "src" + juce::String (index + 1) + "solo"; }
+/** @return The parameter ID of the trim (dB) of speaker `index` (zero-based), for example "spk1trim". */
+inline juce::String speakerTrimId (int index) { return "spk" + juce::String (index + 1) + "trim"; }
+/** @return The parameter ID of the mute switch of speaker `index` (zero-based), for example "spk1mute". */
+inline juce::String speakerMuteId (int index) { return "spk" + juce::String (index + 1) + "mute"; }
+/** @return The parameter ID of the solo switch of speaker `index` (zero-based), for example "spk1solo". */
+inline juce::String speakerSoloId (int index) { return "spk" + juce::String (index + 1) + "solo"; }
 /** @return The parameter ID of the x or y (`axis`) coordinate of speaker `index` (zero-based), for example "spk1x". */
 inline juce::String speakerId (int index, char axis) { return "spk" + juce::String (index + 1) + juce::String::charToString ((juce::juce_wchar) axis); }
 
-/** @return All host parameters, in the order a host lists them: the two counts, then x, y and spread of
-    every source, then x and y of every speaker, then the outside rolloff. The IDs are part of the saved sessions: never change them. */
+/** @return All host parameters, in the order a host lists them: the two counts, then x, y, spread, trim, mute
+    and solo of every source, then x, y, trim, mute and solo of every speaker, then the outside rolloff. The IDs are
+    part of the saved sessions: never change them. */
 inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
 {
     using juce::AudioParameterFloat;
@@ -64,9 +82,20 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { kNumSpeakersId, 1 }, "Number of Speakers",
                                                            1, kMaxChannels, kMaxChannels));
 
+    const auto addTrim = [&] (const juce::String& id, const juce::String& name)
+    {
+        layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { id, 1 }, name,
+                                                           NormalisableRange<float> (kMinTrimDb, kMaxTrimDb), 0.0f,
+                                                           juce::AudioParameterFloatAttributes().withLabel ("dB")));
+    };
+    const auto addSwitch = [&] (const juce::String& id, const juce::String& name)
+    {
+        layout.add (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id, 1 }, name, false));
+    };
+
     // The order of the parameters is the order a host lists them in (automation lanes, parameter
-    // menus): the two counts, then everything for source 1 (x, y, spread), source 2, ..., then
-    // everything for speaker 1 (x, y), speaker 2, ...
+    // menus): the two counts, then everything for source 1 (x, y, spread, trim, mute, solo), source 2, ...,
+    // then everything for speaker 1 (x, y, trim, mute, solo), speaker 2, ...
     for (int i = 0; i < kMaxChannels; ++i)
     {
         add (sourceId (i, 'x'), "Source " + juce::String (i + 1) + " X");
@@ -74,12 +103,18 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout()
         layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { spreadId (i), 1 }, "Source " + juce::String (i + 1) + " Spread",
                                                            NormalisableRange<float> (0.0f, kMaxSpread), 0.0f,
                                                            juce::AudioParameterFloatAttributes().withLabel ("m")));
+        addTrim (sourceTrimId (i), "Source " + juce::String (i + 1) + " Trim");
+        addSwitch (sourceMuteId (i), "Source " + juce::String (i + 1) + " Mute");
+        addSwitch (sourceSoloId (i), "Source " + juce::String (i + 1) + " Solo");
     }
 
     for (int i = 0; i < kMaxChannels; ++i)
     {
         add (speakerId (i, 'x'), "Speaker " + juce::String (i + 1) + " X");
         add (speakerId (i, 'y'), "Speaker " + juce::String (i + 1) + " Y");
+        addTrim (speakerTrimId (i), "Speaker " + juce::String (i + 1) + " Trim");
+        addSwitch (speakerMuteId (i), "Speaker " + juce::String (i + 1) + " Mute");
+        addSwitch (speakerSoloId (i), "Speaker " + juce::String (i + 1) + " Solo");
     }
 
     layout.add (std::make_unique<AudioParameterFloat> (juce::ParameterID { kOutsideRolloffId, 1 }, "Outside Rolloff",

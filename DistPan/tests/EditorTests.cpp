@@ -114,6 +114,20 @@ int main (int argc, char** argv)
     field.release();
     CHECK (std::abs (value (p, tlos::params::speakerId (0, 'x')) - spk0x) < 1e-6f);
 
+    // Mute, solo and exclude from the pad's own functions (what the right-click menu calls); the tables have the columns.
+    field.toggleMute ({ true, 1 });
+    CHECK (value (p, tlos::params::sourceMuteId (1)) == 1.0f);
+    field.toggleMute ({ true, 1 });
+    field.toggleSolo ({ false, 2 });
+    CHECK (value (p, tlos::params::speakerSoloId (2)) == 1.0f);
+    field.toggleSolo ({ false, 2 });
+    field.toggleExclude (4);
+    CHECK (p.isSpeakerExcluded (4) && p.getIncludedSpeakers().positions.size() == 5);
+    field.refresh();
+    field.toggleExclude (4);
+    CHECK (! p.isSpeakerExcluded (4));
+    CHECK (editor->showTableWindow (tlos::io::Kind::Speakers).getContent().getMainTable().getTable().getHeader().getNumColumns (true) == 7);
+
     // Links can be switched off, and the pad paints with them on (no crash with many sources and speakers).
     editor->getShowLinksButton().setToggleState (false, juce::sendNotificationSync);
     CHECK (! field.getShowLinks());

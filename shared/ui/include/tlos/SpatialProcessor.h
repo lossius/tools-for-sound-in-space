@@ -8,6 +8,7 @@
 
 #include "tlos/Groups.h"
 #include "tlos/Limits.h"
+#include "tlos/Speakers.h"
 #include "tlos/Vec2.h"
 
 #include <juce_audio_processors/juce_audio_processors.h>
@@ -26,6 +27,13 @@ enum class VirtualMode
     Auto = 1,   ///< Virtual speakers are found from the speaker layout.
     Manual = 2, ///< The user's own list of virtual speakers is used.
     Off = 3     ///< No virtual speakers.
+};
+
+/** The gain of every source and every speaker that comes from its trim, mute and solo (linear, 0 = silent). */
+struct ChannelGains
+{
+    std::array<float, kMaxChannels> sources {};   ///< Gain of each source, applied to its signal before the panning.
+    std::array<float, kMaxChannels> speakers {};  ///< Gain of each speaker, applied to its output after the panning.
 };
 
 /** What every plugin in this repository has in common, so that they all look and behave alike.
@@ -104,8 +112,28 @@ public:
         outside the speaker layout, see tlos::outsideFactor(). 0 = no falloff. Safe to call from any thread. */
     double getOutsideRolloff() const noexcept;
 
-    /** @return The positions of the speakers in use, in metres. */
+    /** @return The positions of the speakers in use, in metres (all of them, also the excluded ones). */
     std::vector<Vec2> getActiveSpeakerPositions() const;
+
+    /** Fills in the gain of every source and speaker from its trim, mute and solo parameters:
+        trim in dB as a linear gain; 0 if muted; 0 if some source (or speaker) in use is soloed and this one is not.
+        Mute wins over solo. Sources and speakers are soloed separately: a soloed source does not silence speakers.
+        Entries beyond the sources or speakers in use are 0. Real-time safe; safe to call from any thread.
+        @param gains  Receives the result. */
+    void getChannelGains (ChannelGains& gains) const noexcept;
+
+    /** Message thread. Whether speaker `index` (zero-based) is excluded from the panning: the panning is
+        computed as if it did not exist (use this for an LFE channel or a broken speaker). Unlike mute, the
+        others then share its signal. Saved with the state, not a host parameter. */
+    bool isSpeakerExcluded (int index) const;
+    /** Excludes or includes a speaker, and calls refreshLayout(). */
+    void setSpeakerExcluded (int index, bool excluded);
+    /** @return The excluded speakers (indexed by zero-based speaker number, also those not in use). */
+    std::array<bool, kMaxChannels> getExcludedSpeakers() const;
+    /** Replaces all exclusions at once, and calls refreshLayout(). */
+    void setExcludedSpeakers (const std::array<bool, kMaxChannels>& excluded);
+    /** @return The speakers in use that are not excluded, with the channel of each. */
+    IncludedSpeakers getIncludedSpeakers() const;
 
     /** Message thread. Places the active sources and/or speakers on rings (speakers on radius 5 m,
         sources on radius 2.5 m, first speaker at front). */
@@ -190,6 +218,12 @@ protected:
     std::array<std::atomic<float>*, kMaxChannels> srcSpread {}; ///< Raw values of the source spread parameters.
     std::array<std::atomic<float>*, kMaxChannels> spkX {};      ///< Raw values of the speaker x parameters.
     std::array<std::atomic<float>*, kMaxChannels> spkY {};      ///< Raw values of the speaker y parameters.
+    std::array<std::atomic<float>*, kMaxChannels> srcTrim {};   ///< Raw values of the source trim parameters (dB).
+    std::array<std::atomic<float>*, kMaxChannels> srcMute {};   ///< Raw values of the source mute switches (0 or 1).
+    std::array<std::atomic<float>*, kMaxChannels> srcSolo {};   ///< Raw values of the source solo switches (0 or 1).
+    std::array<std::atomic<float>*, kMaxChannels> spkTrim {};   ///< Raw values of the speaker trim parameters (dB).
+    std::array<std::atomic<float>*, kMaxChannels> spkMute {};   ///< Raw values of the speaker mute switches (0 or 1).
+    std::array<std::atomic<float>*, kMaxChannels> spkSolo {};   ///< Raw values of the speaker solo switches (0 or 1).
     std::atomic<float>* numSourcesParam = nullptr;  ///< Raw value of "Number of Sources".
     std::atomic<float>* numSpeakersParam = nullptr; ///< Raw value of "Number of Speakers".
     std::atomic<float>* outsideRolloffParam = nullptr; ///< Raw value of "Outside Rolloff".

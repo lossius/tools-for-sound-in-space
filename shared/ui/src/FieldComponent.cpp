@@ -49,6 +49,10 @@ FieldComponent::FieldComponent (SpatialProcessor& p)
         srcSpreadP[(size_t) i] = apvts.getParameter (params::spreadId (i));
         spkXp[(size_t) i] = apvts.getParameter (params::speakerId (i, 'x'));
         spkYp[(size_t) i] = apvts.getParameter (params::speakerId (i, 'y'));
+        srcMuteRaw[(size_t) i] = apvts.getRawParameterValue (params::sourceMuteId (i));
+        srcSoloRaw[(size_t) i] = apvts.getRawParameterValue (params::sourceSoloId (i));
+        spkMuteRaw[(size_t) i] = apvts.getRawParameterValue (params::speakerMuteId (i));
+        spkSoloRaw[(size_t) i] = apvts.getRawParameterValue (params::speakerSoloId (i));
     }
 
     baseTooltip = "Drag a source (its inner circle) to move it with the rest of its group or selection. "
@@ -57,7 +61,8 @@ FieldComponent::FieldComponent (SpatialProcessor& p)
                   "Cmd-drag: move one source alone.\n"
                   "Option-drag up/down: spread of the group (+Cmd: of one source). Option-double-click resets it.\n"
                   "Option+Shift-drag up/down: move the group's sources apart / together.\n"
-                  "Cmd+Shift-drag up/down: rotate the group counter-clockwise / clockwise.";
+                  "Cmd+Shift-drag up/down: rotate the group counter-clockwise / clockwise.\n"
+                  "Right-click a source or speaker: mute, solo, exclude from panning (speakers).";
     setTooltip (baseTooltip);
     setWantsKeyboardFocus (true);
 
@@ -76,7 +81,7 @@ void FieldComponent::setShowOverlay (bool shouldShow)
     repaint();
 }
 
-void FieldComponent::updateOverlay (const std::vector<Vec2>&, const std::vector<VirtualSpeaker>&) {}
+void FieldComponent::updateOverlay (const IncludedSpeakers&, const std::vector<VirtualSpeaker>&) {}
 
 void FieldComponent::paintOverlay (juce::Graphics&) {}
 
@@ -131,7 +136,7 @@ juce::Point<double> FieldComponent::fromView (juce::Point<float> p) const
              viewCentre.y + (((double) (r.getBottom() - p.y) / r.getHeight()) - 0.5) * 2.0 * viewHalf };
 }
 
-std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<float> p) const
+std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<float> p, bool ignoreEditModes) const
 {
     std::optional<Handle> best;
     float bestDistance = 1e9f;
@@ -157,9 +162,9 @@ std::optional<FieldComponent::Handle> FieldComponent::findHandleAt (juce::Point<
 
     // Speakers first, then sources with <=, so that on a tie the source (drawn on top) wins.
     // Handles that the current edit mode locks are not grabbable.
-    if (processor.canEditSpeakers()) consider (false, activeSpeakers());
-    if (canEditVirtualSpeakers())    consider (false, (int) virtualSpeakers.size(), true);
-    if (processor.canEditSources())  consider (true, activeSources());
+    if (ignoreEditModes || processor.canEditSpeakers()) consider (false, activeSpeakers());
+    if (! ignoreEditModes && canEditVirtualSpeakers())  consider (false, (int) virtualSpeakers.size(), true);
+    if (ignoreEditModes || processor.canEditSources())  consider (true, activeSources());
     return best;
 }
 
@@ -497,14 +502,15 @@ void FieldComponent::timerCallback()
     size_t hash = std::hash<int> {} (n * 1000 + m);
     const auto mix = [&] (double v) { hash = hash * 1000003u ^ std::hash<double> {} (v); };
 
-    std::vector<Vec2> speakers;
-    speakers.reserve ((size_t) m);
+    excludedSpeakers = processor.getExcludedSpeakers();
+
     for (int i = 0; i < m; ++i)
     {
         const auto pos = position ({ false, i });
-        speakers.push_back ({ pos.x, pos.y });
         mix (pos.x);
         mix (pos.y);
+        mix (excludedSpeakers[(size_t) i] ? 1.0 : 0.0);
+        mix (spkMuteRaw[(size_t) i]->load() + 2.0 * spkSoloRaw[(size_t) i]->load());
     }
     for (int i = 0; i < n; ++i)
     {
@@ -512,6 +518,7 @@ void FieldComponent::timerCallback()
         mix (pos.x);
         mix (pos.y);
         mix (getSpread (i));
+        mix (srcMuteRaw[(size_t) i]->load() + 2.0 * srcSoloRaw[(size_t) i]->load());
     }
 
     const auto currentGroups = processor.getSourceGroups();
@@ -540,7 +547,7 @@ void FieldComponent::timerCallback()
         mix (v.strength);
     }
 
-    updateOverlay (speakers, virtualSpeakers);
+    updateOverlay (processor.getIncludedSpeakers(), virtualSpeakers);
 
     if (hash != lastStateHash)
     {
@@ -684,7 +691,11 @@ void FieldComponent::paint (juce::Graphics& g)
         }
     }
 
-    // Links from each source to the speakers it currently feeds, weighted by gain.
+    // What trim, mute and solo make of every source and speaker; a silenced one is drawn dimmed.
+    ChannelGains channelGains;
+    processor.getChannelGains (channelGains);
+
+    // Links from each source to the speakers it currently feeds, weighted by gain (and by trim, mute and solo).
     if (showLinks)
     {
         for (int s = 0; s < n; ++s)
@@ -694,9 +705,13 @@ void FieldComponent::paint (juce::Graphics& g)
             const auto from = toView (sp.x, sp.y);
             for (int i = 0; i < gains.count; ++i)
             {
-                const auto spk = position ({ false, gains.speaker[(size_t) i] });
+                const int channel = gains.speaker[(size_t) i];
+                const float gain = std::min (gains.gain[(size_t) i] * channelGains.sources[(size_t) s] * channelGains.speakers[(size_t) channel], 1.0f);
+                if (gain < 0.002f)
+                    continue;
+
+                const auto spk = position ({ false, channel });
                 const auto to = toView (spk.x, spk.y);
-                const float gain = gains.gain[(size_t) i];
                 g.setColour (sourceColour (s, groups).withAlpha (0.15f + 0.75f * gain));
                 g.drawLine (from.x, from.y, to.x, to.y, 0.8f + 2.4f * gain);
             }
@@ -710,11 +725,31 @@ void FieldComponent::paint (juce::Graphics& g)
         const auto c = toView (pos.x, pos.y);
         const bool hot = (hovered && ! hovered->isSource && hovered->index == i) || (dragging && ! dragging->isSource && dragging->index == i);
         const auto r = juce::Rectangle<float> (14.0f, 14.0f).withCentre (c);
-        g.setColour (hot ? juce::Colours::white : juce::Colour (0xffdfe6ee));
-        g.fillRoundedRectangle (r, 2.0f);
-        g.setColour (juce::Colour (0xff15181d));
-        g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
-        g.drawText (juce::String (i + 1), r, juce::Justification::centred);
+        const bool excluded = excludedSpeakers[(size_t) i];
+        const bool muted = spkMuteRaw[(size_t) i]->load() >= 0.5f, soloed = spkSoloRaw[(size_t) i]->load() >= 0.5f;
+        const float alpha = ! excluded && channelGains.speakers[(size_t) i] <= 0.0f ? 0.35f : 1.0f; // silenced: dimmed
+
+        if (excluded) // not part of the panning: hollow and grey, struck through
+        {
+            g.setColour (juce::Colour (0xff8a93a0).withAlpha (hot ? 1.0f : 0.8f));
+            g.drawRoundedRectangle (r, 2.0f, 1.5f);
+            g.drawLine (r.getX(), r.getBottom(), r.getRight(), r.getY(), 1.2f);
+        }
+        else
+        {
+            g.setColour ((hot ? juce::Colours::white : juce::Colour (0xffdfe6ee)).withAlpha (alpha));
+            g.fillRoundedRectangle (r, 2.0f);
+            g.setColour (juce::Colour (0xff15181d));
+            g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+            g.drawText (juce::String (i + 1), r, juce::Justification::centred);
+        }
+
+        if (soloed || muted) // badge: S (solo) or M (mute) at the upper right
+        {
+            g.setColour (soloed && ! muted ? juce::Colour (0xffe6b450) : juce::Colour (0xffff7a7a));
+            g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+            g.drawText (muted ? "M" : "S", juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ r.getRight() + 4.0f, r.getY() - 3.0f }), juce::Justification::centred);
+        }
     }
 
     // Virtual speakers: hollow squares. They are not outputs; their gain goes to the real speakers around them.
@@ -750,13 +785,22 @@ void FieldComponent::paint (juce::Graphics& g)
             g.setColour (juce::Colours::white.withAlpha (0.9f));
             g.drawEllipse (r.expanded (7.0f), 1.5f);
         }
-        g.setColour (sourceColour (s, groups));
+        const bool muted = srcMuteRaw[(size_t) s]->load() >= 0.5f, soloed = srcSoloRaw[(size_t) s]->load() >= 0.5f;
+        const float alpha = channelGains.sources[(size_t) s] <= 0.0f ? 0.35f : 1.0f; // silenced: dimmed
+        g.setColour (sourceColour (s, groups).withAlpha (alpha));
         g.fillEllipse (r);
-        g.setColour (hot ? juce::Colours::white : juce::Colours::black.withAlpha (0.6f));
+        g.setColour ((hot ? juce::Colours::white : juce::Colours::black.withAlpha (0.6f)).withMultipliedAlpha (alpha));
         g.drawEllipse (r, hot ? 2.0f : 1.0f);
-        g.setColour (juce::Colours::black);
+        g.setColour (juce::Colours::black.withAlpha (alpha));
         g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
         g.drawText (juce::String (s + 1), r, juce::Justification::centred);
+
+        if (soloed || muted) // badge: S (solo) or M (mute) at the upper right
+        {
+            g.setColour (soloed && ! muted ? juce::Colour (0xffe6b450) : juce::Colour (0xffff7a7a));
+            g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+            g.drawText (muted ? "M" : "S", juce::Rectangle<float> (10.0f, 10.0f).withCentre ({ r.getRight() + 3.0f, r.getY() - 2.0f }), juce::Justification::centred);
+        }
     }
 
     // While a vertical drag is going on, show its value: next to the circle for spread, at the centre of gravity
@@ -1058,7 +1102,77 @@ void FieldComponent::doubleClickAt (juce::Point<float> p, const juce::ModifierKe
         addVirtualSpeakerAt (p);
 }
 
-void FieldComponent::mouseDown (const juce::MouseEvent& e)       { pressAt (e.position, e.mods); }
+void FieldComponent::toggleSwitch (const juce::String& parameterId)
+{
+    if (auto* parameter = processor.getValueTreeState().getParameter (parameterId))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->getValue() >= 0.5f ? 0.0f : 1.0f);
+        parameter->endChangeGesture();
+    }
+}
+
+void FieldComponent::toggleMute (const Handle& h)
+{
+    if (h.isVirtual || h.index < 0 || h.index >= tlos::kMaxChannels)
+        return;
+
+    toggleSwitch (h.isSource ? params::sourceMuteId (h.index) : params::speakerMuteId (h.index));
+    refresh();
+}
+
+void FieldComponent::toggleSolo (const Handle& h)
+{
+    if (h.isVirtual || h.index < 0 || h.index >= tlos::kMaxChannels)
+        return;
+
+    toggleSwitch (h.isSource ? params::sourceSoloId (h.index) : params::speakerSoloId (h.index));
+    refresh();
+}
+
+void FieldComponent::toggleExclude (int speaker)
+{
+    processor.setSpeakerExcluded (speaker, ! processor.isSpeakerExcluded (speaker));
+    refresh();
+}
+
+void FieldComponent::showHandleMenu (const Handle& h)
+{
+    if (h.isVirtual)
+        return;
+
+    const bool muted = (h.isSource ? srcMuteRaw : spkMuteRaw)[(size_t) h.index]->load() >= 0.5f;
+    const bool soloed = (h.isSource ? srcSoloRaw : spkSoloRaw)[(size_t) h.index]->load() >= 0.5f;
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader ((h.isSource ? "Source " : "Speaker ") + juce::String (h.index + 1));
+    menu.addItem (1, "Mute", true, muted);
+    menu.addItem (2, "Solo", true, soloed);
+    if (! h.isSource)
+        menu.addItem (3, "Exclude from panning", true, excludedSpeakers[(size_t) h.index]);
+
+    menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<FieldComponent> (this), h] (int result)
+    {
+        if (safe == nullptr)
+            return;
+
+        if (result == 1) safe->toggleMute (h);
+        if (result == 2) safe->toggleSolo (h);
+        if (result == 3) safe->toggleExclude (h.index);
+    });
+}
+
+void FieldComponent::mouseDown (const juce::MouseEvent& e)
+{
+    if (e.mods.isPopupMenu()) // right-click: the menu of the source or speaker under the mouse, never a drag
+    {
+        if (const auto h = findHandleAt (e.position, true))
+            showHandleMenu (*h);
+        return;
+    }
+
+    pressAt (e.position, e.mods);
+}
 void FieldComponent::mouseDrag (const juce::MouseEvent& e)       { dragTo (e.position); }
 void FieldComponent::mouseUp (const juce::MouseEvent&)           { release(); }
 void FieldComponent::mouseDoubleClick (const juce::MouseEvent& e) { doubleClickAt (e.position, e.mods); }

@@ -177,7 +177,16 @@ warnings; keep it that way when adding code.
   (`getActiveSources/Speakers`). Unused sources are silent, unused speakers are left out of the
   triangulation. The GUI shows them at the top with their maximum set to the channel count.
 - Parameter order (as listed by hosts, set by the order in `createLayout`): Number of Sources, Number of Speakers, then
-  per source x, y, spread (source 1, 2, ...), then per speaker x, y (speaker 1, 2, ...), then `outsideRolloff`, then the plugin's own parameters (DistPan: `rolloff`, `blur`). `ProcessorTests` checks it.
+  per source x, y, spread, trim, mute, solo (source 1, 2, ...), then per speaker x, y, trim, mute, solo (speaker 1, 2, ...), then `outsideRolloff`, then the plugin's own parameters (DistPan: `rolloff`, `blur`). `ProcessorTests` checks it.
+- Trim, mute, solo, exclude (both plugins; `shared/ui` + the processors): per source and per speaker the host parameters `src<N>trim|mute|solo` and `spk<N>trim|mute|solo` (trim -60..+12 dB default 0,
+  mute/solo are bools; 700 host parameters in all). `SpatialProcessor::getChannelGains` turns them into linear gains per block (mute wins over solo; sources and speakers solo separately;
+  channels not in use get 0); the processors multiply them into their per-block gain ramps (source gain x speaker gain on top of the *cached pure panning gains*, so a switch never invalidates the cache and
+  gets a linear ramp, no click). **Mute** silences an output but its share is lost (the others keep their levels); **Exclude** (speakers only, session state `excludedSpeakers`, "0101..." text, not a host parameter)
+  removes the speaker from the panning: `getIncludedSpeakers()` gives positions + `channelOf`, the layout/DBAP/hull/automatic virtual speakers are built from those only, and gains are mapped back to
+  output channels (TriPan: `LayoutSnapshot{layout, channelOf}`; DistPan: `SpeakerSet::channelOf`). Excluding everything gives silence. UI: Trim/Mute/Solo(/Excl.) columns in the tables (check boxes), right-click menu on the pad
+  (Mute, Solo, Exclude; works in View mode too; `toggleMute/toggleSolo/toggleExclude`), dimmed + M/S badge, hollow struck-through excluded speakers, links scaled by the gains. Files: optional `trim`, `mute`, `solo`
+  (and `excluded` on speakers); written for every entry once any entry has a non-default value; an import where any entry has an attribute defines it for every channel (others default), like `group`.
+  A per-speaker delay was considered and deliberately not implemented.
 - Falloff outside the layout (both plugins; host parameter `outsideRolloff`, 0..24 dB, **default 6 dB**, shared slider in row 4): the level of a source outside the speakers is scaled by
   `tlos::outsideFactor(d, rolloffDb) = (1 + d / 1 m)^(-rolloffDb / 6.0206)`, d = distance to the convex hull of the real speakers (`tlos::Hull`, built off the audio thread and
   stored with the snapshot: `SpeakerLayout::hull()` in TriPan, `SpeakerSet::hull` in DistPan). Factor 1 inside and on the boundary (continuous), 0 dB = off (bit-identical to before),

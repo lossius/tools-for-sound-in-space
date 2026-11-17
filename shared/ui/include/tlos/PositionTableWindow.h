@@ -18,10 +18,11 @@ namespace tlos
 
 /** A table of positions with a caption and a header that stays visible while the rows scroll.
 
-    Shows one of: the sources in use (x, y, spread), the speakers in use (x, y) or the manual virtual
-    speakers (x, y). The number cells can be edited: click one, type a value and press Return. Values
-    that are not numbers are rejected, others are limited to the allowed range. Edits go through the
-    parameters (with change gestures), so hosts record them. Message thread only. */
+    Shows one of: the sources in use (x, y, spread, group, trim, mute, solo), the speakers in use (x, y, trim, mute,
+    solo, exclude) or the manual virtual speakers (x, y). The number cells can be edited: click one, type a value
+    and press Return. Values that are not numbers are rejected, others are limited to the allowed range. The
+    mute, solo and exclude cells are check boxes. Edits go through the parameters (with change gestures), so
+    hosts record them; exclude is saved with the session instead. Message thread only. */
 class PositionTable final : public juce::Component,
                             private juce::TableListBoxModel
 {
@@ -41,7 +42,11 @@ public:
         xColumn,          ///< X position in metres.
         yColumn,          ///< Y position in metres.
         spreadColumn,     ///< Spread in metres (sources only).
-        groupColumn       ///< Group number of the source (sources only), not editable here: groups are made on the pad.
+        groupColumn,      ///< Group number of the source (sources only), not editable here: groups are made on the pad.
+        trimColumn,       ///< Trim in dB (sources and speakers).
+        muteColumn,       ///< Mute switch, a check box (sources and speakers).
+        soloColumn,       ///< Solo switch, a check box (sources and speakers).
+        excludeColumn     ///< Exclude from panning, a check box (speakers only).
     };
 
     static constexpr int kRowHeight = 24;       ///< Height of a row in pixels.
@@ -49,6 +54,7 @@ public:
     static constexpr int kCaptionHeight = 22;   ///< Height of the caption above the table in pixels.
     static constexpr int kScrollBarWidth = 12;  ///< Width of the vertical scroll bar in pixels.
     static constexpr int kGroupColumnWidth = 70; ///< Width of the group column in pixels.
+    static constexpr int kSwitchColumnWidth = 52; ///< Width of the mute, solo and exclude columns in pixels.
 
     /** Creates the table. @param processor  The processor whose parameters are shown and edited.
         @param content  Which positions the table shows. */
@@ -63,13 +69,13 @@ public:
     /** @return The number of rows: the sources or speakers in use, or the manual virtual speakers. */
     int getRowCount() const;
 
-    /** @return The value in a cell in metres. @param row  Zero-based row. @param column  xColumn, yColumn or spreadColumn.
-        Returns 0 for cells that do not exist. */
+    /** @return The value in a cell: metres for xColumn, yColumn and spreadColumn, dB for trimColumn, and 0 or 1 for
+        the switch columns. @param row  Zero-based row. @param column  The column. Returns 0 for cells that do not exist. */
     double getValue (int row, int column) const;
 
     /** Sets a cell from text typed by the user.
         @param row     Zero-based row.
-        @param column  xColumn, yColumn or spreadColumn.
+        @param column  xColumn, yColumn, spreadColumn or trimColumn.
         @param text    The text; it must be a plain number, otherwise the cell is left alone.
         @return        The text to show in the cell afterwards: the new value, limited to the allowed range
                        and rounded to 3 decimals, or the old value if the text was rejected. */
@@ -88,6 +94,12 @@ public:
 private:
     /** Formats a value in metres for display (3 decimals, no negative zero). */
     static juce::String format (double metres);
+
+    /** Formats the value of a number cell for display: a trim in dB with one decimal, other columns as format(). */
+    static juce::String formatCell (int column, double value);
+
+    /** Sets a switch cell (mute, solo or exclude) of a row. */
+    void setSwitch (int row, int column, bool on);
 
     /** @return A number that changes when any displayed value or the row count changes. */
     size_t signature() const;

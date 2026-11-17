@@ -25,7 +25,7 @@ public:
 
 protected:
     /** Rebuilds the drawn layout when the speakers or the virtual speakers changed. */
-    void updateOverlay (const std::vector<tlos::Vec2>& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
+    void updateOverlay (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
 
     /** Draws the triangles of the triangulation (including those of the virtual speakers). */
     void paintOverlay (juce::Graphics& g) override;
@@ -34,7 +34,7 @@ protected:
     tlos::SourceGains getLinkGains (int source, tlos::Vec2 position, double spread) const override;
 
 private:
-    std::vector<tlos::Vec2> triangulatedSpeakers;            ///< Speakers the drawn layout was built from.
+    tlos::IncludedSpeakers triangulatedSpeakers;             ///< Speakers the drawn layout was built from.
     std::vector<tlos::VirtualSpeaker> triangulatedVirtual;   ///< Virtual speakers the drawn layout was built from.
     std::unique_ptr<tripan::SpeakerLayout> triangulation;    ///< The layout that is drawn.
 

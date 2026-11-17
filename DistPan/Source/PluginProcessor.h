@@ -61,6 +61,7 @@ private:
     struct SpeakerSet
     {
         std::vector<tlos::Vec2> positions; ///< Positions in metres.
+        std::vector<int> channelOf;        ///< Output channel of each position (they differ from the channel numbers when speakers are excluded).
         tlos::Hull hull;                   ///< Their convex hull, for the falloff outside the layout.
         std::uint64_t id = 0;              ///< Distinguishes this set from all earlier ones (see GainKey).
     };
@@ -70,7 +71,7 @@ private:
 
     // Message thread -> audio thread
     tlos::Exchange<SpeakerSet> exchange;       ///< Hands speaker sets to the audio thread.
-    std::vector<tlos::Vec2> publishedSpeakers; ///< Speakers of the last published set (message thread only).
+    tlos::IncludedSpeakers publishedSpeakers;  ///< Speakers of the last published set (message thread only).
     bool havePublished = false;                ///< Whether anything has been published (message thread only).
     std::uint64_t nextSetId = 1;               ///< Id of the next published set (message thread only).
 
@@ -78,8 +79,9 @@ private:
     std::atomic<float>* blurParam = nullptr;    ///< Raw value of "Blur".
 
     // Audio thread only
-    GainMatrix prevGains {};   ///< Gains at the end of the previous block.
-    GainMatrix targetGains {}; ///< Gains wanted at the end of this block.
+    GainMatrix prevGains {};   ///< Gains at the end of the previous block (with trim, mute and solo).
+    GainMatrix panGains {};    ///< The panning gains of each source alone: what the cache holds.
+    GainMatrix targetGains {}; ///< Gains wanted at the end of this block (with trim, mute and solo).
     int prevUsedSpeakers = 0;  ///< Speakers in use in the previous block.
 
     /** What prevGains[s] was computed from, so unchanged sources need no new computation. */

@@ -51,6 +51,24 @@ speakers, or speakers on one line (a stereo pair), there is no inside to leave a
 In TriPan the sound outside the layout is panned as if the source stood on the nearest edge of the layout; the
 rolloff comes on top of that. Sessions saved before this setting existed get the default (6 dB) when they are opened.
 
+## Trim, mute, solo and exclude
+
+Every source and every speaker has a **Trim** (-60 to +12 dB), a **Mute** switch and a **Solo** switch, all host parameters
+that can be automated. A source's trim is a gain on its signal before the panning; a speaker's trim is a gain on its output
+after the panning. A muted source or speaker is silent. If any source is soloed, only the soloed sources are heard, and
+the same for speakers; sources and speakers are soloed separately, and mute wins over solo. Changes are ramped over a block,
+so switching never clicks.
+
+Muting a speaker silences its output but does not move its share to the others: the level of the other speakers stays
+as it was. To take a speaker out of the panning altogether, **exclude** it: the panning is then computed as if the speaker
+did not exist, so the others share its signal and the total power stays constant. Use it for a broken speaker or one that should
+not take part (a subwoofer). Exclude applies to speakers only and is saved with the session (not a host parameter).
+
+Set them in the tables (Trim, Mute, Solo and, for speakers, Excl. columns), or right-click a source or speaker on the pad for
+a menu with Mute, Solo and Exclude from panning. Muted or silenced sources and speakers are drawn dimmed with an M (muted) or S
+(soloed) badge; excluded speakers are hollow and struck through. The position files carry the settings too (see
+*Saving and loading positions*). Note that the plugins now have about 700 host parameters, which some hosts list slowly.
+
 ## API documentation
 
 The code is documented with Doxygen. Install it (`brew install doxygen`), run `doxygen Doxyfile` in the repository root and
@@ -201,6 +219,10 @@ there is nothing more to store, because automatic virtual speakers are recompute
 a speaker file restores the setting (and the manual list), replacing the current one. A file without the
 attribute, such as one written by an earlier version, leaves the virtual speaker setting alone.
 The presets in `speaker layouts/` say `virtual="auto"`, so loading one switches back to Auto, except the `-virtual-centres` ones, which bring their own manual virtual speakers.
+
+The optional attributes `trim` (dB), `mute`, `solo` (0 or 1) and, for speakers, `excluded` (0 or 1) carry the settings above.
+They are written for every entry as soon as one entry has a non-default value. An import where at least one entry has an
+attribute defines it for every channel (channels not in the file go back to the default); a file without it leaves things as they are.
 
 Export writes the channels currently in use, with coordinates rounded to 3 decimal places and padded with spaces so that positive and negative values line up (import ignores the padding). Import checks the whole file first, applies every valid
 entry by index. Importing speakers also sets "Number of Speakers" to the number of speakers in the

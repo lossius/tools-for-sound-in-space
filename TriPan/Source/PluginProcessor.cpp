@@ -41,7 +41,7 @@ TriPanAudioProcessor::TriPanAudioProcessor()
 
 void TriPanAudioProcessor::refreshLayout()
 {
-    const auto speakers = getActiveSpeakerPositions();
+    const auto speakers = getIncludedSpeakers();
     auto virtualSpeakers = getVirtualSpeakers();
 
     const auto same = [] (const tlos::Vec2& a, const tlos::Vec2& b) { return juce::exactlyEqual (a.x, b.x) && juce::exactlyEqual (a.y, b.y); };
@@ -51,11 +51,13 @@ void TriPanAudioProcessor::refreshLayout()
     };
 
     if (havePublished
-        && speakers.size() == publishedSpeakers.size() && std::equal (speakers.begin(), speakers.end(), publishedSpeakers.begin(), same)
+        && speakers.channelOf == publishedSpeakers.channelOf
+        && speakers.positions.size() == publishedSpeakers.positions.size()
+        && std::equal (speakers.positions.begin(), speakers.positions.end(), publishedSpeakers.positions.begin(), same)
         && virtualSpeakers.size() == publishedVirtual.size() && std::equal (virtualSpeakers.begin(), virtualSpeakers.end(), publishedVirtual.begin(), sameVirtual))
         return;
 
-    exchange.publish (std::make_unique<const tripan::SpeakerLayout> (speakers, virtualSpeakers));
+    exchange.publish (std::make_unique<const LayoutSnapshot> (speakers, virtualSpeakers));
     publishedSpeakers = speakers;
     publishedVirtual = std::move (virtualSpeakers);
     havePublished = true;
@@ -106,7 +108,8 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
     }
 
     // Target gains from the current source positions and the latest published triangulation.
-    const tripan::SpeakerLayout* tri = exchange.acquire();
+    const LayoutSnapshot* snapshot = exchange.acquire();
+    const tripan::SpeakerLayout* tri = snapshot != nullptr ? &snapshot->layout : nullptr;
 
     // Sources beyond the "Number of Sources" setting get no gains, so they fade out and stay silent.
     // (The triangulation only contains the speakers in use, so unused outputs stay silent too.)
@@ -124,20 +127,36 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         if (s >= activeSources || tri == nullptr)
         {
             key.valid = false;
+            panGains[(size_t) s] = {};
             continue;
         }
 
-        // A source that has not moved, with an unchanged layout, keeps last block's gains.
+        // A source that has not moved, with an unchanged layout, keeps its panning gains.
         const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load(), spread = srcSpread[(size_t) s]->load();
         if (key.valid && key.layoutId == tri->id() && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y)
             && juce::exactlyEqual (key.spread, spread) && juce::exactlyEqual (key.outside, outside))
-        {
-            target[(size_t) s] = prevGains[(size_t) s];
             continue;
-        }
 
-        target[(size_t) s] = tripan::computeGains (*tri, { (double) x, (double) y }, (double) spread, (double) outside);
+        auto gains = tripan::computeGains (*tri, { (double) x, (double) y }, (double) spread, (double) outside);
+
+        // The triangulation numbers the speakers that take part; the gains go to their output channels.
+        for (int i = 0; i < gains.count; ++i)
+            gains.speaker[(size_t) i] = snapshot->channelOf[(size_t) gains.speaker[(size_t) i]];
+
+        panGains[(size_t) s] = gains;
         key = { x, y, spread, outside, tri->id(), true };
+    }
+
+    // Trim, mute and solo of the sources and speakers scale the panning gains.
+    tlos::ChannelGains channelGains;
+    getChannelGains (channelGains);
+
+    for (int s = 0; s < activeSources; ++s)
+    {
+        auto g = panGains[(size_t) s];
+        for (int i = 0; i < g.count; ++i)
+            g.gain[(size_t) i] *= channelGains.sources[(size_t) s] * channelGains.speakers[(size_t) g.speaker[(size_t) i]];
+        target[(size_t) s] = g;
     }
 
     if (restartRamp.exchange (false))

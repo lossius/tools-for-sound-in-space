@@ -311,6 +311,8 @@ juce::Result SpatialEditor::importPositionsFrom (io::Kind kind, const juce::File
             text << " (" << report.inUse << " in use)";
         if (report.spreadApplied > 0)
             text << ", spread for " << report.spreadApplied;
+        if (report.calibrationApplied > 0)
+            text << ", trim/mute/solo/exclude for " << report.calibrationApplied;
         if (report.groupCount > 0)
             text << ", " << report.groupCount << (report.groupCount == 1 ? " group" : " groups");
         if (report.virtualMode)

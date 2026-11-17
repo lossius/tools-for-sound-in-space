@@ -83,7 +83,35 @@ struct Entry
     float y;                ///< Position y in metres.
     float spread = -1.0f;   ///< Spread in metres; negative if the file has none.
     int group = -1;         ///< Group number; negative if the file has none.
+    bool hasTrim = false;   ///< Whether the file gives a trim.
+    float trim = 0.0f;      ///< Trim in dB, if hasTrim.
+    int mute = -1;          ///< 1 = muted, 0 = not; negative if the file has none.
+    int solo = -1;          ///< 1 = soloed, 0 = not; negative if the file has none.
+    int excluded = -1;      ///< Speakers: 1 = excluded from the panning, 0 = not; negative if the file has none.
 };
+
+/** Formats a trim in dB for a file (one decimal, padded like the coordinates). */
+juce::String formatTrim (float db)
+{
+    auto text = juce::String (db, 1);
+    if (text == "-0.0")
+        text = "0.0";
+    return text.paddedLeft (' ', 5);
+}
+
+/** Reads a 0/1 attribute into `out`. @return false if the attribute is there but is neither 0 nor 1. */
+bool readSwitch (const juce::XmlElement& e, const char* name, int& out)
+{
+    if (! e.hasAttribute (name))
+        return true;
+
+    double v = 0.0;
+    if (! readNumber (e, name, v) || (v != 0.0 && v != 1.0))
+        return false;
+
+    out = (int) v;
+    return true;
+}
 }
 
 juce::String describe (Kind k)
@@ -110,6 +138,20 @@ std::unique_ptr<juce::XmlElement> toXml (const SpatialProcessor& p, Kind kind)
     }
 
     const auto groups = kind == Kind::Sources ? p.getSourceGroups() : tlos::SourceGroups();
+    const auto excluded = p.getExcludedSpeakers();
+
+    // Trim, mute, solo and exclude are written for every entry as soon as one of them is not at its default.
+    const auto idTrim = [&] (int i) { return kind == Kind::Sources ? params::sourceTrimId (i) : params::speakerTrimId (i); };
+    const auto idMute = [&] (int i) { return kind == Kind::Sources ? params::sourceMuteId (i) : params::speakerMuteId (i); };
+    const auto idSolo = [&] (int i) { return kind == Kind::Sources ? params::sourceSoloId (i) : params::speakerSoloId (i); };
+    bool anyTrim = false, anyMute = false, anySolo = false, anyExcluded = false;
+    for (int i = 0; i < count; ++i)
+    {
+        anyTrim = anyTrim || std::abs (readParam (p, idTrim (i))) >= 0.05f;
+        anyMute = anyMute || readParam (p, idMute (i)) >= 0.5f;
+        anySolo = anySolo || readParam (p, idSolo (i)) >= 0.5f;
+        anyExcluded = anyExcluded || (kind == Kind::Speakers && excluded[(size_t) i]);
+    }
 
     for (int i = 0; i < count; ++i)
     {
@@ -121,6 +163,14 @@ std::unique_ptr<juce::XmlElement> toXml (const SpatialProcessor& p, Kind kind)
             e->setAttribute ("spread", formatCoordinate (readParam (p, params::spreadId (i))));
         if (groups.any())
             e->setAttribute ("group", groups.groupOf (i));
+        if (anyTrim)
+            e->setAttribute ("trim", formatTrim (readParam (p, idTrim (i))));
+        if (anyMute)
+            e->setAttribute ("mute", readParam (p, idMute (i)) >= 0.5f ? 1 : 0);
+        if (anySolo)
+            e->setAttribute ("solo", readParam (p, idSolo (i)) >= 0.5f ? 1 : 0);
+        if (anyExcluded)
+            e->setAttribute ("excluded", excluded[(size_t) i] ? 1 : 0);
     }
 
     // The user's own virtual speakers belong to the layout. (Automatic ones are recomputed on import.)
@@ -215,6 +265,24 @@ juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, Impor
                 ++report.skipped;
         }
 
+        if (e->hasAttribute ("trim"))
+        {
+            double trim = 0.0;
+            if (readNumber (*e, "trim", trim))
+            {
+                entry.hasTrim = true;
+                entry.trim = juce::jlimit (params::kMinTrimDb, params::kMaxTrimDb, (float) trim);
+                if (! juce::approximatelyEqual (entry.trim, (float) trim))
+                    ++report.clamped;
+            }
+            else
+                ++report.skipped;
+        }
+
+        if (! readSwitch (*e, "mute", entry.mute) || ! readSwitch (*e, "solo", entry.solo)
+            || (kind == Kind::Speakers && ! readSwitch (*e, "excluded", entry.excluded)))
+            ++report.skipped;
+
         entries[index] = entry;
     }
 
@@ -279,6 +347,42 @@ juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, Impor
         for (int id = 1; id <= SourceGroups::kMaxGroupId; ++id)
             if (imported.sizeOf (id) > 0)
                 ++report.groupCount;
+    }
+
+    // Trim, mute, solo and exclude: if any entry of the file has one of them, the file defines it for every
+    // channel (those it does not mention go back to the default), like the groups.
+    {
+        const auto any = [&] (auto has) { return std::any_of (entries.begin(), entries.end(), [&] (const auto& entry) { return has (entry.second); }); };
+        const auto idTrim = [&] (int i) { return kind == Kind::Sources ? params::sourceTrimId (i) : params::speakerTrimId (i); };
+        const auto idMute = [&] (int i) { return kind == Kind::Sources ? params::sourceMuteId (i) : params::speakerMuteId (i); };
+        const auto idSolo = [&] (int i) { return kind == Kind::Sources ? params::sourceSoloId (i) : params::speakerSoloId (i); };
+
+        const bool anyTrim = any ([] (const Entry& x) { return x.hasTrim; });
+        const bool anyMute = any ([] (const Entry& x) { return x.mute >= 0; });
+        const bool anySolo = any ([] (const Entry& x) { return x.solo >= 0; });
+        const bool anyExcluded = kind == Kind::Speakers && any ([] (const Entry& x) { return x.excluded >= 0; });
+
+        for (int i = 0; i < kMaxChannels; ++i)
+        {
+            const auto found = entries.find (i + 1);
+            const Entry* entry = found != entries.end() ? &found->second : nullptr;
+
+            if (anyTrim) writeParam (p, idTrim (i), entry != nullptr && entry->hasTrim ? entry->trim : 0.0f);
+            if (anyMute) writeParam (p, idMute (i), entry != nullptr && entry->mute == 1 ? 1.0f : 0.0f);
+            if (anySolo) writeParam (p, idSolo (i), entry != nullptr && entry->solo == 1 ? 1.0f : 0.0f);
+        }
+
+        if (anyExcluded)
+        {
+            std::array<bool, kMaxChannels> excluded {};
+            for (const auto& [index, entry] : entries)
+                excluded[(size_t) index - 1] = entry.excluded == 1;
+            p.setExcludedSpeakers (excluded);
+        }
+
+        for (const auto& [index, entry] : entries)
+            if (entry.hasTrim || entry.mute >= 0 || entry.solo >= 0 || entry.excluded >= 0)
+                ++report.calibrationApplied;
     }
 
     if (kind == Kind::Speakers)

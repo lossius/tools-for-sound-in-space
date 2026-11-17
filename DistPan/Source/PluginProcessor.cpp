@@ -29,17 +29,19 @@ distpan::DbapSettings DistPanAudioProcessor::getSettings() const noexcept
 
 void DistPanAudioProcessor::refreshLayout()
 {
-    const auto speakers = getActiveSpeakerPositions();
+    const auto speakers = getIncludedSpeakers();
 
     const auto same = [] (const tlos::Vec2& a, const tlos::Vec2& b) { return juce::exactlyEqual (a.x, b.x) && juce::exactlyEqual (a.y, b.y); };
 
-    if (havePublished && speakers.size() == publishedSpeakers.size()
-        && std::equal (speakers.begin(), speakers.end(), publishedSpeakers.begin(), same))
+    if (havePublished && speakers.channelOf == publishedSpeakers.channelOf
+        && speakers.positions.size() == publishedSpeakers.positions.size()
+        && std::equal (speakers.positions.begin(), speakers.positions.end(), publishedSpeakers.positions.begin(), same))
         return;
 
     auto set = std::make_unique<SpeakerSet>();
-    set->positions = speakers;
-    set->hull = tlos::Hull (speakers);
+    set->positions = speakers.positions;
+    set->channelOf = speakers.channelOf;
+    set->hull = tlos::Hull (speakers.positions);
     set->id = nextSetId++;
     exchange.publish (std::move (set));
 
@@ -99,7 +101,7 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     for (int s = 0; s < n; ++s)
     {
         auto& key = gainKeys[(size_t) s];
-        auto& row = targetGains[(size_t) s];
+        auto& row = panGains[(size_t) s];
 
         if (s >= activeSources || speakers == nullptr)
         {
@@ -108,24 +110,29 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             continue;
         }
 
-        // A source that has not moved, with unchanged speakers and settings, keeps last block's gains.
+        // A source that has not moved, with unchanged speakers and settings, keeps its panning gains.
         const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load(), spread = srcSpread[(size_t) s]->load();
         if (key.valid && key.setId == speakers->id && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y)
             && juce::exactlyEqual (key.spread, spread) && juce::exactlyEqual (key.rolloff, rolloff) && juce::exactlyEqual (key.blur, blur)
             && juce::exactlyEqual (key.outside, outside))
-        {
-            row = prevGains[(size_t) s];
             continue;
-        }
 
         const auto gains = distpan::computeGains (speakers->positions, speakers->hull, { (double) x, (double) y }, (double) spread,
                                                   { (double) rolloff, (double) blur, (double) outside });
         row.fill (0.0f);
         for (int i = 0; i < gains.count; ++i)
-            row[(size_t) gains.speaker[(size_t) i]] = gains.gain[(size_t) i];
+            row[(size_t) speakers->channelOf[(size_t) gains.speaker[(size_t) i]]] = gains.gain[(size_t) i];
 
         key = { x, y, spread, rolloff, blur, outside, speakers->id, true };
     }
+
+    // Trim, mute and solo of the sources and speakers scale the panning gains.
+    tlos::ChannelGains channelGains;
+    getChannelGains (channelGains);
+
+    for (int s = 0; s < n; ++s)
+        for (int k = 0; k < tlos::kMaxChannels; ++k)
+            targetGains[(size_t) s][(size_t) k] = panGains[(size_t) s][(size_t) k] * channelGains.sources[(size_t) s] * channelGains.speakers[(size_t) k];
 
     if (restartRamp.exchange (false))
     {

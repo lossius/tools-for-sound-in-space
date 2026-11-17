@@ -20,6 +20,12 @@
           <Source index="1" x="0.5" y="1.0" spread="0.0"/> ...
         </TriPanSources>
 
+    The optional attributes trim (dB), mute, solo (0 or 1) and, for speakers, excluded (0 or 1) set the
+    trim, mute and solo parameters and whether the speaker is excluded from the panning. Export writes each of
+    them for every entry as soon as one entry has a setting other than the default. An import where at least
+    one entry has the attribute defines it for every channel (channels not in the file go back to the default),
+    like group; a file without it leaves things as they are.
+
     The optional attribute spread (metres, 0 to 10) is the source's spread radius. An entry without it
     leaves that source's spread unchanged. The optional attribute group (1 to 32) says which group the
     source belongs to (0 or missing: none); sources with the same number move together. Export writes it
@@ -63,6 +69,7 @@ struct ImportReport
     int skipped = 0;          ///< Malformed entries that were ignored.
     int spreadApplied = 0;    ///< Source imports: entries that also set the spread.
     int groupCount = 0;       ///< Source imports: number of groups the file defined (0 if it had no group information).
+    int calibrationApplied = 0; ///< Entries that gave a trim, mute, solo or exclude setting.
 
     std::optional<VirtualMode> virtualMode; ///< Speaker imports: set if the file specified the virtual speakers.
     int virtualCount = 0;                   ///< Manual virtual speakers applied from the file.

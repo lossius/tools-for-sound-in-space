@@ -376,7 +376,7 @@ static void testGroups (const char* snapshotPath)
     // The table shows the group of each source.
     {
         auto& window = editor->showTableWindow (tlos::io::Kind::Sources);
-        CHECK (window.getContent().getMainTable().getTable().getHeader().getNumColumns (true) == 5);
+        CHECK (window.getContent().getMainTable().getTable().getHeader().getNumColumns (true) == 8);
         window.setVisible (false);
     }
 
@@ -444,6 +444,115 @@ static void testGroups (const char* snapshotPath)
         std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
         field.release();
     }
+}
+
+/** Trim, mute, solo and exclude in the tables and on the pad. */
+static void testCalibrationInterface (const char* snapshotPath)
+{
+    TriPanAudioProcessor p;
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (3));
+    layout.outputBuses.add (juce::AudioChannelSet::discreteChannels (5));
+    CHECK (p.setBusesLayout (layout));
+    p.setPlayConfigDetails (3, 5, 48000.0, 512);
+    p.prepareToPlay (48000.0, 512);
+
+    std::unique_ptr<TriPanAudioProcessorEditor> editor (static_cast<TriPanAudioProcessorEditor*> (p.createEditor()));
+    editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
+    using Col = tlos::PositionTable;
+
+    auto& sources = editor->showTableWindow (tlos::io::Kind::Sources).getContent();
+    auto& speakers = editor->showTableWindow (tlos::io::Kind::Speakers).getContent();
+    sources.refresh();
+    speakers.refresh();
+
+    // Trim cells: typed values go to the parameters, limited to the range; rubbish is rejected.
+    CHECK (sources.getMainTable().setValueFromText (0, Col::trimColumn, "-3.0") == "-3.0");
+    CHECK (std::abs (value (p, tlos::params::sourceTrimId (0)) + 3.0f) < 0.01f);
+    CHECK (sources.getMainTable().setValueFromText (0, Col::trimColumn, "99") == "12.0");
+    CHECK (sources.getMainTable().setValueFromText (0, Col::trimColumn, "-500") == "-60.0");
+    CHECK (sources.getMainTable().setValueFromText (0, Col::trimColumn, "loud") == "-60.0");
+    CHECK (speakers.getMainTable().setValueFromText (1, Col::trimColumn, "2.5") == "2.5");
+    CHECK (std::abs (value (p, tlos::params::speakerTrimId (1)) - 2.5f) < 0.01f);
+
+    // The check boxes are real buttons; clicking one writes the parameter (exclude: the session state).
+    const auto cell = [] (tlos::PositionTable& table, int column, int row)
+    {
+        table.refresh();
+        return dynamic_cast<juce::Button*> (table.getTable().getCellComponent (column, row));
+    };
+    auto* muteSource = cell (sources.getMainTable(), Col::muteColumn, 1);
+    auto* soloSpeaker = cell (speakers.getMainTable(), Col::soloColumn, 0);
+    auto* excludeSpeaker = cell (speakers.getMainTable(), Col::excludeColumn, 2);
+    auto* muteSpeaker = cell (speakers.getMainTable(), Col::muteColumn, 4);
+    CHECK (muteSource != nullptr && soloSpeaker != nullptr && excludeSpeaker != nullptr && muteSpeaker != nullptr);
+    CHECK (cell (sources.getMainTable(), Col::excludeColumn, 0) == nullptr);                  // sources cannot be excluded
+    // (Button::triggerClick() is asynchronous; changing the toggle state with a notification sends the same click.)
+    const auto click = [] (juce::Button& b) { b.setToggleState (! b.getToggleState(), juce::sendNotificationSync); };
+    if (muteSource != nullptr && soloSpeaker != nullptr && excludeSpeaker != nullptr && muteSpeaker != nullptr)
+    {
+        click (*muteSource);
+        click (*soloSpeaker);
+        click (*excludeSpeaker);
+        click (*muteSpeaker);
+        CHECK (value (p, tlos::params::sourceMuteId (1)) == 1.0f && value (p, tlos::params::speakerSoloId (0)) == 1.0f);
+        CHECK (value (p, tlos::params::speakerMuteId (4)) == 1.0f && p.isSpeakerExcluded (2));
+        CHECK (sources.getMainTable().getValue (1, Col::muteColumn) == 1.0 && speakers.getMainTable().getValue (2, Col::excludeColumn) == 1.0);
+        click (*excludeSpeaker);
+        CHECK (! p.isSpeakerExcluded (2));
+    }
+
+    // The tables follow changes made elsewhere (host automation, the pad).
+    setParam (p, tlos::params::sourceTrimId (2), -9.0f);
+    sources.refresh();
+    CHECK (std::abs (sources.getMainTable().getValue (2, Col::trimColumn) + 9.0) < 0.01);
+
+    // The pad: the same switches through its own functions (what the right-click menu calls), whatever the Edit/View menus say.
+    auto& field = editor->getField();
+    editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync); // View: speakers cannot be grabbed
+    field.refresh();
+    const auto spkAt = field.toView (value (p, tlos::params::speakerId (3, 'x')), value (p, tlos::params::speakerId (3, 'y')));
+    CHECK (! field.findHandleAt (spkAt).has_value());
+    const auto locked = field.findHandleAt (spkAt, true);
+    CHECK (locked.has_value() && ! locked->isSource && locked->index == 3);
+
+    field.toggleMute ({ true, 0 });
+    CHECK (value (p, tlos::params::sourceMuteId (0)) == 1.0f);
+    field.toggleMute ({ true, 0 });
+    CHECK (value (p, tlos::params::sourceMuteId (0)) == 0.0f);
+    field.toggleSolo ({ false, 1 });
+    CHECK (value (p, tlos::params::speakerSoloId (1)) == 1.0f);
+    field.toggleExclude (3);
+    CHECK (p.isSpeakerExcluded (3));
+    field.toggleExclude (3);
+    CHECK (! p.isSpeakerExcluded (3));
+    field.toggleMute ({ false, 2, true });                                          // a virtual speaker has no switches
+    CHECK (value (p, tlos::params::speakerMuteId (2)) == 0.0f);
+
+    // Painting the dimmed, badged and struck-through states does not fail.
+    p.setSpeakerExcluded (3, true);
+    field.refresh();
+    juce::Image image (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+    {
+        juce::Graphics g (image);
+        editor->paintEntireComponent (g, true);
+    }
+
+    if (snapshotPath != nullptr)
+    {
+        setParam (p, tlos::params::sourceMuteId (1), 1.0f);
+        setParam (p, tlos::params::sourceSoloId (2), 1.0f);
+        setParam (p, tlos::params::sourceSoloId (0), 1.0f);
+        field.refresh();
+        juce::File out (snapshotPath);
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        CHECK (stream.openedOk() && png.writeImageToStream (editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f), stream));
+        std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+    }
+
+    editor.reset();
 }
 
 /** Runs the editor tests; with argv[1] writes a PNG snapshot of the editor there (argv[2] optionally names a speaker file to load first). @return 0 if every check passed. */
@@ -1225,8 +1334,8 @@ int main (int argc, char** argv)
         CHECK (std::abs (sources.getMainTable().getValue (0, Col::xColumn) - value (p, tlos::params::sourceId (0, 'x'))) < 1e-4);
         CHECK (std::abs (sources.getMainTable().getValue (1, Col::yColumn) - value (p, tlos::params::sourceId (1, 'y'))) < 1e-4);
         CHECK (std::abs (speakers.getMainTable().getValue (2, Col::xColumn) - value (p, tlos::params::speakerId (2, 'x'))) < 1e-4);
-        CHECK (sources.getMainTable().getTable().getHeader().getNumColumns (true) == 5); // #, X, Y, Spread, Group
-        CHECK (speakers.getMainTable().getTable().getHeader().getNumColumns (true) == 3); // #, X, Y
+        CHECK (sources.getMainTable().getTable().getHeader().getNumColumns (true) == 8); // #, X, Y, Spread, Group, Trim, Mute, Solo
+        CHECK (speakers.getMainTable().getTable().getHeader().getNumColumns (true) == 7); // #, X, Y, Trim, Mute, Solo, Excl.
 
         // Editing: typed text goes to the parameters, limited to the range; rubbish is rejected.
         CHECK (sources.getMainTable().setValueFromText (1, Col::xColumn, "2.5") == "2.500");
@@ -1271,7 +1380,7 @@ int main (int argc, char** argv)
 
         // The virtual speaker table appears to the right while they can be placed by hand (Manual and speakers on Edit).
         const int narrow = speakersWindow->getWidth();
-        CHECK (narrow == speakers.getPreferredWidth() && sources.getPreferredWidth() < narrow);
+        CHECK (narrow == speakers.getPreferredWidth() && sources.getPreferredWidth() > 0);
         editor->getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Manual, juce::sendNotificationSync);
         editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);          // View: no virtual table
         speakers.refresh();
@@ -1451,6 +1560,7 @@ int main (int argc, char** argv)
 
     base.reset();
 
+    testCalibrationInterface (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-calibration.png").getFullPathName().toRawUTF8() : nullptr);
     testGroups (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-groups.png").getFullPathName().toRawUTF8() : nullptr);
 
     if (failures == 0)

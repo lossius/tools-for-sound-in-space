@@ -58,6 +58,17 @@ private:
     }
 };
 
+/** A check box in a table cell (mute, solo, exclude). */
+class SwitchCell final : public juce::ToggleButton
+{
+public:
+    /** Makes a check box without text. */
+    SwitchCell() { setClickingTogglesState (true); }
+
+    int row = 0;      ///< Zero-based row of the cell.
+    int column = 0;   ///< Column ID of the cell.
+};
+
 /** Sets a parameter to a real value inside a change gesture, so that hosts record it. */
 void setParameter (SpatialProcessor& processor, const juce::String& id, float value)
 {
@@ -120,6 +131,14 @@ PositionTable::PositionTable (SpatialProcessor& p, Content c)
         table.getHeader().addColumn ("Spread (m)", spreadColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
     if (content == Content::Sources)
         table.getHeader().addColumn ("Group", groupColumn, kGroupColumnWidth, kGroupColumnWidth, kGroupColumnWidth, flags);
+    if (content != Content::VirtualSpeakers)
+    {
+        table.getHeader().addColumn ("Trim (dB)", trimColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
+        table.getHeader().addColumn ("Mute", muteColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
+        table.getHeader().addColumn ("Solo", soloColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
+    }
+    if (content == Content::Speakers)
+        table.getHeader().addColumn ("Excl.", excludeColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
 
     addAndMakeVisible (table);
 
@@ -133,9 +152,10 @@ PositionTable::~PositionTable()
 
 int PositionTable::getPreferredWidth() const noexcept
 {
-    const int valueColumns = content == Content::Sources ? 3 : 2;
+    const int valueColumns = content == Content::Sources ? 4 : content == Content::Speakers ? 3 : 2; // x, y, (spread), (trim)
     const int groupWidth = content == Content::Sources ? kGroupColumnWidth : 0;
-    return kIndexColumnWidth + valueColumns * kValueColumnWidth + groupWidth + kScrollBarWidth + 2;
+    const int switches = content == Content::Sources ? 2 : content == Content::Speakers ? 3 : 0;    // mute, solo, (exclude)
+    return kIndexColumnWidth + valueColumns * kValueColumnWidth + groupWidth + switches * kSwitchColumnWidth + kScrollBarWidth + 2;
 }
 
 int PositionTable::getRowCount() const
@@ -163,11 +183,18 @@ double PositionTable::getValue (int row, int column) const
             if (column == xColumn)      return read (params::sourceId (row, 'x'));
             if (column == yColumn)      return read (params::sourceId (row, 'y'));
             if (column == spreadColumn) return read (params::spreadId (row));
+            if (column == trimColumn)   return read (params::sourceTrimId (row));
+            if (column == muteColumn)   return read (params::sourceMuteId (row)) >= 0.5 ? 1.0 : 0.0;
+            if (column == soloColumn)   return read (params::sourceSoloId (row)) >= 0.5 ? 1.0 : 0.0;
             break;
 
         case Content::Speakers:
             if (column == xColumn)      return read (params::speakerId (row, 'x'));
             if (column == yColumn)      return read (params::speakerId (row, 'y'));
+            if (column == trimColumn)   return read (params::speakerTrimId (row));
+            if (column == muteColumn)   return read (params::speakerMuteId (row)) >= 0.5 ? 1.0 : 0.0;
+            if (column == soloColumn)   return read (params::speakerSoloId (row)) >= 0.5 ? 1.0 : 0.0;
+            if (column == excludeColumn) return processor.isSpeakerExcluded (row) ? 1.0 : 0.0;
             break;
 
         case Content::VirtualSpeakers:
@@ -190,15 +217,37 @@ juce::String PositionTable::format (double metres)
     return juce::String (metres, 3);
 }
 
+juce::String PositionTable::formatCell (int column, double value)
+{
+    if (column != trimColumn)
+        return format (value);
+
+    return juce::String (std::abs (value) < 0.05 ? 0.0 : value, 1); // no "-0.0"
+}
+
+void PositionTable::setSwitch (int row, int column, bool on)
+{
+    if (row < 0 || row >= getRowCount())
+        return;
+
+    const bool sources = content == Content::Sources;
+
+    if (column == muteColumn) setParameter (processor, sources ? params::sourceMuteId (row) : params::speakerMuteId (row), on ? 1.0f : 0.0f);
+    if (column == soloColumn) setParameter (processor, sources ? params::sourceSoloId (row) : params::speakerSoloId (row), on ? 1.0f : 0.0f);
+    if (column == excludeColumn && content == Content::Speakers) processor.setSpeakerExcluded (row, on);
+}
+
 juce::String PositionTable::setValueFromText (int row, int column, const juce::String& text)
 {
     double typed = 0.0;
     if (row < 0 || row >= getRowCount() || ! parseNumber (text, typed))
-        return format (getValue (row, column));
+        return formatCell (column, getValue (row, column));
 
     const bool isSpread = content == Content::Sources && column == spreadColumn;
+    const bool isTrim = column == trimColumn && content != Content::VirtualSpeakers;
     const float limit = params::kCoordRange;
     const double value = isSpread ? juce::jlimit (0.0, (double) params::kMaxSpread, typed)
+                       : isTrim   ? juce::jlimit ((double) params::kMinTrimDb, (double) params::kMaxTrimDb, typed)
                                   : juce::jlimit (-(double) limit, (double) limit, typed);
 
     switch (content)
@@ -207,11 +256,13 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
             if (column == xColumn)      setParameter (processor, params::sourceId (row, 'x'), (float) value);
             if (column == yColumn)      setParameter (processor, params::sourceId (row, 'y'), (float) value);
             if (column == spreadColumn) setParameter (processor, params::spreadId (row), (float) value);
+            if (column == trimColumn)   setParameter (processor, params::sourceTrimId (row), (float) value);
             break;
 
         case Content::Speakers:
             if (column == xColumn)      setParameter (processor, params::speakerId (row, 'x'), (float) value);
             if (column == yColumn)      setParameter (processor, params::speakerId (row, 'y'), (float) value);
+            if (column == trimColumn)   setParameter (processor, params::speakerTrimId (row), (float) value);
             break;
 
         case Content::VirtualSpeakers:
@@ -224,7 +275,7 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
         }
     }
 
-    return format (getValue (row, column));
+    return formatCell (column, getValue (row, column));
 }
 
 size_t PositionTable::signature() const
@@ -233,7 +284,7 @@ size_t PositionTable::signature() const
     size_t seed = (size_t) rows;
 
     for (int row = 0; row < rows; ++row)
-        for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn })
+        for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn, (int) trimColumn, (int) muteColumn, (int) soloColumn, (int) excludeColumn })
             hashCombine (seed, getValue (row, column));
 
     if (content == Content::Sources)
@@ -304,6 +355,22 @@ juce::Component* PositionTable::refreshComponentForCell (int row, int column, bo
         return nullptr;
     }
 
+    if (column == muteColumn || column == soloColumn || column == excludeColumn)
+    {
+        auto* box = dynamic_cast<SwitchCell*> (existing);
+        if (box == nullptr)
+        {
+            delete existing;
+            box = new SwitchCell();
+            box->onClick = [this, box] { setSwitch (box->row, box->column, box->getToggleState()); };
+        }
+
+        box->row = row;
+        box->column = column;
+        box->setToggleState (getValue (row, column) >= 0.5, juce::dontSendNotification);
+        return box;
+    }
+
     auto* cell = dynamic_cast<EditableCell*> (existing);
     if (cell == nullptr)
     {
@@ -317,7 +384,7 @@ juce::Component* PositionTable::refreshComponentForCell (int row, int column, bo
 
     cell->row = row;
     cell->column = column;
-    cell->showValue (format (getValue (row, column)));
+    cell->showValue (formatCell (column, getValue (row, column)));
     return cell;
 }
 
