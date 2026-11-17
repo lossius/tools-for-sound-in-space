@@ -101,6 +101,18 @@ public:
     /** @return The number of messages sent since the control was created. */
     int getSentCount() const noexcept { return sent; }
 
+    /** @return The number of incoming messages that were not understood (unknown address, wrong arguments, ...). */
+    int getIgnoredCount() const noexcept { return ignored; }
+
+    /** @return The last understood incoming message as text, for example "/source/2/xy 1.5 -2.5" (empty if none). */
+    juce::String getLastReceived() const { return describe (lastReceivedMessage); }
+
+    /** @return The last outgoing message as text (empty if none). */
+    juce::String getLastSent() const { return describe (lastSentMessage); }
+
+    /** @return The last incoming message that was not understood, as text (empty if none). */
+    juce::String getLastIgnored() const { return describe (lastIgnoredMessage); }
+
     /** Applies one incoming message. This is what the receiver calls; tests call it directly.
         @return Whether the address was understood and the arguments were usable. */
     bool handleMessage (const juce::OSCMessage& message);
@@ -122,6 +134,9 @@ private:
     void oscMessageReceived (const juce::OSCMessage& message) override;
     /** The timer's callback: sends what changed. */
     void timerCallback() override { sendChanges(); }
+
+    /** @return A message as text: its address and its arguments. Empty for an empty optional. */
+    static juce::String describe (const std::optional<juce::OSCMessage>& message);
 
     /** Sends a message through the hook or the socket. */
     void emit (const juce::OSCMessage& message);
@@ -145,6 +160,10 @@ private:
     bool sendFailed = false;               ///< The sender could not be set up.
     int received = 0;                      ///< Messages applied.
     int sent = 0;                          ///< Messages sent.
+    int ignored = 0;                       ///< Incoming messages that were not understood.
+    std::optional<juce::OSCMessage> lastReceivedMessage;  ///< The last understood incoming message.
+    std::optional<juce::OSCMessage> lastSentMessage;      ///< The last outgoing message.
+    std::optional<juce::OSCMessage> lastIgnoredMessage;   ///< The last incoming message that was not understood.
     std::function<void (const juce::OSCMessage&)> sendHook;  ///< Where messages go instead of the network (tests).
 
     std::array<Slot, kMaxChannels> srcXY;       ///< Last position sent for each source.

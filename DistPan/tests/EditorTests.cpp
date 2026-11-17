@@ -38,6 +38,13 @@ static void setParam (DistPanAudioProcessor& p, const juce::String& id, float v)
     prm->setValueNotifyingHost (prm->convertTo0to1 (v));
 }
 
+/** True if DistPan's two sliders are children of the settings content. */
+static bool rolloffInSettings (DistPanAudioProcessorEditor& editor)
+{
+    return editor.getRolloffSlider().getParentComponent() == &editor.getSettingsContent()
+        && editor.getBlurSlider().getParentComponent() == &editor.getSettingsContent();
+}
+
 /** Runs the editor tests; with argv[1] writes a PNG snapshot of the editor there. @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
@@ -53,7 +60,7 @@ int main (int argc, char** argv)
 
     std::unique_ptr<DistPanAudioProcessorEditor> editor (static_cast<DistPanAudioProcessorEditor*> (p.createEditor()));
     CHECK (editor != nullptr);
-    editor->setSize (tlos::SpatialEditor::kBaseWidth, editor->getBaseHeight());
+    editor->setSize (tlos::SpatialEditor::kBaseWidth, tlos::SpatialEditor::kBaseHeight);
     editor->syncControls();
 
     // What this plugin does not have is hidden: there is no overlay to toggle and no virtual speakers.
@@ -68,10 +75,30 @@ int main (int argc, char** argv)
     CHECK (p.canEditSpeakers());
     editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
 
-    // The room size slider and the OSC button are there, and the button is inside the window.
-    CHECK (editor->getRoomSlider().isVisible() && editor->getOscButton().isVisible());
-    CHECK (editor->getOscButton().getRight() <= tlos::SpatialEditor::kBaseWidth && editor->getOscButton().getWidth() > 30);
-    CHECK (editor->getRoomSlider().getRight() < editor->getOscButton().getX());
+    // The main window has the Settings button and none of what moved into the settings window.
+    CHECK (editor->getSettingsButton().isVisible() && editor->getSettingsButton().getRight() <= tlos::SpatialEditor::kBaseWidth);
+    CHECK (! editor->getRoomSlider().isShowing() && ! editor->getOutsideSlider().isShowing());     // not in the plugin window
+    CHECK (editor->getRoomSlider().getParentComponent() == &editor->getSettingsContent());
+    CHECK (editor->getSettingsWindow() == nullptr);
+
+    // The settings window: DistPan has no virtual speakers, but its own two sliders (under Panning), and writes a picture.
+    {
+        auto& window = editor->showSettingsWindow();
+        CHECK (window.isVisible() && window.getName() == "DistPan - Settings");
+        CHECK (! editor->getVirtualModeBox().isVisible());
+        CHECK (rolloffInSettings (*editor) && editor->getRolloffSlider().isVisible() && editor->getBlurSlider().isVisible());
+        if (argc > 1)
+        {
+            auto& settings = editor->getSettingsContent();
+            juce::File out (juce::String (argv[1]).replace (".png", "-settings.png"));
+            out.deleteFile();
+            juce::FileOutputStream stream (out);
+            juce::PNGImageFormat png;
+            CHECK (stream.openedOk() && png.writeImageToStream (settings.createComponentSnapshot (settings.getLocalBounds(), true, 1.0f), stream));
+            std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+        }
+        window.setVisible (false);
+    }
 
     // The shared outside rolloff slider is there, shows the default and writes to its parameter.
     auto& outside = editor->getOutsideSlider();
@@ -97,8 +124,8 @@ int main (int argc, char** argv)
     setParam (p, distpan::params::kRolloffId, 4.0f); // a host change moves the slider
     CHECK (std::abs (rolloff.getValue() - 4.0) < 1e-3);
 
-    // Nothing in the status row overlaps: the sliders end before the status text begins (checked through the layout).
-    CHECK (rolloff.getRight() <= blur.getX());
+    CHECK (rolloff.getParentComponent() == &editor->getSettingsContent() && blur.getParentComponent() == &editor->getSettingsContent());
+    CHECK (rolloff.getBottom() <= blur.getY());                                   // one row below the other
 
     // The pad drags a source through the parameters, as in TriPan.
     auto& field = editor->getField();

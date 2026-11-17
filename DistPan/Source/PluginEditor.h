@@ -11,7 +11,7 @@
 #include "tlos/SpatialEditor.h"
 
 /** DistPan's editor window. All the controls of the family come from tlos::SpatialEditor; DistPan adds its
-    pad and two sliders (rolloff and blur) in the row below the display options. */
+    pad and two sliders (rolloff and blur), which are in the settings window under Panning. */
 class DistPanAudioProcessorEditor final : public tlos::SpatialEditor
 {
 public:
@@ -24,20 +24,14 @@ public:
     juce::Slider& getBlurSlider() noexcept { return blurSlider; }       ///< The blur slider.
     /// @}
 
-protected:
-    /** Places the two sliders at the left of the status row. */
-    void layoutExtraControls (juce::Rectangle<int>& row) override;
-
 private:
-    /** Sets up a slider with its caption and attaches it to the parameter. */
-    void setUpSlider (juce::Slider& slider, juce::Label& label, const juce::String& caption, const juce::String& suffix,
+    /** Sets up a slider, attaches it to the parameter and adds it to the settings window with its caption. */
+    void setUpSlider (juce::Slider& slider, const juce::String& caption, const juce::String& suffix,
                       const juce::String& tooltip, std::unique_ptr<juce::SliderParameterAttachment>& attachment,
                       const juce::String& parameterId);
 
     DistPanAudioProcessor& dbapProcessor; ///< The processor this editor belongs to.
 
-    juce::Label rolloffLabel { {}, "Rolloff" }; ///< Caption of the rolloff slider.
-    juce::Label blurLabel { {}, "Blur" };       ///< Caption of the blur slider.
     juce::Slider rolloffSlider;                 ///< Rolloff in dB per doubling of the distance.
     juce::Slider blurSlider;                    ///< Blur in metres.
 

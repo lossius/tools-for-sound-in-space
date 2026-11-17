@@ -11,16 +11,13 @@ namespace tlos
 {
 
 SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponent> padComponent,
-                              const juce::String& overlayToggleText, const juce::String& overlayToggleTip, int extraRows)
-    : AudioProcessorEditor (&p), owner (p), field (std::move (padComponent))
+                              const juce::String& overlayToggleText, const juce::String& overlayToggleTip)
+    : AudioProcessorEditor (&p), owner (p), field (std::move (padComponent)), settingsContent (p)
 {
-    extraRowCount = std::max (extraRows, 0);
-    baseHeight = kBaseHeight + 32 * extraRowCount;
-
     addAndMakeVisible (content);
     content.addAndMakeVisible (*field);
 
-    for (auto* label : { &sourcesLabel, &speakersLabel, &virtualLabel, &outsideLabel, &roomLabel })
+    for (auto* label : { &sourcesLabel, &speakersLabel })
     {
         label->setJustificationType (juce::Justification::centredRight);
         label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -55,64 +52,9 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
     setUpModeBox (sourcesModeBox,  "source",  owner.canEditSources(),  [this] (bool e) { owner.setSourcesEditable (e); });
     setUpModeBox (speakersModeBox, "speaker", owner.canEditSpeakers(), [this] (bool e) { owner.setSpeakersEditable (e); });
 
-    // Virtual (imaginary) speakers: Auto finds them from the speaker layout, Manual lets the user place
-    // them (double-click the pad to add or delete, drag to move; speakers must be set to Edit), Off uses
-    // the real speakers only.
-    virtualModeBox.addItem ("Auto", (int) VirtualMode::Auto);
-    virtualModeBox.addItem ("Manual", (int) VirtualMode::Manual);
-    virtualModeBox.addItem ("Off", (int) VirtualMode::Off);
-    virtualModeBox.setSelectedId ((int) owner.getVirtualMode(), juce::dontSendNotification);
-    virtualModeBox.setTooltip ("Auto: imaginary speakers are added where the layout needs them (open gaps, ring centre). "
-                               "Manual: you place them (double-click the pad to add or delete, drag to move; speakers must be set to Edit). "
-                               "Off: real speakers only.");
-    virtualModeBox.onChange = [this]
-    {
-        owner.setVirtualMode ((VirtualMode) virtualModeBox.getSelectedId());
-        syncControls();
-    };
-    content.addAndMakeVisible (virtualModeBox);
-    virtualLabel.setVisible (owner.supportsVirtualSpeakers());
-    virtualModeBox.setVisible (owner.supportsVirtualSpeakers());
-
-    // The room: how far the pad reaches and where dragged sources and speakers stop (same for every plugin).
-    roomSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    roomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
-    roomSlider.setRange (params::kMinRoomHalf, params::kMaxRoomHalf, 0.5);
-    roomSlider.setSkewFactorFromMidPoint (20.0);
-    roomSlider.textFromValueFunction = [] (double v) { return juce::String (v, 1) + " m"; };
-    roomSlider.valueFromTextFunction = [] (const juce::String& text) { return text.getDoubleValue(); };
-    roomSlider.setTooltip ("Half the width of the room in metres. The pad shows this much on each side of you, and sources and "
-                           "speakers stop at its edge when dragged. Positions beyond it are still possible (tables, files, host "
-                           "automation, up to 100 m) and sound as usual.");
-    roomSlider.setValue (owner.getRoomHalfExtent(), juce::dontSendNotification);
-    roomSlider.onValueChange = [this]
-    {
-        if (! syncing)
-            owner.setRoomHalfExtent (roomSlider.getValue());
-    };
-    content.addAndMakeVisible (roomSlider);
-
-    oscButton.setTooltip ("Control the plugin over OSC (UDP): receive messages that move sources and speakers and set their trim, "
-                          "mute and solo, and send the changes to a controller. Own addresses and ADM-OSC.");
-    oscButton.onClick = [this]
-    {
-        juce::CallOutBox::launchAsynchronously (std::make_unique<OscSettingsPanel> (owner), oscButton.getScreenBounds(), nullptr);
-    };
-    content.addAndMakeVisible (oscButton);
-
-    // How the level falls for a source outside the speaker layout (same for every plugin).
-    outsideSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    outsideSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
-    outsideSlider.setTooltip ("Level drop in dB for each doubling of (1 + the distance in metres outside the edge of the speaker layout). "
-                              "6 dB is the free-field value. 0 = the level stays constant outside the layout.");
-    content.addAndMakeVisible (outsideSlider);
-    if (auto* parameter = owner.getValueTreeState().getParameter (params::kOutsideRolloffId))
-    {
-        outsideAttachment = std::make_unique<juce::SliderParameterAttachment> (*parameter, outsideSlider, nullptr);
-        outsideSlider.textFromValueFunction = [] (double v) { return juce::String (v, 2) + " dB"; };
-        outsideSlider.valueFromTextFunction = [] (const juce::String& text) { return text.getDoubleValue(); };
-        outsideSlider.updateText();
-    }
+    settingsButton.setTooltip ("Open the settings: room size, level outside the speakers, virtual speakers, the plugin's own settings and OSC.");
+    settingsButton.onClick = [this] { toggleSettingsWindow(); };
+    content.addAndMakeVisible (settingsButton);
 
     overlayButton.setButtonText (overlayToggleText);
     overlayButton.setTooltip (overlayToggleTip);
@@ -187,11 +129,11 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
 
     // Scalable GUI: the base size is the minimum, the aspect ratio is fixed.
     setResizable (true, true);
-    setResizeLimits (kBaseWidth, baseHeight, kBaseWidth * kMaxScale, baseHeight * kMaxScale);
-    getConstrainer()->setFixedAspectRatio ((double) kBaseWidth / (double) baseHeight);
+    setResizeLimits (kBaseWidth, kBaseHeight, kBaseWidth * kMaxScale, kBaseHeight * kMaxScale);
+    getConstrainer()->setFixedAspectRatio ((double) kBaseWidth / (double) kBaseHeight);
 
     const int savedWidth = juce::jlimit (kBaseWidth, kBaseWidth * kMaxScale, owner.getEditorWidth() > 0 ? owner.getEditorWidth() : kBaseWidth);
-    setSize (savedWidth, juce::roundToInt ((double) savedWidth * baseHeight / kBaseWidth));
+    setSize (savedWidth, juce::roundToInt ((double) savedWidth * kBaseHeight / kBaseWidth));
     sizeIsRestored = true;
 
     syncControls();
@@ -203,6 +145,7 @@ SpatialEditor::~SpatialEditor()
     stopTimer();
     sourcesTableWindow.reset();
     speakersTableWindow.reset();
+    settingsWindow.reset();
 }
 
 PositionTableWindow* SpatialEditor::getTableWindow (io::Kind kind) noexcept
@@ -292,10 +235,7 @@ void SpatialEditor::syncControls()
     if (speakersModeBox.getSelectedId() != (editSpeakers ? 1 : 2))
         speakersModeBox.setSelectedId (editSpeakers ? 1 : 2, juce::dontSendNotification);
     resetButton.setEnabled (editSources || editSpeakers);
-    if (! juce::approximatelyEqual (roomSlider.getValue(), owner.getRoomHalfExtent()) && ! roomSlider.isMouseButtonDown())
-        roomSlider.setValue (owner.getRoomHalfExtent(), juce::dontSendNotification);
-    if (virtualModeBox.getSelectedId() != (int) owner.getVirtualMode())
-        virtualModeBox.setSelectedId ((int) owner.getVirtualMode(), juce::dontSendNotification);
+    settingsContent.refresh();
     zoomInButton.setEnabled (field->canZoomIn());
     zoomOutButton.setEnabled (field->canZoomOut());
     groupButton.setEnabled (field->canGroupSelection());
@@ -305,6 +245,23 @@ void SpatialEditor::syncControls()
     infoLabel.setText (showingStatus ? statusText
                                      : "track: " + juce::String (channelsIn) + " in, " + juce::String (channelsOut) + " out",
                        juce::dontSendNotification);
+}
+
+SettingsWindow& SpatialEditor::showSettingsWindow()
+{
+    if (settingsWindow == nullptr)
+        settingsWindow = std::make_unique<SettingsWindow> (owner.getName() + " - Settings", settingsContent);
+
+    settingsWindow->show (this);
+    return *settingsWindow;
+}
+
+void SpatialEditor::toggleSettingsWindow()
+{
+    if (settingsWindow != nullptr && settingsWindow->isVisible())
+        settingsWindow->setVisible (false);
+    else
+        showSettingsWindow();
 }
 
 void SpatialEditor::showStatus (const juce::String& text)
@@ -428,19 +385,17 @@ void SpatialEditor::paint (juce::Graphics& g)
 void SpatialEditor::resized()
 {
     // Uniform scale; if the host ignores the aspect ratio the content is centred.
-    scale = std::min ((float) getWidth() / (float) kBaseWidth, (float) getHeight() / (float) baseHeight);
+    scale = std::min ((float) getWidth() / (float) kBaseWidth, (float) getHeight() / (float) kBaseHeight);
     const float dx = ((float) getWidth()  - (float) kBaseWidth  * scale) * 0.5f;
-    const float dy = ((float) getHeight() - (float) baseHeight * scale) * 0.5f;
+    const float dy = ((float) getHeight() - (float) kBaseHeight * scale) * 0.5f;
 
-    content.setBounds (0, 0, kBaseWidth, baseHeight);
+    content.setBounds (0, 0, kBaseWidth, kBaseHeight);
     content.setTransform (juce::AffineTransform::scale (scale).translated (dx, dy));
     layoutContent();
 
     if (sizeIsRestored) // not while the constructor sets the initial size
         owner.setEditorWidth (getWidth());
 }
-
-void SpatialEditor::layoutExtraControls (juce::Rectangle<int>&) {}
 
 void SpatialEditor::layoutContent()
 {
@@ -449,7 +404,7 @@ void SpatialEditor::layoutContent()
     // The pad goes first, because the rows and the footer line up with its borders: nothing in the top rows sticks
     // out beyond the pad on the left or on the right.
     constexpr int rowHeight = 32, footerHeight = 28;
-    const int rowCount = 5 + extraRowCount;
+    constexpr int rowCount = 4;
     field->setBounds (area.withTrimmedTop (rowCount * rowHeight).withTrimmedBottom (footerHeight));
     const auto plane = field->planeBounds().translated ((float) field->getX(), (float) field->getY()).toNearestInt();
     const auto nextRow = [&] { return area.removeFromTop (rowHeight).withLeft (plane.getX()).withRight (plane.getRight()).reduced (0, 5); };
@@ -490,32 +445,11 @@ void SpatialEditor::layoutContent()
     bar.removeFromLeft (4);
     ungroupButton.setBounds (bar.removeFromLeft (74));
 
-    // Fourth row: virtual speakers (if the plugin has them) and the outside rolloff.
-    auto fourth = nextRow();
-    if (owner.supportsVirtualSpeakers())
-    {
-        virtualLabel.setBounds (fourth.removeFromLeft (110));
-        virtualModeBox.setBounds (fourth.removeFromLeft (90));
-        fourth.removeFromLeft (24);
-    }
-    outsideLabel.setBounds (fourth.removeFromLeft (110));
-    outsideSlider.setBounds (fourth.removeFromLeft (260));
-
-    // Fifth row: the room size, and the line of text (track channels, import/export results).
+    // Fourth row: the Settings button, and the line of text (track channels, import/export results).
     auto last = nextRow();
-    oscButton.setBounds (last.removeFromRight (64));
-    last.removeFromRight (8);
-    roomLabel.setBounds (last.removeFromLeft (80));
-    roomSlider.setBounds (last.removeFromLeft (230));
+    settingsButton.setBounds (last.removeFromLeft (96));
     last.removeFromLeft (12);
     infoLabel.setBounds (last);
-
-    // Rows of controls of the plugin's own.
-    for (int i = 0; i < extraRowCount; ++i)
-    {
-        auto extra = nextRow();
-        layoutExtraControls (extra);
-    }
 
     // Footer: links at the left, in the centre and at the right, each only as wide as its text so that
     // clicking the empty space between them does nothing.

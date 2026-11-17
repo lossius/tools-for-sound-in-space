@@ -126,8 +126,8 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PositionTable)
 };
 
-/** The content of a table window: the controls on top (the number of sources or speakers and, for
-    speakers, the virtual speaker mode) and the table or tables below.
+/** The content of a table window: the controls on top (the number of sources or speakers, for
+    speakers the virtual speaker mode, and the room size) and the table or tables below.
 
     The speakers window shows a second table, to the right, with the manual virtual speakers while they
     can be edited by hand (mode Manual and the speakers set to Edit). Message thread only. */
@@ -171,6 +171,7 @@ public:
     PositionTable* getVirtualTable() noexcept { return virtualTable.get(); }         ///< The virtual speaker table, or nullptr while it is hidden.
     juce::Slider& getCountSlider() noexcept { return countSlider; }                  ///< Number of sources or speakers.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }          ///< Auto / Manual / Off (speakers window).
+    juce::Slider& getRoomSlider() noexcept { return roomSlider; }                    ///< Room size (the same setting as in the settings window).
     /// @}
 
     /** Brings the controls and tables up to date with the parameters, and adds or removes the virtual
@@ -197,6 +198,8 @@ private:
     juce::Slider countSlider;          ///< How many are in use.
     juce::Label virtualLabel { {}, "Virtual speakers" };   ///< Caption of the virtual speaker menu (speakers window).
     juce::ComboBox virtualModeBox;     ///< Auto / Manual / Off (speakers window).
+    juce::Label roomLabel { {}, "Room size" };   ///< Caption of the room size slider.
+    juce::Slider roomSlider;           ///< Half the width of the room in metres (SpatialProcessor::getRoomHalfExtent()).
 
     std::unique_ptr<PositionTable> mainTable;      ///< Sources or speakers.
     std::unique_ptr<PositionTable> virtualTable;   ///< Manual virtual speakers, only while they can be edited.

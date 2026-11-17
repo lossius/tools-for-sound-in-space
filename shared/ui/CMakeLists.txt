@@ -7,6 +7,7 @@ add_library(TlosUI STATIC
     src/SpatialProcessor.cpp
     src/OscControl.cpp
     src/OscSettingsPanel.cpp
+    src/SettingsWindow.cpp
     src/FieldComponent.cpp
     src/PositionIO.cpp
     src/PositionTableWindow.cpp

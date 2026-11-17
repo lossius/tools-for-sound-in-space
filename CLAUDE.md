@@ -77,7 +77,7 @@ warnings; keep it that way when adding code.
   which also carries them in speaker files (`weight` attribute, same "any entry defines it for all" rule as trim). IDs and the state tag `DistPan` are part of saved sessions.
 - Processor: `refreshLayout()` publishes the speaker positions (`SpeakerSet` with an id) through `tlos::Exchange`; `processBlock` computes dense per-source gain rows
   (cache key: position, spread, rolloff, blur, set id), ramps linearly per block, fades speakers that leave "Number of Speakers". No virtual speakers (`supportsVirtualSpeakers()` is false).
-- Editor: `DistPanField` draws no overlay (the overlay toggle is hidden) and links only for gains within 20 dB of the strongest; two sliders (rolloff, blur) sit in row 5.
+- Editor: `DistPanField` draws no overlay (the overlay toggle is hidden) and links only for gains within 20 dB of the strongest; two sliders (DBAP rolloff, DBAP blur) are in the settings window.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.
@@ -94,9 +94,13 @@ warnings; keep it that way when adding code.
   Triangulation is Bowyer-Watson with a relative in-circle tolerance (cocircular layouts such as
   squares and rings are handled). Coincident speakers: first wins, later ones get no signal.
   Non-finite speaker positions are ignored.
-- Top of the editor (five rows): row 1 sources, row 2 speakers (count, Edit/View menu, export, import), row 4 the virtual speaker menu
-  (only if the plugin has them) and the shared "Outside rolloff" slider, row 5 the plugin's own controls (`layoutExtraControls`) and the status text; row 3 triangulation
-  toggle (the overlay toggle, only if the plugin has an overlay), "Show links" toggle (source-to-speaker lines, `tlos::FieldComponent::setShowLinks`), reset layout and the status/track-channels text (`layoutContent`). Edit / View per kind: a menu each, "Edit" or
+- Top of the editor (four rows): row 1 sources, row 2 speakers (count, Edit/View menu, export, import, Table...), row 3 the overlay toggle (only if the plugin has an overlay; TriPan: "Show triangulation"),
+  "Show links" toggle (source-to-speaker lines, `tlos::FieldComponent::setShowLinks`), reset layout, zoom and group buttons, row 4 the **Settings...** button and the status/track-channels text (`layoutContent`).
+  Everything that is set once lives in the **settings window** (`shared/ui/.../SettingsWindow.*`: `SettingsContent` + `SettingsWindow`, a native-title-bar window like the tables, opened beside the plugin window,
+  fixed size, close = hide; the editor owns the content, so its controls always exist and tests reach them through `editor->getRoomSlider()/getOutsideSlider()/getVirtualModeBox()/getSettingsContent()`):
+  sections Room (room size slider), Panning (outside rolloff, the virtual speaker menu if the plugin has them, the plugin's own rows added with the protected `SpatialEditor::addSettingsRow`: DistPan "DBAP rolloff",
+  "DBAP blur") and OSC (the `OscSettingsPanel`: receive on/port, send on/host/port, format, and live feedback: lamps for In/Out/Ignored lighting for 180 ms with a count and the last message, plus the status line).
+  The room size slider is also in the top bar of the two table windows (all three follow the setting by their 10 Hz timers). Edit / View per kind: a menu each, "Edit" or
   "View". Defaults: sources Edit, speakers View. Stored in the plugin state as `editSources` / `editSpeakers`
   (not host parameters; the old single `editMode` property from earlier versions is still read) and queried with
   `canEditSources()` / `canEditSpeakers()`. A kind set to View can't be grabbed or moved in the editor, and "Reset layout" only resets kinds set to Edit (disabled if both are View).
@@ -149,7 +153,7 @@ warnings; keep it that way when adding code.
   speakers) and not saved. `toView/fromView` and the grid use it, so hit-testing and dragging work zoomed.
 - Footer row (bottom of `content`, 11 px, `juce::HyperlinkButton`s sized to their text): left "Trond Lossius" -> trondlossius.no,
   centre "Help" -> trondlossius.no/software/, right "FTVS, INN" -> inn.no faculty page.
-- Scalable GUI: all controls sit in `content`, laid out at the base size 700x892 (`kBaseWidth/Height`, also
+- Scalable GUI: all controls sit in `content`, laid out at the base size 700x860 (`kBaseWidth/Height`, also
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
@@ -197,7 +201,7 @@ warnings; keep it that way when adding code.
   (`handleMessage` returns false). Outgoing: a 30 Hz timer (`sendChanges`) compares with the last sent values per address (`Slot`) and sends changes only (everything on start, on `/dump` and after a target change), in the own form,
   ADM-OSC form (sources: xyz normalised, linear gain, mute) or both; `setSendHook` redirects to a callback for tests. The loopback test needs `JUCE_MODAL_LOOPS_PERMITTED=1` on the test target (it runs the message loop). Untested: sandboxed hosts
   (an AU in a sandbox needs the network server entitlement to listen).
-- Falloff outside the layout (both plugins; host parameter `outsideRolloff`, 0..24 dB, **default 6 dB**, shared slider in row 4): the level of a source outside the speakers is scaled by
+- Falloff outside the layout (both plugins; host parameter `outsideRolloff`, 0..24 dB, **default 6 dB**, shared slider in the settings window): the level of a source outside the speakers is scaled by
   `tlos::outsideFactor(d, rolloffDb) = (1 + d / 1 m)^(-rolloffDb / 6.0206)`, d = distance to the convex hull of the real speakers (`tlos::Hull`, built off the audio thread and
   stored with the snapshot: `SpeakerLayout::hull()` in TriPan, `SpeakerSet::hull` in DistPan). Factor 1 inside and on the boundary (continuous), 0 dB = off (bit-identical to before),
   and no falloff at all if the hull has no area (fewer than 3 speakers or collinear: a stereo pair must keep its level). TriPan applies it to each of the 9 spread positions before the squared

@@ -140,9 +140,27 @@ void OscControl::configure (const OscSettings& s)
     }
 }
 
+juce::String OscControl::describe (const std::optional<juce::OSCMessage>& message)
+{
+    if (! message)
+        return {};
+
+    auto text = message->getAddressPattern().toString();
+    for (const auto& a : *message)
+    {
+        if (a.isFloat32())       text << ' ' << juce::String (a.getFloat32(), 3);
+        else if (a.isInt32())    text << ' ' << juce::String (a.getInt32());
+        else if (a.isString())   text << " \"" << a.getString() << '"';
+        else                     text << " ?";
+    }
+
+    return text;
+}
+
 void OscControl::emit (const juce::OSCMessage& message)
 {
     ++sent;
+    lastSentMessage = message;
 
     if (sendHook)
         sendHook (message);
@@ -467,7 +485,15 @@ bool OscControl::handleMessage (const juce::OSCMessage& message)
     }
 
     if (understood)
+    {
         ++received;
+        lastReceivedMessage = message;
+    }
+    else
+    {
+        ++ignored;
+        lastIgnoredMessage = message;
+    }
 
     return understood;
 }

@@ -48,7 +48,7 @@ a share within 20 dB of the strongest one.
 
 ## Level outside the speakers
 
-Both plugins have the host parameter **Outside rolloff** (0-24 dB, default 6, one slider in the window). A source outside
+Both plugins have the host parameter **Outside rolloff** (0-24 dB, default 6, one slider in the settings window). A source outside
 the speaker layout is lowered by `(1 + d)^(-r/6.02)`, where d is the distance in metres from the source to the edge of the
 layout (the convex hull of the speakers) and r the rolloff: each doubling of 1 + d costs r dB, so 6 dB gives -6 dB one
 metre outside and -12 dB three metres outside. Inside the layout and on its edge nothing changes, and the level falls
@@ -75,9 +75,21 @@ a menu with Mute, Solo and Exclude from panning. Muted or silenced sources and s
 (soloed) badge; excluded speakers are hollow and struck through. The position files carry the settings too (see
 *Saving and loading positions*). Note that the plugins now have about 700 host parameters, which some hosts list slowly.
 
+## Settings window
+
+The **Settings...** button below the display options opens a window with what is set once and then left alone, so that the plugin
+window stays uncluttered:
+
+- **Room**: the room size.
+- **Panning**: the outside rolloff, the virtual speakers menu (TriPan), and DistPan's own **DBAP rolloff** and **DBAP blur**.
+- **OSC**: the settings and a live view of the traffic (see *OSC control*).
+
+The window opens beside the plugin window, stays in front of it, and closing it only hides it. The room size is also in the top
+row of the two table windows.
+
 ## Room size
 
-The **Room size** slider (2 to 100 m, default 10) sets the half-width of the room: the pad shows that much on each side of the
+The **Room size** slider (2 to 100 m, default 10; in the settings window and in the sources and speakers tables) sets the half-width of the room: the pad shows that much on each side of the
 listener, with a grid that follows, and sources and speakers stop at its edge when you drag them. It is saved with the session. Positions
 outside the room are still possible, typed in the tables, loaded from files, or automated by the host, and sound as usual: the room
 only limits the pad. The position parameters reach +-100 m, so the host shows real metres. A new room size shows the whole room again,
@@ -85,11 +97,12 @@ and "Reset layout" places the speakers on a circle of half the room half-width a
 
 ## OSC control
 
-The **OSC...** button (bottom right of the settings rows) opens a small panel to control the plugin over OSC (UDP) and to
-have changes sent to a controller or another program. Receiving and sending are switched on separately, **both are off in a new
-session** (an instance that listens takes its port, so two instances cannot share one), and the ports, the host to send to and
-the address format are saved with the session. The panel's last line says what OSC is doing, for example "listening on port
-9000" or "port 9000 is in use or not allowed". OSC listens on all network interfaces and has no password: use it on a network you trust.
+The **OSC** section of the settings window controls the plugin over OSC (UDP) and has changes sent to a controller or another program.
+Receiving and sending are switched on separately, **both are off in a new session** (an instance that listens takes its port, so two instances
+cannot share one), and the ports, the host to send to and the address format are saved with the session. The window shows what is happening:
+a lamp for **In**, **Out** and **Ignored** that lights for a moment whenever a message was received, sent or not understood, each with a running
+count and the last message as text, and a line that says whether the port is open, for example "listening on port 9000" or "port 9000 is in use
+or not allowed". OSC listens on all network interfaces and has no password: use it on a network you trust.
 
 Messages are applied inside a change gesture, so hosts record them like moves with the mouse. Numbers are 1-based; values are
 floats or ints; address patterns with wildcards are not supported.

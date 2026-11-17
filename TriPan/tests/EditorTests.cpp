@@ -653,6 +653,121 @@ static void testRoomSize()
     editor.reset();
 }
 
+/** The settings window: room size, outside rolloff, virtual speakers and OSC with live feedback; the room size also in the two tables. */
+static void testSettingsWindow (const char* snapshotPath)
+{
+    TriPanAudioProcessor p;
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (3));
+    layout.outputBuses.add (juce::AudioChannelSet::discreteChannels (5));
+    CHECK (p.setBusesLayout (layout));
+    p.setPlayConfigDetails (3, 5, 48000.0, 512);
+    p.prepareToPlay (48000.0, 512);
+
+    std::unique_ptr<TriPanAudioProcessorEditor> editor (static_cast<TriPanAudioProcessorEditor*> (p.createEditor()));
+    editor->setSize (TriPanAudioProcessorEditor::kBaseWidth, TriPanAudioProcessorEditor::kBaseHeight);
+
+    // The main window has the button and none of the moved controls; the window is created on first use and toggles.
+    CHECK (editor->getSettingsButton().isVisible() && editor->getSettingsWindow() == nullptr);
+    CHECK (! editor->getRoomSlider().isShowing() && ! editor->getOutsideSlider().isShowing() && ! editor->getVirtualModeBox().isShowing());
+    auto& window = editor->showSettingsWindow();
+    CHECK (window.isVisible() && window.getName() == "TriPan - Settings" && editor->getSettingsWindow() == &window);
+    CHECK (window.getContentComponent() == &editor->getSettingsContent());
+    editor->toggleSettingsWindow();
+    CHECK (! window.isVisible());
+    editor->toggleSettingsWindow();
+    CHECK (window.isVisible());
+
+    auto& settings = editor->getSettingsContent();
+    CHECK (settings.getRoomSlider().isVisible() && settings.getOutsideSlider().isVisible() && settings.getVirtualModeBox().isVisible());
+    CHECK (std::abs (settings.getRoomSlider().getValue() - 10.0) < 1e-9);
+
+    // Room size: the same setting in the settings window and in both tables.
+    auto& sources = editor->showTableWindow (tlos::io::Kind::Sources).getContent();
+    auto& speakers = editor->showTableWindow (tlos::io::Kind::Speakers).getContent();
+    CHECK (std::abs (sources.getRoomSlider().getValue() - 10.0) < 1e-9 && std::abs (speakers.getRoomSlider().getValue() - 10.0) < 1e-9);
+    settings.getRoomSlider().setValue (30.0, juce::sendNotificationSync);
+    CHECK (std::abs (p.getRoomHalfExtent() - 30.0) < 1e-9);
+    sources.refresh();
+    speakers.refresh();
+    CHECK (std::abs (sources.getRoomSlider().getValue() - 30.0) < 1e-9 && std::abs (speakers.getRoomSlider().getValue() - 30.0) < 1e-9);
+    speakers.getRoomSlider().setValue (12.5, juce::sendNotificationSync);
+    settings.refresh();
+    sources.refresh();
+    CHECK (std::abs (p.getRoomHalfExtent() - 12.5) < 1e-9 && std::abs (settings.getRoomSlider().getValue() - 12.5) < 1e-9 && std::abs (sources.getRoomSlider().getValue() - 12.5) < 1e-9);
+    p.setRoomHalfExtent (20.0);                                      // a change from elsewhere (OSC, state) follows in all three
+    settings.refresh();
+    sources.refresh();
+    speakers.refresh();
+    CHECK (std::abs (settings.getRoomSlider().getValue() - 20.0) < 1e-9 && std::abs (speakers.getRoomSlider().getValue() - 20.0) < 1e-9);
+    CHECK (sources.getRoomSlider().isVisible() && sources.getRoomSlider().getRight() <= sources.getWidth());
+    CHECK (speakers.getRoomSlider().isVisible() && speakers.getRoomSlider().getRight() <= speakers.getWidth());
+    CHECK (sources.getPreferredWidth() >= sources.getRoomSlider().getRight());
+
+    // Outside rolloff and virtual speakers: here, working as they did in the main window.
+    settings.getOutsideSlider().setValue (9.0, juce::sendNotificationSync);
+    CHECK (std::abs (value (p, tlos::params::kOutsideRolloffId) - 9.0f) < 1e-3f);
+    setParam (p, tlos::params::kOutsideRolloffId, 3.0f);
+    CHECK (std::abs (settings.getOutsideSlider().getValue() - 3.0) < 1e-3);
+    settings.getVirtualModeBox().setSelectedId ((int) tlos::VirtualMode::Off, juce::sendNotificationSync);
+    CHECK (p.getVirtualMode() == tlos::VirtualMode::Off);
+    p.setVirtualMode (tlos::VirtualMode::Manual);
+    settings.refresh();
+    CHECK (settings.getVirtualModeBox().getSelectedId() == (int) tlos::VirtualMode::Manual);
+    p.setVirtualMode (tlos::VirtualMode::Auto);
+
+    // OSC: the settings and live feedback in the same window.
+    auto& osc = settings.getOscPanel();
+    CHECK (osc.isVisible() && ! osc.getReceiveToggle().getToggleState() && osc.getStatusLabel().getText() == "off");
+    CHECK (! osc.getInLamp().isLit() && ! osc.getOutLamp().isLit() && ! osc.getIgnoredLamp().isLit());
+    osc.getReceivePortEditor().setText ("9123", false);
+    osc.getSendHostEditor().setText ("10.1.2.3", false);
+    osc.getSendPortEditor().setText ("9124", false);
+    osc.apply();
+    CHECK (p.getOscSettings().receivePort == 9123 && p.getOscSettings().sendHost == "10.1.2.3" && p.getOscSettings().sendPort == 9124);
+
+    auto& control = p.getOscControl();
+    CHECK (control.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/source/2/xy"), 1.5f, -2.5f)));
+    CHECK (! control.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/source/2/colour"), 1.0f)));
+    std::vector<juce::OSCMessage> sentMessages;
+    control.setSendHook ([&] (const juce::OSCMessage& m) { sentMessages.push_back (m); });
+    tlos::OscSettings s = p.getOscSettings();
+    s.send = true;
+    p.setOscSettings (s);
+    control.sendChanges();
+    CHECK (! sentMessages.empty());
+    osc.refresh();
+    CHECK (osc.getInLamp().isLit() && osc.getOutLamp().isLit() && osc.getIgnoredLamp().isLit());      // all three just had traffic
+    CHECK (osc.getInText().getText().startsWith ("1") && osc.getInText().getText().contains ("/source/2/xy 1.500 -2.500"));
+    CHECK (osc.getIgnoredText().getText().startsWith ("1") && osc.getIgnoredText().getText().contains ("/source/2/colour"));
+    CHECK (osc.getOutText().getText().startsWith (juce::String (control.getSentCount())) && osc.getOutText().getText().contains ("/"));
+    juce::Thread::sleep (260);                                       // the lamps go out again without traffic
+    osc.refresh();
+    CHECK (! osc.getInLamp().isLit() && ! osc.getOutLamp().isLit() && ! osc.getIgnoredLamp().isLit());
+    CHECK (control.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/source/1/trim"), -3.0f)));
+    osc.refresh();
+    CHECK (osc.getInLamp().isLit() && osc.getInText().getText().startsWith ("2") && osc.getInText().getText().contains ("/source/1/trim -3.000"));
+    control.setSendHook ({});
+    s.send = false;
+    p.setOscSettings (s);
+
+    // The settings window is as tall as its content and not resizable.
+    CHECK (window.getContentComponent()->getHeight() == settings.getPreferredHeight() && ! window.isResizable());
+    CHECK (settings.getPreferredHeight() > 300 && settings.getPreferredHeight() < 900);
+
+    if (snapshotPath != nullptr)
+    {
+        juce::File out (juce::String (snapshotPath).replace ("-calibration", "-settings"));
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        CHECK (stream.openedOk() && png.writeImageToStream (settings.createComponentSnapshot (settings.getLocalBounds(), true, 1.0f), stream));
+        std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+    }
+
+    editor.reset();
+}
+
 /** Runs the editor tests; with argv[1] writes a PNG snapshot of the editor there (argv[2] optionally names a speaker file to load first). @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
@@ -1659,6 +1774,7 @@ int main (int argc, char** argv)
     base.reset();
 
     testRoomSize();
+    testSettingsWindow (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-calibration.png").getFullPathName().toRawUTF8() : nullptr);
     testCalibrationInterface (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-calibration.png").getFullPathName().toRawUTF8() : nullptr);
     testGroups (argc > 1 ? juce::File (argv[1]).getSiblingFile (juce::File (argv[1]).getFileNameWithoutExtension() + "-groups.png").getFullPathName().toRawUTF8() : nullptr);
 

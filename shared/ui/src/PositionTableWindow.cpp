@@ -466,6 +466,25 @@ PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
         addAndMakeVisible (virtualModeBox);
     }
 
+    // The room size, the same setting as in the settings window.
+    roomLabel.setJustificationType (juce::Justification::centredRight);
+    roomLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
+    addAndMakeVisible (roomLabel);
+    roomSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    roomSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 60, 22);
+    roomSlider.setRange (params::kMinRoomHalf, params::kMaxRoomHalf, 0.5);
+    roomSlider.setSkewFactorFromMidPoint (20.0);
+    roomSlider.textFromValueFunction = [] (double v) { return juce::String (v, 1) + " m"; };
+    roomSlider.valueFromTextFunction = [] (const juce::String& text) { return text.getDoubleValue(); };
+    roomSlider.setTooltip ("Half the width of the room in metres: how far the pad reaches. Positions typed here may lie beyond it (up to 100 m).");
+    roomSlider.setValue (processor.getRoomHalfExtent(), juce::dontSendNotification);
+    roomSlider.onValueChange = [this]
+    {
+        if (! syncing)
+            processor.setRoomHalfExtent (roomSlider.getValue());
+    };
+    addAndMakeVisible (roomSlider);
+
     mainTable = std::make_unique<PositionTable> (processor, sources ? PositionTable::Content::Sources : PositionTable::Content::Speakers);
     addAndMakeVisible (*mainTable);
 
@@ -485,8 +504,9 @@ const juce::String& PositionTableContent::countParameterId() const
 
 int PositionTableContent::getPreferredWidth() const
 {
-    const int topBar = kind == io::Kind::Sources ? 130 + 110
-                                                         : 130 + 110 + 16 + 110 + 90;
+    const int roomWidth = 16 + 76 + 190;    // gap, caption, slider
+    const int topBar = kind == io::Kind::Sources ? 130 + 110 + roomWidth
+                                                         : 130 + 110 + 16 + 110 + 90 + roomWidth;
     int tables = mainTable->getPreferredWidth();
     if (virtualTable != nullptr)
         tables += kGap + virtualTable->getPreferredWidth();
@@ -515,6 +535,9 @@ void PositionTableContent::refresh()
         countSlider.setRange (1.0, (double) maximum, 1.0);
     if (! juce::approximatelyEqual (countSlider.getValue(), (double) inUse))
         countSlider.setValue ((double) inUse, juce::dontSendNotification);
+
+    if (! juce::approximatelyEqual (roomSlider.getValue(), processor.getRoomHalfExtent()) && ! roomSlider.isMouseButtonDown())
+        roomSlider.setValue (processor.getRoomHalfExtent(), juce::dontSendNotification);
 
     if (! sources && virtualModeBox.getSelectedId() != (int) processor.getVirtualMode())
         virtualModeBox.setSelectedId ((int) processor.getVirtualMode(), juce::dontSendNotification);
@@ -565,6 +588,9 @@ void PositionTableContent::resized()
         virtualLabel.setBounds (bar.removeFromLeft (110));
         virtualModeBox.setBounds (bar.removeFromLeft (90).reduced (0, 4));
     }
+    bar.removeFromLeft (16);
+    roomLabel.setBounds (bar.removeFromLeft (76));
+    roomSlider.setBounds (bar.removeFromLeft (190).reduced (0, 4));
 
     area.removeFromTop (8);
     mainTable->setBounds (area.removeFromLeft (mainTable->getPreferredWidth()));

@@ -48,10 +48,53 @@ OscSettingsPanel::OscSettingsPanel (SpatialProcessor& p) : processor (p)
     status.setMinimumHorizontalScale (0.7f);
     addAndMakeVisible (status);
 
+    // Live feedback: a lamp, a count and the last message for what comes in, what goes out and what is not understood.
+    inLamp.setTooltip ("Lights when an OSC message was received and applied.");
+    outLamp.setTooltip ("Lights when an OSC message was sent.");
+    ignoredLamp.setTooltip ("Lights when a message arrived that was not understood (unknown address or wrong arguments).");
+    for (auto* lamp : { &inLamp, &outLamp, &ignoredLamp })
+        addAndMakeVisible (lamp);
+    for (auto* label : { &inLabel, &outLabel, &ignoredLabel })
+    {
+        label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
+        addAndMakeVisible (label);
+    }
+    for (auto* text : { &inText, &outText, &ignoredText })
+    {
+        text->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.6f));
+        text->setFont (juce::FontOptions (12.0f));
+        text->setMinimumHorizontalScale (0.7f);
+        addAndMakeVisible (text);
+    }
+
     show (processor.getOscSettings());
+    setSize (kWidth, kHeight);
+    refresh();
+    startTimerHz (20);
+}
+
+void OscSettingsPanel::refresh()
+{
+    const auto& osc = processor.getOscControl();
+    const auto now = juce::Time::getMillisecondCounter();
+    constexpr juce::uint32 lampTime = 180;
+
+    const auto follow = [&] (int count, int& last, juce::uint32& litAt, ActivityLamp& lamp, juce::Label& text, const juce::String& message)
+    {
+        if (count != last)
+        {
+            last = count;
+            litAt = now;
+        }
+        lamp.setLit (litAt != 0 && now - litAt < lampTime);
+        text.setText (juce::String (count) + (message.isNotEmpty() ? "   " + message : juce::String()), juce::dontSendNotification);
+    };
+
+    follow (osc.getReceivedCount(), lastReceived, inLitAt, inLamp, inText, osc.getLastReceived());
+    follow (osc.getSentCount(), lastSent, outLitAt, outLamp, outText, osc.getLastSent());
+    follow (osc.getIgnoredCount(), lastIgnored, ignoredLitAt, ignoredLamp, ignoredText, osc.getLastIgnored());
+
     status.setText (processor.getOscStatus(), juce::dontSendNotification);
-    setSize (340, 150);
-    startTimerHz (2);
 }
 
 OscSettingsPanel::~OscSettingsPanel()
@@ -87,7 +130,7 @@ void OscSettingsPanel::apply()
         processor.setOscSettings (s);
 
     show (processor.getOscSettings());   // what was kept (a rejected port or host), as it is now
-    status.setText (processor.getOscStatus(), juce::dontSendNotification);
+    refresh();
 }
 
 void OscSettingsPanel::paint (juce::Graphics& g)
@@ -114,6 +157,18 @@ void OscSettingsPanel::resized()
     formatLabel.setBounds (r3.removeFromLeft (150));
     formatBox.setBounds (r3.removeFromLeft (150));
 
+    const auto feedback = [&] (ActivityLamp& lamp, juce::Label& label, juce::Label& text)
+    {
+        auto r = area.removeFromTop (24);
+        lamp.setBounds (r.removeFromLeft (20));
+        label.setBounds (r.removeFromLeft (56));
+        text.setBounds (r);
+    };
+    area.removeFromTop (4);
+    feedback (inLamp, inLabel, inText);
+    feedback (outLamp, outLabel, outText);
+    feedback (ignoredLamp, ignoredLabel, ignoredText);
+    area.removeFromTop (4);
     status.setBounds (area.removeFromTop (22));
 }
 }

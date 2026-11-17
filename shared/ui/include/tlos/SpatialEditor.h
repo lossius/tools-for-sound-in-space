@@ -7,7 +7,7 @@
 #pragma once
 
 #include "tlos/FieldComponent.h"
-#include "tlos/OscSettingsPanel.h"
+#include "tlos/SettingsWindow.h"
 #include "tlos/SpatialProcessor.h"
 #include "tlos/PositionIO.h"
 #include "tlos/PositionTableWindow.h"
@@ -19,10 +19,10 @@ namespace tlos
 
     All controls live in a child component laid out at the base size (kBaseWidth x kBaseHeight) and
     scaled uniformly with the window, which has a fixed aspect ratio. Rows from the top: sources,
-    speakers, display options (an optional overlay toggle, links, reset, zoom, groups), the virtual speaker
-    menu (only if the processor supports them) with the outside rolloff slider, the room size slider with the
-    status text, then (for a plugin that has controls of its own, `extraRows`) the row of those controls, and
-    the FieldComponent pad and a footer.
+    speakers, display options (an optional overlay toggle, links, reset, zoom, groups), the Settings button
+    with the status text, then the FieldComponent pad and a footer. Everything that is set once and then left
+    alone (room size, level outside the speakers, virtual speakers, the plugin's own settings, OSC) is in the
+    settings window (SettingsContent), which the Settings button opens.
 
     A plugin derives from this class and passes its own FieldComponent (which draws what is specific to
     its panning method) and the text of the toggle that shows or hides that drawing. */
@@ -35,11 +35,9 @@ public:
         @param padComponent         The pad, usually a subclass of FieldComponent; the editor owns it.
         @param overlayToggleText    Text of the toggle for FieldComponent::setShowOverlay() (for example
                                     "Show triangulation"), or empty for no toggle.
-        @param overlayToggleTip     Tooltip of that toggle.
-        @param extraRows            Rows of controls of the plugin's own (see layoutExtraControls()); each makes the
-                                    window 32 pixels higher at the base size. */
+        @param overlayToggleTip     Tooltip of that toggle. */
     SpatialEditor (SpatialProcessor& processor, std::unique_ptr<FieldComponent> padComponent,
-                   const juce::String& overlayToggleText, const juce::String& overlayToggleTip = {}, int extraRows = 0);
+                   const juce::String& overlayToggleText, const juce::String& overlayToggleTip = {});
 
     /** Stops the timer and detaches from the parameters. */
     ~SpatialEditor() override;
@@ -47,7 +45,7 @@ public:
     /** The GUI is laid out at this size and scaled uniformly (with a fixed aspect ratio) when the
         window is resized. The base size is also the smallest allowed size. */
     static constexpr int kBaseWidth = 700;   ///< Width in pixels at scale 1.
-    static constexpr int kBaseHeight = 892;  ///< Height in pixels at scale 1 for a window without extra rows.
+    static constexpr int kBaseHeight = 860;  ///< Height in pixels at scale 1.
     static constexpr int kMaxScale = 3;      ///< The window can grow to this multiple of the base size.
 
     /** Fills the background. */
@@ -55,9 +53,6 @@ public:
 
     /** Applies the scale transform to the content and remembers the window width. */
     void resized() override;
-
-    /** @return The height in pixels at scale 1: kBaseHeight plus 32 for every extra row. */
-    int getBaseHeight() const noexcept { return baseHeight; }
 
     /** Current display scale (1.0 at the base size). */
     float getScale() const noexcept { return scale; }
@@ -69,10 +64,11 @@ public:
     juce::Slider& getSpeakerCountSlider() noexcept { return speakerCount; }            ///< "Number of Speakers" slider.
     juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }            ///< Edit/View menu for sources.
     juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }          ///< Edit/View menu for speakers.
-    juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }            ///< Auto/Manual/Off menu.
-    juce::TextButton& getOscButton() noexcept { return oscButton; }                    ///< "OSC..." (opens the OSC settings).
-    juce::Slider& getRoomSlider() noexcept { return roomSlider; }                      ///< "Room size" slider.
-    juce::Slider& getOutsideSlider() noexcept { return outsideSlider; }                ///< "Outside rolloff" slider.
+    juce::TextButton& getSettingsButton() noexcept { return settingsButton; }          ///< "Settings..." (opens the settings window).
+    SettingsContent& getSettingsContent() noexcept { return settingsContent; }         ///< What the settings window shows.
+    juce::ComboBox& getVirtualModeBox() noexcept { return settingsContent.getVirtualModeBox(); }  ///< Auto/Manual/Off menu (in the settings window).
+    juce::Slider& getRoomSlider() noexcept { return settingsContent.getRoomSlider(); }            ///< "Room size" slider (in the settings window).
+    juce::Slider& getOutsideSlider() noexcept { return settingsContent.getOutsideSlider(); }      ///< "Outside rolloff" slider (in the settings window).
     juce::ToggleButton& getOverlayButton() noexcept { return overlayButton; }          ///< The overlay toggle (e.g. "Show triangulation").
     juce::ToggleButton& getShowLinksButton() noexcept { return showLinksButton; }      ///< "Show links".
     juce::TextButton& getResetButton() noexcept { return resetButton; }                ///< "Reset layout".
@@ -107,18 +103,22 @@ public:
     /** Re-reads the parameters and channel counts into the controls (also called by a timer). */
     void syncControls();
 
+    /** Opens (or brings to the front) the settings window.
+        @return The window, which is owned by the editor and closed with it. */
+    SettingsWindow& showSettingsWindow();
+
+    /** What the Settings button does: closes (hides) the window if it is open, otherwise opens it. */
+    void toggleSettingsWindow();
+
+    /** @return The settings window, or nullptr if it has not been opened yet. */
+    SettingsWindow* getSettingsWindow() noexcept { return settingsWindow.get(); }
+
 protected:
-    /** Hook for the controls of the plugin's panning method (for example a rolloff slider): positions them
-        in the extra row (base-size pixels; `row` is the whole row). Only called if the editor was created with
-        extra rows. Add the controls themselves with addToContent() in the constructor. The default has none. */
-    virtual void layoutExtraControls (juce::Rectangle<int>& row);
-
-    /** Adds a child to the area that is laid out at the base size and scaled with the window. */
-    void addToContent (juce::Component& child) { content.addAndMakeVisible (child); }
-
-    /** Positions every control again (a subclass calls this at the end of its constructor, after it has added
-        its own controls: the base class has laid out the window before they existed). */
-    void relayout() { layoutContent(); }
+    /** Adds a row of the plugin's own to the settings window (for example a slider), under Panning. The control
+        belongs to the plugin's editor, which must keep it alive as long as the editor exists.
+        @param caption  The text to the left of the control.
+        @param control  The control. */
+    void addSettingsRow (const juce::String& caption, juce::Component& control) { settingsContent.addRow (caption, control); }
 
 private:
     /** Timer callback: keeps the controls in step with the parameters. */
@@ -150,8 +150,6 @@ private:
     // All controls live in `content`, which is laid out at the base size and scaled by a transform.
     // (Declared before the controls so that it is destroyed after them.)
     juce::Component content;       ///< Parent of all controls, laid out at the base size.
-    int baseHeight = kBaseHeight;  ///< Height at scale 1, see getBaseHeight().
-    int extraRowCount = 0;         ///< Rows of controls of the plugin's own.
     float scale = 1.0f;            ///< Current display scale, see getScale().
     bool sizeIsRestored = false;   ///< True once the saved window size has been applied.
 
@@ -164,14 +162,9 @@ private:
     juce::Label infoLabel;         ///< Status text and the track's channel counts.
     juce::ComboBox sourcesModeBox;   ///< "Edit" / "View" for sources.
     juce::ComboBox speakersModeBox;  ///< "Edit" / "View" for speakers.
-    juce::Label virtualLabel { {}, "Virtual speakers" }; ///< Caption of the virtual speaker menu.
-    juce::ComboBox virtualModeBox;                       ///< Auto / Manual / Off (only if the processor supports virtual speakers).
-    juce::TextButton oscButton { "OSC..." };             ///< Opens the OSC settings panel.
-    juce::Label roomLabel { {}, "Room size" };           ///< Caption of the room size slider.
-    juce::Slider roomSlider;                             ///< Half the width of the room in metres (see SpatialProcessor::getRoomHalfExtent()).
-    juce::Label outsideLabel { {}, "Outside rolloff" };  ///< Caption of the outside rolloff slider.
-    juce::Slider outsideSlider;                          ///< Level drop in dB per doubling of the distance outside the speakers.
-    std::unique_ptr<juce::SliderParameterAttachment> outsideAttachment; ///< Ties the slider to its parameter.
+    juce::TextButton settingsButton { "Settings..." };   ///< Opens the settings window.
+    SettingsContent settingsContent;                     ///< What the settings window shows (owned here so that its controls always exist).
+    std::unique_ptr<SettingsWindow> settingsWindow;      ///< The settings window, created on first use.
     juce::ToggleButton overlayButton;                    ///< Shows or hides the plugin's overlay on the pad (e.g. the triangles).
     juce::ToggleButton showLinksButton { "Show links" }; ///< Draws the lines from each source to the speakers it feeds.
     juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.
