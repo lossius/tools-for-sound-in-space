@@ -7,6 +7,7 @@
 #pragma once
 
 #include "tlos/FieldComponent.h"
+#include "tlos/OscSettingsPanel.h"
 #include "tlos/SpatialProcessor.h"
 #include "tlos/PositionIO.h"
 #include "tlos/PositionTableWindow.h"
@@ -69,6 +70,7 @@ public:
     juce::ComboBox& getSourcesModeBox() noexcept { return sourcesModeBox; }            ///< Edit/View menu for sources.
     juce::ComboBox& getSpeakersModeBox() noexcept { return speakersModeBox; }          ///< Edit/View menu for speakers.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }            ///< Auto/Manual/Off menu.
+    juce::TextButton& getOscButton() noexcept { return oscButton; }                    ///< "OSC..." (opens the OSC settings).
     juce::Slider& getRoomSlider() noexcept { return roomSlider; }                      ///< "Room size" slider.
     juce::Slider& getOutsideSlider() noexcept { return outsideSlider; }                ///< "Outside rolloff" slider.
     juce::ToggleButton& getOverlayButton() noexcept { return overlayButton; }          ///< The overlay toggle (e.g. "Show triangulation").
@@ -164,6 +166,7 @@ private:
     juce::ComboBox speakersModeBox;  ///< "Edit" / "View" for speakers.
     juce::Label virtualLabel { {}, "Virtual speakers" }; ///< Caption of the virtual speaker menu.
     juce::ComboBox virtualModeBox;                       ///< Auto / Manual / Off (only if the processor supports virtual speakers).
+    juce::TextButton oscButton { "OSC..." };             ///< Opens the OSC settings panel.
     juce::Label roomLabel { {}, "Room size" };           ///< Caption of the room size slider.
     juce::Slider roomSlider;                             ///< Half the width of the room in metres (see SpatialProcessor::getRoomHalfExtent()).
     juce::Label outsideLabel { {}, "Outside rolloff" };  ///< Caption of the outside rolloff slider.

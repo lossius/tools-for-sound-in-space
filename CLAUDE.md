@@ -190,6 +190,13 @@ warnings; keep it that way when adding code.
   (Mute, Solo, Exclude; works in View mode too; `toggleMute/toggleSolo/toggleExclude`), dimmed + M/S badge, hollow struck-through excluded speakers, links scaled by the gains. Files: optional `trim`, `mute`, `solo`
   (and `excluded` on speakers); written for every entry once any entry has a non-default value; an import where any entry has an attribute defines it for every channel (others default), like `group`.
   A per-speaker delay was considered and deliberately not implemented.
+- OSC (`shared/ui/.../OscControl.*`, `OscSettingsPanel.*`, `juce_osc`): `SpatialProcessor` owns an `OscControl` (message thread); settings (`oscReceive/Port`, `oscSend/Host/Port`, `oscFormat`) are session state,
+  all off by default (port binding is per instance). Incoming: `handleMessage` (the receiver uses the message-loop callback) applies own addresses (`/source/N/xy|x|y|spread|trim|mute|solo`, `/speaker/N/...|exclude|<column attribute>`,
+  `/room/size`, `/outside/rolloff`, `/sources|speakers/count`, plugin extras from `getOscParameters()`, `/dump`) and ADM-OSC objects (`/adm/obj/N/xyz|xy|x|y|z|aed|azim|elev|dist|gain|mute`; normalised = fraction of the room half
+  extent; azimuth counter-clockwise from the front, x = -d sin(az), y = d cos(az), elevation scales d by cos(elev)); each set runs in a change gesture; values are limited to the parameter ranges; non-finite or wrong arguments are rejected
+  (`handleMessage` returns false). Outgoing: a 30 Hz timer (`sendChanges`) compares with the last sent values per address (`Slot`) and sends changes only (everything on start, on `/dump` and after a target change), in the own form,
+  ADM-OSC form (sources: xyz normalised, linear gain, mute) or both; `setSendHook` redirects to a callback for tests. The loopback test needs `JUCE_MODAL_LOOPS_PERMITTED=1` on the test target (it runs the message loop). Untested: sandboxed hosts
+  (an AU in a sandbox needs the network server entitlement to listen).
 - Falloff outside the layout (both plugins; host parameter `outsideRolloff`, 0..24 dB, **default 6 dB**, shared slider in row 4): the level of a source outside the speakers is scaled by
   `tlos::outsideFactor(d, rolloffDb) = (1 + d / 1 m)^(-rolloffDb / 6.0206)`, d = distance to the convex hull of the real speakers (`tlos::Hull`, built off the audio thread and
   stored with the snapshot: `SpeakerLayout::hull()` in TriPan, `SpeakerSet::hull` in DistPan). Factor 1 inside and on the boundary (continuous), 0 dB = off (bit-identical to before),

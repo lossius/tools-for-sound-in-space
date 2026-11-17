@@ -49,6 +49,9 @@ public:
         running (e.g. in tests). */
     void refreshLayout() override;
 
+    /** @return /dbap/rolloff and /dbap/blur. */
+    std::vector<tlos::OscParameter> getOscParameters() const override;
+
     /** @return The weight column of the speaker table and files. */
     std::optional<tlos::SpeakerColumn> getSpeakerColumn() const override;
 

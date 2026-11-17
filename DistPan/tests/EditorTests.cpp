@@ -68,6 +68,11 @@ int main (int argc, char** argv)
     CHECK (p.canEditSpeakers());
     editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
 
+    // The room size slider and the OSC button are there, and the button is inside the window.
+    CHECK (editor->getRoomSlider().isVisible() && editor->getOscButton().isVisible());
+    CHECK (editor->getOscButton().getRight() <= tlos::SpatialEditor::kBaseWidth && editor->getOscButton().getWidth() > 30);
+    CHECK (editor->getRoomSlider().getRight() < editor->getOscButton().getX());
+
     // The shared outside rolloff slider is there, shows the default and writes to its parameter.
     auto& outside = editor->getOutsideSlider();
     CHECK (outside.isVisible() && outside.getWidth() > 50);

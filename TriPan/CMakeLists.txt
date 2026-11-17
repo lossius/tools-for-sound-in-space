@@ -47,6 +47,8 @@ target_link_libraries(TriPan PUBLIC TriPanCore)
 # Offline processor tests (no DAW needed)
 add_executable(TriPanProcessorTests tests/ProcessorTests.cpp)
 target_include_directories(TriPanProcessorTests PRIVATE Source)
+# The OSC loopback test runs the message loop for a moment.
+target_compile_definitions(TriPanProcessorTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(TriPanProcessorTests
     PRIVATE
         TriPan

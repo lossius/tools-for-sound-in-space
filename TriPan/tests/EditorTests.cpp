@@ -553,6 +553,19 @@ static void testCalibrationInterface (const char* snapshotPath)
         std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
     }
 
+    if (snapshotPath != nullptr)
+    {
+        tlos::OscSettingsPanel panel (p);
+        panel.getReceiveToggle().setToggleState (true, juce::dontSendNotification);
+        panel.getSendToggle().setToggleState (true, juce::dontSendNotification);
+        juce::File out (juce::String (snapshotPath).replace ("-calibration", "-osc"));
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        CHECK (stream.openedOk() && png.writeImageToStream (panel.createComponentSnapshot (panel.getLocalBounds(), true, 1.0f), stream));
+        std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+    }
+
     editor.reset();
 }
 

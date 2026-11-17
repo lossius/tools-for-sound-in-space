@@ -49,6 +49,8 @@ target_link_libraries(DistPan PUBLIC DistPanCore)
 # Offline processor tests (no DAW needed)
 add_executable(DistPanProcessorTests tests/ProcessorTests.cpp)
 target_include_directories(DistPanProcessorTests PRIVATE Source)
+# The OSC loopback test runs the message loop for a moment.
+target_compile_definitions(DistPanProcessorTests PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
 target_link_libraries(DistPanProcessorTests
     PRIVATE
         DistPan

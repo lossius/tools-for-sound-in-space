@@ -7,9 +7,11 @@
 
 #include "../Source/DistPanParameters.h"
 #include "../Source/PluginProcessor.h"
+#include "tlos/OscControl.h"
 #include "tlos/Parameters.h"
 #include "tlos/PositionIO.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdio>
@@ -589,6 +591,39 @@ static void testSpeakerWeights()
     plain.deleteFile();
 }
 
+/** DistPan's own OSC addresses: rolloff, blur and the speaker weights, in and out. */
+static void testOscExtras()
+{
+    DistPanAudioProcessor p;
+    CHECK (configure (p, 2, 4, 256));
+    auto& osc = p.getOscControl();
+    const auto send = [&] (const juce::String& address, float v) { return osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern (address), v)); };
+
+    CHECK (send ("/dbap/rolloff", 9.0f) && std::abs (getParam (p, distpan::params::kRolloffId) - 9.0f) < 1e-3f);
+    CHECK (send ("/dbap/blur", 1.5f) && std::abs (getParam (p, distpan::params::kBlurId) - 1.5f) < 1e-3f);
+    CHECK (send ("/speaker/2/weight", 0.3f) && std::abs (getParam (p, distpan::params::speakerWeightId (1)) - 0.3f) < 1e-3f);
+    CHECK (send ("/speaker/2/weight", 7.0f) && std::abs (getParam (p, distpan::params::speakerWeightId (1)) - 1.0f) < 1e-3f);   // limited to 0..1
+    CHECK (! send ("/dbap/colour", 1.0f) && ! send ("/tripan/anything", 1.0f));
+
+    std::vector<juce::String> sent;
+    osc.setSendHook ([&] (const juce::OSCMessage& m) { sent.push_back (m.getAddressPattern().toString()); });
+    tlos::OscSettings s;
+    s.send = true;
+    s.format = tlos::OscFormat::Own;
+    p.setOscSettings (s);
+    osc.sendChanges();
+    const auto has = [&] (const juce::String& a) { return std::find (sent.begin(), sent.end(), a) != sent.end(); };
+    CHECK (has ("/dbap/rolloff") && has ("/dbap/blur") && has ("/speaker/1/weight") && has ("/speaker/4/weight") && ! has ("/speaker/5/weight"));
+    sent.clear();
+    setParam (p, distpan::params::speakerWeightId (2), 0.5f);
+    setParam (p, distpan::params::kBlurId, 2.0f);
+    osc.sendChanges();
+    CHECK (sent.size() == 2 && has ("/speaker/3/weight") && has ("/dbap/blur"));
+    osc.setSendHook ({});
+    s.send = false;
+    p.setOscSettings (s);
+}
+
 /** 64 sources to 64 speakers: one source at a time keeps its energy, and the output is finite. */
 static void testFullSize64x64()
 {
@@ -710,6 +745,7 @@ int main (int argc, char** argv)
     testMuteHasNoClick();
     testExclude();
     testSpeakerWeights();
+    testOscExtras();
     testSpeakerUpdate();
     testNumberOfSourcesAndSpeakersInUse();
     testStateRoundTrip();

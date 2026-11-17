@@ -24,6 +24,11 @@ DistPanAudioProcessor::DistPanAudioProcessor()
         weightParam[(size_t) i] = apvts.getRawParameterValue (distpan::params::speakerWeightId (i));
 }
 
+std::vector<tlos::OscParameter> DistPanAudioProcessor::getOscParameters() const
+{
+    return { { "/dbap/rolloff", distpan::params::kRolloffId }, { "/dbap/blur", distpan::params::kBlurId } };
+}
+
 std::optional<tlos::SpeakerColumn> DistPanAudioProcessor::getSpeakerColumn() const
 {
     return tlos::SpeakerColumn { "Weight", "weight", [] (int i) { return distpan::params::speakerWeightId (i); }, 0.0, 1.0, 1.0, 2 };

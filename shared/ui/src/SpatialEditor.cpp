@@ -92,6 +92,14 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
     };
     content.addAndMakeVisible (roomSlider);
 
+    oscButton.setTooltip ("Control the plugin over OSC (UDP): receive messages that move sources and speakers and set their trim, "
+                          "mute and solo, and send the changes to a controller. Own addresses and ADM-OSC.");
+    oscButton.onClick = [this]
+    {
+        juce::CallOutBox::launchAsynchronously (std::make_unique<OscSettingsPanel> (owner), oscButton.getScreenBounds(), nullptr);
+    };
+    content.addAndMakeVisible (oscButton);
+
     // How the level falls for a source outside the speaker layout (same for every plugin).
     outsideSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     outsideSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 22);
@@ -495,6 +503,8 @@ void SpatialEditor::layoutContent()
 
     // Fifth row: the room size, and the line of text (track channels, import/export results).
     auto last = nextRow();
+    oscButton.setBounds (last.removeFromRight (64));
+    last.removeFromRight (8);
     roomLabel.setBounds (last.removeFromLeft (80));
     roomSlider.setBounds (last.removeFromLeft (230));
     last.removeFromLeft (12);

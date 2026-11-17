@@ -83,6 +83,39 @@ outside the room are still possible, typed in the tables, loaded from files, or 
 only limits the pad. The position parameters reach +-100 m, so the host shows real metres. A new room size shows the whole room again,
 and "Reset layout" places the speakers on a circle of half the room half-width and the sources on a quarter of it.
 
+## OSC control
+
+The **OSC...** button (bottom right of the settings rows) opens a small panel to control the plugin over OSC (UDP) and to
+have changes sent to a controller or another program. Receiving and sending are switched on separately, **both are off in a new
+session** (an instance that listens takes its port, so two instances cannot share one), and the ports, the host to send to and
+the address format are saved with the session. The panel's last line says what OSC is doing, for example "listening on port
+9000" or "port 9000 is in use or not allowed". OSC listens on all network interfaces and has no password: use it on a network you trust.
+
+Messages are applied inside a change gesture, so hosts record them like moves with the mouse. Numbers are 1-based; values are
+floats or ints; address patterns with wildcards are not supported.
+
+| Address | Arguments |
+|---|---|
+| `/source/N/xy` | x, y in metres (`/source/N/x` and `/y` take one) |
+| `/source/N/spread`, `/trim`, `/mute`, `/solo` | metres, dB, 0 or 1, 0 or 1 |
+| `/speaker/N/xy`, `/x`, `/y`, `/trim`, `/mute`, `/solo` | as for sources |
+| `/speaker/N/exclude` | 0 or 1: exclude from the panning |
+| `/speaker/N/weight` | DistPan only: 0 to 1 |
+| `/room/size` | half-width of the room in metres |
+| `/outside/rolloff` | dB per doubling outside the layout |
+| `/sources/count`, `/speakers/count` | the number in use |
+| `/dbap/rolloff`, `/dbap/blur` | DistPan only |
+| `/dump` | send everything now |
+
+**ADM-OSC** objects work as well, for sources: `/adm/obj/N/xyz` (three floats from -1 to 1, x right, y front, z is accepted
+and ignored), `x`, `y`, `z`, `aed` (azimuth in degrees counter-clockwise from the front, elevation in degrees, distance 0 to 1),
+`azim`, `elev`, `dist`, `gain` (linear) and `mute`. Normalised positions and distances are fractions of the room half-width (the
+Room size slider); the elevation only shortens the distance, because the plane is flat.
+
+When sending is on, everything is sent once, then only what changes, at most 30 times a second. **Send as** chooses the own
+addresses, ADM-OSC (positions, gain and mute of the sources) or both. A controller that sends back what it receives does no harm: only
+changes are sent, so the echo stops by itself. Incoming messages of both kinds are always understood.
+
 ## API documentation
 
 The code is documented with Doxygen. Install it (`brew install doxygen`), run `doxygen Doxyfile` in the repository root and

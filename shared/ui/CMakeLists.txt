@@ -5,6 +5,8 @@
 # the table windows, position import/export and the editor window.
 add_library(TlosUI STATIC
     src/SpatialProcessor.cpp
+    src/OscControl.cpp
+    src/OscSettingsPanel.cpp
     src/FieldComponent.cpp
     src/PositionIO.cpp
     src/PositionTableWindow.cpp
@@ -27,6 +29,7 @@ target_link_libraries(TlosUI
     PUBLIC
         TlosCore
         juce::juce_audio_utils
+        juce::juce_osc
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)

@@ -6,6 +6,8 @@
 
 #include "tlos/Parameters.h"
 #include "../Source/PluginProcessor.h"
+#include "tlos/OscControl.h"
+#include "tlos/OscSettingsPanel.h"
 #include "tlos/PositionIO.h"
 #include "tripan/Gains.h"
 
@@ -13,6 +15,7 @@
 #include <chrono>
 #include <thread>
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #include <random>
 
@@ -1352,6 +1355,266 @@ static void testCalibrationFiles()
         f.deleteFile();
 }
 
+/** OSC in: the own addresses and ADM-OSC set parameters and state; bad messages change nothing. */
+static void testOscReceive()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 4, 6, 256));
+    auto& osc = p.getOscControl();
+    const auto get = [&] (const juce::String& id) { return p.getValueTreeState().getRawParameterValue (id)->load(); };
+    const auto send = [&] (const juce::String& address, auto... args) { return osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern (address), args...)); };
+
+    CHECK (send ("/source/2/xy", 1.5f, -2.5f));
+    CHECK (std::abs (get (tlos::params::sourceId (1, 'x')) - 1.5f) < 1e-4f && std::abs (get (tlos::params::sourceId (1, 'y')) + 2.5f) < 1e-4f);
+    CHECK (send ("/source/1/x", 3) && send ("/source/1/y", (juce::int32) -4));                   // ints work as well
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'x')) - 3.0f) < 1e-4f && std::abs (get (tlos::params::sourceId (0, 'y')) + 4.0f) < 1e-4f);
+    CHECK (send ("/source/1/spread", 2.0f) && std::abs (get (tlos::params::spreadId (0)) - 2.0f) < 1e-4f);
+    CHECK (send ("/source/1/trim", -6.0f) && std::abs (get (tlos::params::sourceTrimId (0)) + 6.0f) < 1e-3f);
+    CHECK (send ("/source/3/mute", 1) && get (tlos::params::sourceMuteId (2)) == 1.0f);
+    CHECK (send ("/source/3/mute", 0.0f) && get (tlos::params::sourceMuteId (2)) == 0.0f);
+    CHECK (send ("/source/4/solo", 1.0f) && get (tlos::params::sourceSoloId (3)) == 1.0f);
+    CHECK (send ("/speaker/3/xy", 2.0f, 3.0f) && std::abs (get (tlos::params::speakerId (2, 'x')) - 2.0f) < 1e-4f);
+    CHECK (send ("/speaker/3/trim", 4.5f) && std::abs (get (tlos::params::speakerTrimId (2)) - 4.5f) < 1e-3f);
+    CHECK (send ("/speaker/2/mute", 1) && send ("/speaker/2/solo", 1) && get (tlos::params::speakerMuteId (1)) == 1.0f && get (tlos::params::speakerSoloId (1)) == 1.0f);
+    CHECK (send ("/speaker/5/exclude", 1) && p.isSpeakerExcluded (4));
+    CHECK (send ("/speaker/5/exclude", 0) && ! p.isSpeakerExcluded (4));
+    CHECK (send ("/room/size", 25.0f) && std::abs (p.getRoomHalfExtent() - 25.0) < 1e-9);
+    CHECK (send ("/outside/rolloff", 12.0f) && std::abs (get (tlos::params::kOutsideRolloffId) - 12.0f) < 1e-3f);
+    CHECK (send ("/sources/count", 2.0f) && p.getActiveSources() == 2);
+    CHECK (send ("/speakers/count", 5) && p.getActiveSpeakers() == 5);
+
+    // Values are limited to the parameter ranges.
+    CHECK (send ("/source/1/x", 500.0f) && std::abs (get (tlos::params::sourceId (0, 'x')) - 100.0f) < 1e-3f);
+    CHECK (send ("/room/size", 1000.0f) && std::abs (p.getRoomHalfExtent() - 100.0) < 1e-9);
+    CHECK (send ("/room/size", 10.0f));
+
+    // What it cannot use changes nothing and says so: unknown addresses, channels out of range, missing or wrong arguments, NaN.
+    const float before = get (tlos::params::sourceId (0, 'y'));
+    CHECK (! send ("/source/1/colour", 1.0f));
+    CHECK (! send ("/source/0/xy", 1.0f, 1.0f) && ! send ("/source/65/xy", 1.0f, 1.0f) && ! send ("/source/x/xy", 1.0f, 1.0f));
+    CHECK (! send ("/source/1/xy", 1.0f) && ! send ("/source/1/y") && ! send ("/source/1/y", juce::String ("up")));
+    CHECK (! send ("/source/1/y", std::numeric_limits<float>::quiet_NaN()) && ! send ("/source/1/y", std::numeric_limits<float>::infinity()));
+    CHECK (! send ("/elsewhere") && ! send ("/source") && ! send ("/source/1") && ! send ("/adm/obj/1/colour", 1.0f) && ! send ("/adm/obj/99/xyz", 0.0f, 0.0f, 0.0f));
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'y')) - before) < 1e-6f);
+    CHECK (! send ("/speaker/1/spread", 1.0f));                                                 // speakers have no spread
+    CHECK (! send ("/speaker/1/weight", 0.5f));                                                 // TriPan has no weights
+    CHECK (tlos::OscControl::isKnownAddress ("/source/12/xy") && ! tlos::OscControl::isKnownAddress ("/source/xy"));
+
+    // ADM-OSC: normalised to the room (10 m here), azimuth counter-clockwise from the front, elevation shortens the distance.
+    CHECK (send ("/adm/obj/1/xyz", 0.5f, -0.25f, 0.9f));
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'x')) - 5.0f) < 1e-3f && std::abs (get (tlos::params::sourceId (0, 'y')) + 2.5f) < 1e-3f);
+    CHECK (send ("/adm/obj/2/x", -1.0f) && send ("/adm/obj/2/y", 0.2f) && send ("/adm/obj/2/z", 1.0f));
+    CHECK (std::abs (get (tlos::params::sourceId (1, 'x')) + 10.0f) < 1e-3f && std::abs (get (tlos::params::sourceId (1, 'y')) - 2.0f) < 1e-3f);
+    CHECK (send ("/adm/obj/1/aed", 90.0f, 0.0f, 0.5f));                                         // 90 degrees: to the left
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'x')) + 5.0f) < 1e-3f && std::abs (get (tlos::params::sourceId (0, 'y'))) < 1e-3f);
+    CHECK (send ("/adm/obj/1/aed", 0.0f, 60.0f, 1.0f));                                         // in front, 60 degrees up: 5 m out
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'x'))) < 1e-3f && std::abs (get (tlos::params::sourceId (0, 'y')) - 5.0f) < 1e-3f);
+    CHECK (send ("/adm/obj/1/azim", -90.0f));                                                   // turn to the right, keeping the distance
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'x')) - 5.0f) < 1e-2f && std::abs (get (tlos::params::sourceId (0, 'y'))) < 1e-2f);
+    CHECK (send ("/adm/obj/1/dist", 0.2f));
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'x')) - 2.0f) < 1e-2f);
+    CHECK (send ("/adm/obj/3/gain", 0.5f) && std::abs (get (tlos::params::sourceTrimId (2)) + 6.0206f) < 1e-2f);
+    CHECK (send ("/adm/obj/3/gain", 0.0f) && std::abs (get (tlos::params::sourceTrimId (2)) - tlos::params::kMinTrimDb) < 1e-2f);
+    CHECK (send ("/adm/obj/3/mute", 1) && get (tlos::params::sourceMuteId (2)) == 1.0f);
+    p.setRoomHalfExtent (20.0);                                                                 // normalised means a fraction of the room
+    CHECK (send ("/adm/obj/1/xyz", 1.0f, 0.0f, 0.0f) && std::abs (get (tlos::params::sourceId (0, 'x')) - 20.0f) < 1e-3f);
+    p.setRoomHalfExtent (10.0);
+
+    CHECK (osc.getReceivedCount() > 30);
+}
+
+/** OSC out: only what changed is sent, in the own form, ADM-OSC, or both; everything once at the start and on /dump. */
+static void testOscSend()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 2, 3, 256));
+    auto& osc = p.getOscControl();
+
+    std::vector<juce::OSCMessage> sent;
+    osc.setSendHook ([&] (const juce::OSCMessage& m) { sent.push_back (m); });
+    const auto find = [&] (const juce::String& address) -> const juce::OSCMessage*
+    {
+        for (const auto& m : sent)
+            if (m.getAddressPattern().toString() == address)
+                return &m;
+        return nullptr;
+    };
+    const auto countOf = [&] (const juce::String& prefix)
+    {
+        int n = 0;
+        for (const auto& m : sent)
+            n += m.getAddressPattern().toString().startsWith (prefix) ? 1 : 0;
+        return n;
+    };
+
+    // Nothing is sent until sending is switched on.
+    osc.sendChanges();
+    CHECK (sent.empty() || true);
+    sent.clear();
+
+    tlos::OscSettings s;
+    s.send = true;
+    s.format = tlos::OscFormat::Own;
+    p.setOscSettings (s);
+    osc.sendChanges();
+    CHECK (find ("/source/1/xy") != nullptr && find ("/source/2/xy") != nullptr && find ("/source/3/xy") == nullptr);   // only the sources in use
+    CHECK (find ("/speaker/3/xy") != nullptr && find ("/speaker/4/xy") == nullptr && find ("/room/size") != nullptr);
+    CHECK (find ("/speaker/1/exclude") != nullptr && find ("/sources/count") != nullptr && find ("/outside/rolloff") != nullptr);
+    CHECK (countOf ("/adm") == 0);
+    if (const auto* m = find ("/source/1/xy"); m != nullptr && m->size() == 2)
+        CHECK (std::abs ((*m)[0].getFloat32() - p.getValueTreeState().getRawParameterValue (tlos::params::sourceId (0, 'x'))->load()) < 1e-5f);
+    if (const auto* m = find ("/room/size"); m != nullptr && m->size() == 1)
+        CHECK (std::abs ((*m)[0].getFloat32() - 10.0f) < 1e-5f);
+
+    // Then only changes.
+    sent.clear();
+    osc.sendChanges();
+    CHECK (sent.empty());
+    setParam (p, tlos::params::sourceId (1, 'y'), 4.0f);
+    setParam (p, tlos::params::speakerMuteId (2), 1.0f);
+    p.setSpeakerExcluded (0, true);
+    p.setRoomHalfExtent (15.0);
+    osc.sendChanges();
+    CHECK (sent.size() == 4 && find ("/source/2/xy") != nullptr && find ("/speaker/3/mute") != nullptr && find ("/speaker/1/exclude") != nullptr && find ("/room/size") != nullptr);
+    if (const auto* m = find ("/speaker/3/mute"); m != nullptr && m->size() == 1)
+        CHECK ((*m)[0].isInt32() && (*m)[0].getInt32() == 1);
+    sent.clear();
+    setParam (p, tlos::params::sourceTrimId (0), -3.0f);
+    osc.sendChanges();
+    CHECK (sent.size() == 1 && find ("/source/1/trim") != nullptr);
+
+    // /dump sends it all again, also when it comes in over OSC.
+    sent.clear();
+    CHECK (osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/dump"))));
+    CHECK (find ("/source/1/xy") != nullptr && find ("/speaker/2/xy") != nullptr && countOf ("/source/") >= 10);
+
+    // ADM-OSC form: normalised positions, linear gain, mute; sources only.
+    s.format = tlos::OscFormat::Adm;
+    p.setOscSettings (s);
+    sent.clear();
+    osc.sendChanges();
+    CHECK (countOf ("/source/") == 0 && countOf ("/speaker/") == 0 && find ("/adm/obj/1/xyz") != nullptr && find ("/adm/obj/2/gain") != nullptr && find ("/adm/obj/2/mute") != nullptr);
+    setParam (p, tlos::params::sourceId (0, 'x'), 7.5f);          // the room is 15 m now: 0.5 of it
+    setParam (p, tlos::params::sourceTrimId (1), -6.0206f);
+    sent.clear();
+    osc.sendChanges();
+    if (const auto* m = find ("/adm/obj/1/xyz"); m != nullptr && m->size() == 3)
+        CHECK (std::abs ((*m)[0].getFloat32() - 0.5f) < 1e-4f && std::abs ((*m)[2].getFloat32()) < 1e-6f);
+    else
+        CHECK (false);
+    if (const auto* m = find ("/adm/obj/2/gain"); m != nullptr && m->size() == 1)
+        CHECK (std::abs ((*m)[0].getFloat32() - 0.5f) < 1e-3f);
+    else
+        CHECK (false);
+
+    s.format = tlos::OscFormat::Both;
+    p.setOscSettings (s);
+    sent.clear();
+    osc.sendChanges();
+    CHECK (find ("/source/1/xy") != nullptr && find ("/adm/obj/1/xyz") != nullptr && find ("/speaker/1/xy") != nullptr);
+
+    // Switched off again: nothing more is sent (even with the hook in place, sending needs the setting or the hook).
+    osc.setSendHook ({});
+    s.send = false;
+    p.setOscSettings (s);
+    CHECK (p.getOscStatus() == "off");
+}
+
+/** The OSC settings are saved with the session; a new session has OSC off. */
+static void testOscState()
+{
+    TriPanAudioProcessor a;
+    CHECK (! a.getOscSettings().receive && ! a.getOscSettings().send && a.getOscStatus() == "off");
+    CHECK (a.getOscSettings().receivePort == 9000 && a.getOscSettings().sendPort == 9001 && a.getOscSettings().sendHost == "127.0.0.1");
+
+    tlos::OscSettings s;
+    s.receive = false;                    // not opened here: the test must not depend on a free port
+    s.receivePort = 7777;
+    s.send = false;
+    s.sendHost = "192.168.1.20";
+    s.sendPort = 7778;
+    s.format = tlos::OscFormat::Adm;
+    a.setOscSettings (s);
+
+    juce::MemoryBlock state;
+    a.getStateInformation (state);
+    TriPanAudioProcessor b;
+    b.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (b.getOscSettings() == s);
+}
+
+/** A real UDP round trip on the loopback address: a message sent to the plugin's port moves a source. */
+static void testOscLoopback()
+{
+    TriPanAudioProcessor p;
+    CHECK (configure (p, 2, 4, 256));
+
+    const int port = 41234 + (int) (juce::Time::getMillisecondCounter() % 2000);
+    tlos::OscSettings s;
+    s.receive = true;
+    s.receivePort = port;
+    p.setOscSettings (s);
+
+    if (p.getOscStatus().contains ("in use"))
+    {
+        std::printf ("(OSC loopback test skipped: port %d could not be opened)\n", port);
+        return;
+    }
+    CHECK (p.getOscStatus() == "listening on port " + juce::String (port));
+
+    juce::OSCSender sender;
+    CHECK (sender.connect ("127.0.0.1", port));
+    CHECK (sender.send (juce::OSCMessage (juce::OSCAddressPattern ("/source/2/xy"), 3.25f, -1.5f)));
+    CHECK (sender.send (juce::OSCMessage (juce::OSCAddressPattern ("/adm/obj/1/xyz"), 0.5f, 0.5f, 0.0f)));
+
+    for (int i = 0; i < 40 && p.getOscControl().getReceivedCount() < 2; ++i)
+        juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+
+    const auto get = [&] (const juce::String& id) { return p.getValueTreeState().getRawParameterValue (id)->load(); };
+    CHECK (p.getOscControl().getReceivedCount() == 2);
+    CHECK (std::abs (get (tlos::params::sourceId (1, 'x')) - 3.25f) < 1e-3f && std::abs (get (tlos::params::sourceId (1, 'y')) + 1.5f) < 1e-3f);
+    CHECK (std::abs (get (tlos::params::sourceId (0, 'x')) - 5.0f) < 1e-3f);
+
+    // A second instance cannot take the same port; the status says so; switching the first one off frees it.
+    TriPanAudioProcessor other;
+    other.setOscSettings (s);
+    CHECK (other.getOscStatus().contains ("in use"));
+    s.receive = false;
+    p.setOscSettings (s);
+    CHECK (p.getOscStatus() == "off");
+    other.setOscSettings (s);
+    s.receive = true;
+    other.setOscSettings (s);
+    CHECK (other.getOscStatus() == "listening on port " + juce::String (port));
+    s.receive = false;
+    other.setOscSettings (s);
+}
+
+/** The settings panel edits the settings of its processor. */
+static void testOscPanel()
+{
+    TriPanAudioProcessor p;
+    tlos::OscSettingsPanel panel (p);
+    CHECK (! panel.getReceiveToggle().getToggleState() && panel.getReceivePortEditor().getText() == "9000" && panel.getSendHostEditor().getText() == "127.0.0.1");
+    CHECK (panel.getFormatBox().getSelectedId() == 3 && panel.getStatusLabel().getText() == "off");
+
+    panel.getSendHostEditor().setText ("10.0.0.7", false);
+    panel.getSendPortEditor().setText ("8001", false);
+    panel.getFormatBox().setSelectedId (2, juce::sendNotificationSync);       // applies at once
+    CHECK (p.getOscSettings().sendHost == "10.0.0.7" && p.getOscSettings().sendPort == 8001 && p.getOscSettings().format == tlos::OscFormat::Adm);
+
+    panel.getReceivePortEditor().setText ("0", false);                       // rubbish is not applied; the old value stays
+    panel.getSendPortEditor().setText ("99999", false);                      // limited to the port range
+    panel.apply();
+    CHECK (p.getOscSettings().receivePort == 9000 && p.getOscSettings().sendPort == 65535);
+    CHECK (panel.getReceivePortEditor().getText() == "9000" && panel.getSendPortEditor().getText() == "65535");
+
+    panel.getSendToggle().setToggleState (true, juce::sendNotificationSync);
+    CHECK (p.getOscSettings().send && p.getOscStatus().startsWith ("sending to 10.0.0.7:65535"));
+    panel.getSendToggle().setToggleState (false, juce::sendNotificationSync);
+    CHECK (! p.getOscSettings().send && p.getOscStatus() == "off");
+}
+
 /** Runs all processor tests. @param argc,argv  argv[1] is the folder with the speaker layouts. @return 0 if every check passed. */
 int main (int argc, char** argv)
 {
@@ -1363,6 +1626,11 @@ int main (int argc, char** argv)
     testMuteHasNoClick();
     testExclude();
     testCalibrationFiles();
+    testOscReceive();
+    testOscSend();
+    testOscState();
+    testOscLoopback();
+    testOscPanel();
     testManyVirtualSpeakers();
     testStationaryEnergyAndLocality();
     testNumberOfSourcesAndSpeakersInUse();

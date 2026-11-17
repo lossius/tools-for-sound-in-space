@@ -32,6 +32,18 @@ const juce::Identifier kManualVirtual { "manualVirtual" };
 const juce::Identifier kExcludedSpeakers { "excludedSpeakers" };
 /// State property: the room half extent in metres.
 const juce::Identifier kRoomHalf { "roomHalfExtent" };
+/// State property: whether OSC listens.
+const juce::Identifier kOscReceive { "oscReceive" };
+/// State property: the port OSC listens on.
+const juce::Identifier kOscReceivePort { "oscReceivePort" };
+/// State property: whether OSC sends changes.
+const juce::Identifier kOscSend { "oscSend" };
+/// State property: the host OSC sends to.
+const juce::Identifier kOscSendHost { "oscSendHost" };
+/// State property: the port OSC sends to.
+const juce::Identifier kOscSendPort { "oscSendPort" };
+/// State property: the OscFormat as an integer.
+const juce::Identifier kOscFormat { "oscFormat" };
 /// State property: group id per source as text, "0 0 1 1 ..." (see SourceGroups).
 const juce::Identifier kSourceGroups { "sourceGroups" };
 
@@ -89,12 +101,45 @@ SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::St
     numSpeakersParam = apvts.getRawParameterValue (params::kNumSpeakersId);
     outsideRolloffParam = apvts.getRawParameterValue (params::kOutsideRolloffId);
 
+    osc = std::make_unique<OscControl> (*this);
     startTimerHz (30);
 }
 
 SpatialProcessor::~SpatialProcessor()
 {
     stopTimer();
+    osc.reset();
+}
+
+OscSettings SpatialProcessor::getOscSettings() const
+{
+    OscSettings s;
+    const auto& state = apvts.state;
+    s.receive = (bool) state.getProperty (kOscReceive, s.receive);
+    s.receivePort = juce::jlimit (1, 65535, (int) state.getProperty (kOscReceivePort, s.receivePort));
+    s.send = (bool) state.getProperty (kOscSend, s.send);
+    s.sendHost = state.getProperty (kOscSendHost, s.sendHost).toString();
+    s.sendPort = juce::jlimit (1, 65535, (int) state.getProperty (kOscSendPort, s.sendPort));
+    const int format = (int) state.getProperty (kOscFormat, (int) s.format);
+    s.format = format >= 0 && format <= 2 ? (OscFormat) format : s.format;
+    return s;
+}
+
+void SpatialProcessor::setOscSettings (const OscSettings& s)
+{
+    auto& state = apvts.state;
+    state.setProperty (kOscReceive, s.receive, nullptr);
+    state.setProperty (kOscReceivePort, s.receivePort, nullptr);
+    state.setProperty (kOscSend, s.send, nullptr);
+    state.setProperty (kOscSendHost, s.sendHost, nullptr);
+    state.setProperty (kOscSendPort, s.sendPort, nullptr);
+    state.setProperty (kOscFormat, (int) s.format, nullptr);
+    osc->configure (getOscSettings());
+}
+
+juce::String SpatialProcessor::getOscStatus() const
+{
+    return osc->getStatus();
 }
 
 bool SpatialProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -453,6 +498,7 @@ void SpatialProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
             apvts.state.setProperty (kLayoutInitialised, true, nullptr);
+            osc->configure (getOscSettings());
             stateRestored();
         }
 }

@@ -8,6 +8,7 @@
 
 #include "tlos/Groups.h"
 #include "tlos/Limits.h"
+#include "tlos/OscControl.h"
 #include "tlos/Speakers.h"
 #include "tlos/Vec2.h"
 
@@ -192,6 +193,19 @@ public:
     /** @return The per-speaker parameter of the panning method, if the plugin has one (the default is none). */
     virtual std::optional<SpeakerColumn> getSpeakerColumn() const { return std::nullopt; }
 
+    /** @return The plugin's own parameters that can be set over OSC, with their addresses (at most 4; the default is
+        none). DistPan: /dbap/rolloff and /dbap/blur. */
+    virtual std::vector<OscParameter> getOscParameters() const { return {}; }
+
+    /** @return The OSC settings (saved with the state; everything is off in a new session). */
+    OscSettings getOscSettings() const;
+    /** Applies new OSC settings: opens or closes the port and the sending socket, and saves them with the state. */
+    void setOscSettings (const OscSettings& settings);
+    /** @return What OSC is doing (see OscControl::getStatus()). */
+    juce::String getOscStatus() const;
+    /** @return The OSC control (the settings panel and the tests use it). */
+    OscControl& getOscControl() noexcept { return *osc; }
+
     /** @return Whether the plugin uses virtual (imaginary) speakers. If not (the default), the editor has
         no menu for them and getVirtualMode() is always Off. */
     virtual bool supportsVirtualSpeakers() const noexcept { return false; }
@@ -258,6 +272,8 @@ private:
     void timerCallback() override { refreshLayout(); }
     /** Writes the manual virtual speaker list to the saved state. */
     void storeManualVirtualSpeakers (const std::vector<Vec2>&);
+
+    std::unique_ptr<OscControl> osc;   ///< OSC in and out.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SpatialProcessor)
 };

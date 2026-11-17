@@ -29,7 +29,7 @@ endif()
 set(TLOS_JUCE_MODULES
     juce_audio_basics juce_audio_devices juce_audio_formats juce_audio_plugin_client
     juce_audio_processors juce_audio_processors_headless juce_audio_utils juce_core
-    juce_data_structures juce_events juce_graphics juce_gui_basics juce_gui_extra)
+    juce_data_structures juce_events juce_graphics juce_gui_basics juce_gui_extra juce_osc)
 
 # Adds a post-build step to the format target <target>_<format> that replaces <product><extension> in
 # <directory> with the built bundle.
