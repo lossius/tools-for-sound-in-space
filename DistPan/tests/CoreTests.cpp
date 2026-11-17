@@ -237,6 +237,61 @@ static void testOutsideFalloff()
     CHECK (isNear (sumSq (computeGains (pair, pairHull, { 8.0, -7.0 }, 0.0, on)), 1.0));
 }
 
+/** Speaker weights: 1 (or none) is the plain law; 0 takes a speaker out; a smaller weight gives a smaller share; power stays 1. */
+static void testWeights()
+{
+    const auto speakers = ring (6);
+    const DbapSettings settings { 6.0, 0.2, 0.0 };
+    const Vec2 source { 1.0, 2.0 };
+
+    const auto plain = computeGains (speakers, source, 0.0, settings);
+    const std::vector<float> ones (6, 1.0f);
+    const auto withOnes = computeGains (speakers, source, 0.0, settings, ones);
+    for (int i = 0; i < 6; ++i)
+        CHECK ((double) plain.gain[(size_t) i] == (double) withOnes.gain[(size_t) i]);        // exactly the same
+
+    // Weight 0: silent, and the others share everything (constant power) in their old proportions.
+    std::vector<float> w (6, 1.0f);
+    w[2] = 0.0f;
+    const auto without = computeGains (speakers, source, 0.0, settings, w);
+    CHECK (without.gain[2] == 0.0f && isNear (sumSq (without), 1.0));
+    for (int i : { 0, 1, 3, 4, 5 })
+        CHECK (isNear ((double) without.gain[(size_t) i] / (double) without.gain[0], (double) plain.gain[(size_t) i] / (double) plain.gain[0], 1e-4));
+
+    // Weight 0.5: before the normalisation the speaker's share is half; the others' proportions are unchanged.
+    w[2] = 0.5f;
+    const auto half = computeGains (speakers, source, 0.0, settings, w);
+    CHECK (isNear ((double) half.gain[2] / (double) half.gain[0], 0.5 * (double) plain.gain[2] / (double) plain.gain[0], 1e-4));
+    CHECK (isNear (sumSq (half), 1.0));
+    CHECK (half.gain[2] < plain.gain[2] && half.gain[0] > plain.gain[0]);
+
+    // A continuous change of the weight gives a continuous change of the gains.
+    double previous = (double) computeGains (speakers, source, 0.0, settings, std::vector<float> { 1, 1, 0.0f, 1, 1, 1 }).gain[0];
+    for (int i = 1; i <= 100; ++i)
+    {
+        const float weight = 0.01f * (float) i;
+        const double now = (double) computeGains (speakers, source, 0.0, settings, std::vector<float> { 1, 1, weight, 1, 1, 1 }).gain[0];
+        CHECK (std::abs (now - previous) < 0.02);
+        previous = now;
+    }
+
+    // Short, negative and non-finite weights: missing ones count as 1, negative as 0, non-finite as 1.
+    const auto shortList = computeGains (speakers, source, 0.0, settings, std::vector<float> { 1.0f, 1.0f });
+    CHECK ((double) shortList.gain[3] == (double) plain.gain[3]);
+    const auto odd = computeGains (speakers, source, 0.0, settings, std::vector<float> { -1.0f, std::numeric_limits<float>::quiet_NaN(), 1, 1, 1, 1 });
+    CHECK (odd.gain[0] == 0.0f && isNear (sumSq (odd), 1.0));
+
+    // All weights 0: nothing to pan to.
+    CHECK (computeGains (speakers, source, 0.0, settings, std::vector<float> (6, 0.0f)).count == 0);
+
+    // With the falloff outside the layout the weights still apply.
+    const tlos::Hull hull (speakers);
+    const DbapSettings outside { 6.0, 0.2, 6.0206 };
+    const auto a = computeGains (speakers, hull, { 0.0, 7.0 }, 0.0, outside, w);
+    const auto b = computeGains (speakers, { 0.0, 7.0 }, 0.0, outside, w);
+    CHECK (a.count == b.count && a.gain[2] < b.gain[2] + 1e-9f);
+}
+
 /** Runs all core tests. @return 0 if every check passed, otherwise 1. */
 int main()
 {
@@ -248,6 +303,7 @@ int main()
     testSpreadEvensOut();
     testDegenerate();
     testOutsideFalloff();
+    testWeights();
 
     if (failures == 0)
         std::printf ("All tests passed\n");

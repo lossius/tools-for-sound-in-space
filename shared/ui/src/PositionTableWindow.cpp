@@ -139,6 +139,8 @@ PositionTable::PositionTable (SpatialProcessor& p, Content c)
     }
     if (content == Content::Speakers)
         table.getHeader().addColumn ("Excl.", excludeColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
+    if (content == Content::Speakers && processor.getSpeakerColumn())
+        table.getHeader().addColumn (processor.getSpeakerColumn()->title, extraColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
 
     addAndMakeVisible (table);
 
@@ -155,7 +157,8 @@ int PositionTable::getPreferredWidth() const noexcept
     const int valueColumns = content == Content::Sources ? 4 : content == Content::Speakers ? 3 : 2; // x, y, (spread), (trim)
     const int groupWidth = content == Content::Sources ? kGroupColumnWidth : 0;
     const int switches = content == Content::Sources ? 2 : content == Content::Speakers ? 3 : 0;    // mute, solo, (exclude)
-    return kIndexColumnWidth + valueColumns * kValueColumnWidth + groupWidth + switches * kSwitchColumnWidth + kScrollBarWidth + 2;
+    const int extra = content == Content::Speakers && processor.getSpeakerColumn() ? kValueColumnWidth : 0;
+    return kIndexColumnWidth + valueColumns * kValueColumnWidth + extra + groupWidth + switches * kSwitchColumnWidth + kScrollBarWidth + 2;
 }
 
 int PositionTable::getRowCount() const
@@ -195,6 +198,9 @@ double PositionTable::getValue (int row, int column) const
             if (column == muteColumn)   return read (params::speakerMuteId (row)) >= 0.5 ? 1.0 : 0.0;
             if (column == soloColumn)   return read (params::speakerSoloId (row)) >= 0.5 ? 1.0 : 0.0;
             if (column == excludeColumn) return processor.isSpeakerExcluded (row) ? 1.0 : 0.0;
+            if (column == extraColumn)
+                if (const auto extra = processor.getSpeakerColumn())
+                    return read (extra->idFor (row));
             break;
 
         case Content::VirtualSpeakers:
@@ -217,8 +223,11 @@ juce::String PositionTable::format (double metres)
     return juce::String (metres, 3);
 }
 
-juce::String PositionTable::formatCell (int column, double value)
+juce::String PositionTable::formatCell (int column, double value) const
 {
+    if (column == extraColumn)
+        return juce::String (value, processor.getSpeakerColumn() ? processor.getSpeakerColumn()->decimals : 2);
+
     if (column != trimColumn)
         return format (value);
 
@@ -245,9 +254,11 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
 
     const bool isSpread = content == Content::Sources && column == spreadColumn;
     const bool isTrim = column == trimColumn && content != Content::VirtualSpeakers;
+    const auto extra = content == Content::Speakers && column == extraColumn ? processor.getSpeakerColumn() : std::nullopt;
     const float limit = params::kCoordRange;
     const double value = isSpread ? juce::jlimit (0.0, (double) params::kMaxSpread, typed)
                        : isTrim   ? juce::jlimit ((double) params::kMinTrimDb, (double) params::kMaxTrimDb, typed)
+                       : extra    ? juce::jlimit (extra->minimum, extra->maximum, typed)
                                   : juce::jlimit (-(double) limit, (double) limit, typed);
 
     switch (content)
@@ -263,6 +274,7 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
             if (column == xColumn)      setParameter (processor, params::speakerId (row, 'x'), (float) value);
             if (column == yColumn)      setParameter (processor, params::speakerId (row, 'y'), (float) value);
             if (column == trimColumn)   setParameter (processor, params::speakerTrimId (row), (float) value);
+            if (extra)                  setParameter (processor, extra->idFor (row), (float) value);
             break;
 
         case Content::VirtualSpeakers:
@@ -284,7 +296,7 @@ size_t PositionTable::signature() const
     size_t seed = (size_t) rows;
 
     for (int row = 0; row < rows; ++row)
-        for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn, (int) trimColumn, (int) muteColumn, (int) soloColumn, (int) excludeColumn })
+        for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn, (int) trimColumn, (int) muteColumn, (int) soloColumn, (int) excludeColumn, (int) extraColumn })
             hashCombine (seed, getValue (row, column));
 
     if (content == Content::Sources)

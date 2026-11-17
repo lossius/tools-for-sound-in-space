@@ -46,7 +46,8 @@ public:
         trimColumn,       ///< Trim in dB (sources and speakers).
         muteColumn,       ///< Mute switch, a check box (sources and speakers).
         soloColumn,       ///< Solo switch, a check box (sources and speakers).
-        excludeColumn     ///< Exclude from panning, a check box (speakers only).
+        excludeColumn,    ///< Exclude from panning, a check box (speakers only).
+        extraColumn       ///< The plugin's own per-speaker parameter (SpatialProcessor::getSpeakerColumn()), speakers only.
     };
 
     static constexpr int kRowHeight = 24;       ///< Height of a row in pixels.
@@ -96,7 +97,7 @@ private:
     static juce::String format (double metres);
 
     /** Formats the value of a number cell for display: a trim in dB with one decimal, other columns as format(). */
-    static juce::String formatCell (int column, double value);
+    juce::String formatCell (int column, double value) const;
 
     /** Sets a switch cell (mute, solo or exclude) of a row. */
     void setSwitch (int row, int column, bool on);

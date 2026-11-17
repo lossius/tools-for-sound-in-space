@@ -126,7 +126,18 @@ int main (int argc, char** argv)
     field.refresh();
     field.toggleExclude (4);
     CHECK (! p.isSpeakerExcluded (4));
-    CHECK (editor->showTableWindow (tlos::io::Kind::Speakers).getContent().getMainTable().getTable().getHeader().getNumColumns (true) == 7);
+    {
+        auto& speakers = editor->showTableWindow (tlos::io::Kind::Speakers).getContent();
+        CHECK (speakers.getMainTable().getTable().getHeader().getNumColumns (true) == 8);        // #, X, Y, Trim, Mute, Solo, Excl., Weight
+        CHECK (speakers.getMainTable().getValue (1, tlos::PositionTable::extraColumn) == 1.0);
+        CHECK (speakers.getMainTable().setValueFromText (1, tlos::PositionTable::extraColumn, "0.4") == "0.40");
+        CHECK (std::abs (value (p, distpan::params::speakerWeightId (1)) - 0.4f) < 1e-4f);
+        CHECK (speakers.getMainTable().setValueFromText (1, tlos::PositionTable::extraColumn, "5") == "1.00");   // limited to 0..1
+        CHECK (speakers.getMainTable().setValueFromText (1, tlos::PositionTable::extraColumn, "-2") == "0.00");
+        CHECK (speakers.getMainTable().setValueFromText (1, tlos::PositionTable::extraColumn, "much") == "0.00");   // rubbish is rejected
+        setParam (p, distpan::params::speakerWeightId (1), 1.0f);
+        CHECK (editor->showTableWindow (tlos::io::Kind::Sources).getContent().getMainTable().getTable().getHeader().getNumColumns (true) == 8);
+    }
 
     // Links can be switched off, and the pad paints with them on (no crash with many sources and speakers).
     editor->getShowLinksButton().setToggleState (false, juce::sendNotificationSync);

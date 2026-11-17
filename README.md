@@ -36,6 +36,12 @@ distance from it, g_i = k / d_i^a, with k chosen so that the total power is cons
   speaker alone and the sound moves smoothly when a source passes one. A source's **spread** adds to the blur, so a larger
   spread distributes the sound more evenly.
 
+- **Speaker weights** (0-1, default 1, one per speaker, "Speaker N Weight"): each speaker's weight multiplies its share
+  before the total is normalised (as in the DBAP paper), so a speaker with weight 0.5 gets a smaller share and the others make up
+  for it, and a speaker with weight 0 takes no part. Set them in the Weight column of the speaker table; they are saved in speaker
+  files (`weight` attribute) and can be automated. Unlike trim, a weight changes the distribution, not just one output's level;
+  unlike exclude it can be automated and set in between.
+
 Unlike TriPan, DistPan needs no triangulation and has no virtual speakers; it works with any number of speakers (1 to 64),
 also collinear or irregular layouts, and sources outside the speakers. On the pad, links are drawn to the speakers that get
 a share within 20 dB of the strongest one.

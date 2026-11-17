@@ -20,6 +20,22 @@ DistPanAudioProcessor::DistPanAudioProcessor()
 {
     rolloffParam = apvts.getRawParameterValue (distpan::params::kRolloffId);
     blurParam    = apvts.getRawParameterValue (distpan::params::kBlurId);
+    for (int i = 0; i < tlos::kMaxChannels; ++i)
+        weightParam[(size_t) i] = apvts.getRawParameterValue (distpan::params::speakerWeightId (i));
+}
+
+std::optional<tlos::SpeakerColumn> DistPanAudioProcessor::getSpeakerColumn() const
+{
+    return tlos::SpeakerColumn { "Weight", "weight", [] (int i) { return distpan::params::speakerWeightId (i); }, 0.0, 1.0, 1.0, 2 };
+}
+
+std::vector<float> DistPanAudioProcessor::getWeights (const std::vector<int>& channelOf) const
+{
+    std::vector<float> out;
+    out.reserve (channelOf.size());
+    for (const int channel : channelOf)
+        out.push_back (channel >= 0 && channel < tlos::kMaxChannels ? weightParam[(size_t) channel]->load() : 1.0f);
+    return out;
 }
 
 distpan::DbapSettings DistPanAudioProcessor::getSettings() const noexcept
@@ -98,6 +114,24 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const int usedSpeakers = getActiveSpeakers();
     const int activeSources = std::min (n, usedSources);
 
+    // The weights of the speakers that take part (read each block, so a change counts at once); a change makes every
+    // source compute its panning gains again.
+    std::array<float, tlos::kMaxChannels> weights {};
+    int weightCount = 0;
+    if (speakers != nullptr)
+    {
+        weightCount = std::min ((int) speakers->channelOf.size(), tlos::kMaxChannels);
+        for (int i = 0; i < weightCount; ++i)
+            weights[(size_t) i] = weightParam[(size_t) speakers->channelOf[(size_t) i]]->load();
+    }
+    if (weightCount != usedWeightCount || ! std::equal (weights.begin(), weights.begin() + weightCount, usedWeights.begin()))
+    {
+        usedWeights = weights;
+        usedWeightCount = weightCount;
+        for (auto& k : gainKeys)
+            k.valid = false;
+    }
+
     for (int s = 0; s < n; ++s)
     {
         auto& key = gainKeys[(size_t) s];
@@ -118,7 +152,8 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             continue;
 
         const auto gains = distpan::computeGains (speakers->positions, speakers->hull, { (double) x, (double) y }, (double) spread,
-                                                  { (double) rolloff, (double) blur, (double) outside });
+                                                  { (double) rolloff, (double) blur, (double) outside },
+                                                  std::span<const float> (weights.data(), (size_t) weightCount));
         row.fill (0.0f);
         for (int i = 0; i < gains.count; ++i)
             row[(size_t) speakers->channelOf[(size_t) gains.speaker[(size_t) i]]] = gains.gain[(size_t) i];

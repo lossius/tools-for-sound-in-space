@@ -19,7 +19,7 @@ double rolloffExponent (double rolloffDb) noexcept
 }
 
 tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, tlos::Vec2 source, double spread,
-                                const DbapSettings& settings) noexcept
+                                const DbapSettings& settings, std::span<const float> weights) noexcept
 {
     tlos::SourceGains result;
 
@@ -44,7 +44,9 @@ tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, tlos::Vec2
 
         const double dx = p.x - source.x, dy = p.y - source.y;
         const double d2 = std::max (dx * dx + dy * dy + extra, 1e-12); // never divide by zero, even with no blur
-        const double w = std::pow (d2, -0.5 * a);                      // 1 / d^a
+        double w = std::pow (d2, -0.5 * a);                            // 1 / d^a
+        if ((size_t) i < weights.size() && std::isfinite (weights[(size_t) i]))
+            w *= std::max ((double) weights[(size_t) i], 0.0);          // the weight of the speaker
 
         weight[(size_t) i] = w;
         sumOfSquares += w * w;
@@ -66,9 +68,9 @@ tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, tlos::Vec2
 }
 
 tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, const tlos::Hull& hull, tlos::Vec2 source,
-                                double spread, const DbapSettings& settings) noexcept
+                                double spread, const DbapSettings& settings, std::span<const float> weights) noexcept
 {
-    auto gains = computeGains (speakers, source, spread, settings);
+    auto gains = computeGains (speakers, source, spread, settings, weights);
 
     if (settings.outsideRolloffDb > 0.0 && hull.hasArea())
     {

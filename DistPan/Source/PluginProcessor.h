@@ -49,6 +49,12 @@ public:
         running (e.g. in tests). */
     void refreshLayout() override;
 
+    /** @return The weight column of the speaker table and files. */
+    std::optional<tlos::SpeakerColumn> getSpeakerColumn() const override;
+
+    /** @return The weight of each speaker in `channelOf` (output channels), in that order. Safe to call from any thread. */
+    std::vector<float> getWeights (const std::vector<int>& channelOf) const;
+
     /** @return The current rolloff, blur and outside rolloff. Safe to call from any thread. */
     distpan::DbapSettings getSettings() const noexcept;
 
@@ -77,12 +83,15 @@ private:
 
     std::atomic<float>* rolloffParam = nullptr; ///< Raw value of "Rolloff".
     std::atomic<float>* blurParam = nullptr;    ///< Raw value of "Blur".
+    std::array<std::atomic<float>*, tlos::kMaxChannels> weightParam {}; ///< Raw values of the speaker weights.
 
     // Audio thread only
     GainMatrix prevGains {};   ///< Gains at the end of the previous block (with trim, mute and solo).
     GainMatrix panGains {};    ///< The panning gains of each source alone: what the cache holds.
     GainMatrix targetGains {}; ///< Gains wanted at the end of this block (with trim, mute and solo).
     int prevUsedSpeakers = 0;  ///< Speakers in use in the previous block.
+    std::array<float, tlos::kMaxChannels> usedWeights {};  ///< The weights (of the included speakers, in order) the cached gains were computed with.
+    int usedWeightCount = -1;                              ///< How many of usedWeights are valid; -1 before the first block.
 
     /** What prevGains[s] was computed from, so unchanged sources need no new computation. */
     struct GainKey

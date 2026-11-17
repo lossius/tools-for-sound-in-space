@@ -71,7 +71,10 @@ warnings; keep it that way when adding code.
 ## DistPan (DBAP)
 - Gain law (`DistPan/core/src/Dbap.cpp`): `g_i = w_i / sqrt(sum w_j^2)`, `w_i = (d_i^2)^(-a/2)`, `d_i^2 = dx^2 + dy^2 + blur^2 + spread^2` (floored at 1e-12),
   `a = rolloffDb / 6.0206`. Every speaker takes part; non-finite speakers get 0; at most 64 speakers; result is a `tlos::SourceGains` with entry i = speaker i.
-- Extra host parameters (last in the host's list): `rolloff` (1..12 dB, default 6), `blur` (0..5 m, default 0.2). IDs and the state tag `DistPan` are part of saved sessions.
+- Extra host parameters (last in the host's list): `rolloff` (1..12 dB, default 6), `blur` (0..5 m, default 0.2), then `spk<N>weight` (0..1, default 1, N = 1..64).
+  Weights enter the law as `w_i / d_i^a` before the normalisation (`distpan::computeGains(..., weights)`; empty span = all 1; negative = 0; non-finite = 1); the processor reads them every block (not through the
+  published snapshot) and recomputes every source's cached gains when they change. The speaker table shows them through the generic `SpatialProcessor::getSpeakerColumn()` hook (title, file attribute, parameter IDs, limits),
+  which also carries them in speaker files (`weight` attribute, same "any entry defines it for all" rule as trim). IDs and the state tag `DistPan` are part of saved sessions.
 - Processor: `refreshLayout()` publishes the speaker positions (`SpeakerSet` with an id) through `tlos::Exchange`; `processBlock` computes dense per-source gain rows
   (cache key: position, spread, rolloff, blur, set id), ramps linearly per block, fades speakers that leave "Number of Speakers". No virtual speakers (`supportsVirtualSpeakers()` is false).
 - Editor: `DistPanField` draws no overlay (the overlay toggle is hidden) and links only for gains within 20 dB of the strongest; two sliders (rolloff, blur) sit in row 5.

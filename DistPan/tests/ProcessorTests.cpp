@@ -105,22 +105,27 @@ static void testParameterOrder()
 {
     DistPanAudioProcessor p;
     const auto& parameters = p.getParameters();
+    const int total = 2 + 64 * 6 + 64 * 5 + 1 + 2 + 64;
 
-    CHECK (parameters.size() == 2 + 64 * 6 + 64 * 5 + 1 + 2);
+    CHECK (parameters.size() == total);
 
     const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
     CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId);
     CHECK (idOf (2) == tlos::params::sourceId (0, 'x'));
     CHECK (idOf (2 + 64 * 6) == tlos::params::speakerId (0, 'x'));
-    CHECK (idOf (parameters.size() - 7) == tlos::params::speakerId (63, 'y'));
-    CHECK (idOf (parameters.size() - 6) == tlos::params::speakerTrimId (63));
-    CHECK (idOf (parameters.size() - 3) == tlos::params::kOutsideRolloffId);
-    CHECK (idOf (parameters.size() - 2) == distpan::params::kRolloffId && idOf (parameters.size() - 1) == distpan::params::kBlurId);
-    CHECK (parameters[parameters.size() - 2]->getName (64) == "Rolloff" && parameters[parameters.size() - 1]->getName (64) == "Blur");
+    const int outsideIndex = 2 + 64 * 6 + 64 * 5;
+    CHECK (idOf (outsideIndex - 1) == tlos::params::speakerSoloId (63));
+    CHECK (idOf (outsideIndex) == tlos::params::kOutsideRolloffId);
+    CHECK (idOf (outsideIndex + 1) == distpan::params::kRolloffId && idOf (outsideIndex + 2) == distpan::params::kBlurId);
+    CHECK (parameters[outsideIndex + 1]->getName (64) == "Rolloff" && parameters[outsideIndex + 2]->getName (64) == "Blur");
+    CHECK (idOf (outsideIndex + 3) == distpan::params::speakerWeightId (0) && idOf (total - 1) == distpan::params::speakerWeightId (63));
+    CHECK (parameters[outsideIndex + 3]->getName (64) == "Speaker 1 Weight" && parameters[total - 1]->getName (64) == "Speaker 64 Weight");
 
     CHECK (std::abs (getParam (p, distpan::params::kRolloffId) - distpan::params::kDefaultRolloff) < 1e-6f);
     CHECK (std::abs (getParam (p, distpan::params::kBlurId) - distpan::params::kDefaultBlur) < 1e-6f);
+    CHECK (std::abs (getParam (p, distpan::params::speakerWeightId (5)) - 1.0f) < 1e-6f);
     CHECK (! p.supportsVirtualSpeakers() && p.getVirtualMode() == tlos::VirtualMode::Off);
+    CHECK (p.getSpeakerColumn() && p.getSpeakerColumn()->title == "Weight" && p.getSpeakerColumn()->attribute == "weight");
 }
 
 /** A stationary source keeps its energy, every speaker gets some of it, and the nearest one gets the most. */
@@ -522,6 +527,68 @@ static void testExclude()
     CHECK (! fresh.isSpeakerExcluded (0) && fresh.getIncludedSpeakers().positions.empty() == (fresh.getActiveSpeakers() == 0));
 }
 
+/** Speaker weights: 0 takes a speaker out of the panning (the others take over), a smaller weight gives a smaller share; a change counts at once. */
+static void testSpeakerWeights()
+{
+    DistPanAudioProcessor p;
+    CHECK (configure (p, 1, 8, 512));
+    setParam (p, tlos::params::kOutsideRolloffId, 0.0f);
+    juce::AudioBuffer<float> buf (8, 512);
+    std::mt19937 rng (41);
+
+    const auto base = channelEnergies (p, buf, 8, 0, rng);
+    CHECK (std::abs (sumOf (base) - 1.0) < 1e-3);
+
+    setParam (p, distpan::params::speakerWeightId (2), 0.0f);
+    const auto zero = channelEnergies (p, buf, 8, 0, rng);
+    CHECK (zero[2] == 0.0 && std::abs (sumOf (zero) - 1.0) < 1e-3);            // the others share it: constant power
+    for (int ch : { 0, 1, 3, 4, 5, 6, 7 })
+        CHECK (zero[(size_t) ch] > base[(size_t) ch] - 1e-12);
+
+    setParam (p, distpan::params::speakerWeightId (2), 0.5f);
+    const auto half = channelEnergies (p, buf, 8, 0, rng);
+    CHECK (half[2] < base[2] && half[2] > 0.0 && std::abs (sumOf (half) - 1.0) < 1e-3);
+
+    // The weight counts in the very next block (it is read every block), also for a source that does not move.
+    setParam (p, distpan::params::speakerWeightId (2), 1.0f);
+    juce::MidiBuffer midi;
+    for (int block = 0; block < 4; ++block) { fillNoise (buf, 0, rng); p.processBlock (buf, midi); }
+    setParam (p, distpan::params::speakerWeightId (2), 0.0f);
+    for (int block = 0; block < 2; ++block) { fillNoise (buf, 0, rng); p.processBlock (buf, midi); }
+    CHECK (channelEnergy (buf, 2) == 0.0);
+
+    // A weight belongs to its speaker: with another speaker excluded, the numbering still follows the channels.
+    setParam (p, distpan::params::speakerWeightId (2), 1.0f);
+    p.setSpeakerExcluded (0, true);
+    setParam (p, distpan::params::speakerWeightId (5), 0.0f);
+    const auto mixed = channelEnergies (p, buf, 8, 0, rng);
+    CHECK (mixed[0] == 0.0 && mixed[5] == 0.0 && mixed[1] > 0.0 && std::abs (sumOf (mixed) - 1.0) < 1e-3);
+    p.setSpeakerExcluded (0, false);
+    setParam (p, distpan::params::speakerWeightId (5), 1.0f);
+
+    // Files: the weight is written when any speaker has another weight than 1, and read back; a file without it leaves the weights alone.
+    setParam (p, distpan::params::speakerWeightId (1), 0.25f);
+    setParam (p, distpan::params::speakerWeightId (4), 0.75f);
+    const auto file = juce::File::createTempFile ("xml");
+    CHECK (tlos::io::save (p, tlos::io::Kind::Speakers, file).wasOk());
+    CHECK (file.loadFileAsString().contains ("weight=\"") );
+    DistPanAudioProcessor q;
+    CHECK (configure (q, 1, 8, 512));
+    tlos::io::ImportReport report;
+    CHECK (tlos::io::load (q, tlos::io::Kind::Speakers, file, report).wasOk() && report.calibrationApplied == 8);
+    CHECK (std::abs (getParam (q, distpan::params::speakerWeightId (1)) - 0.25f) < 2e-3f && std::abs (getParam (q, distpan::params::speakerWeightId (4)) - 0.75f) < 2e-3f);
+    CHECK (std::abs (getParam (q, distpan::params::speakerWeightId (0)) - 1.0f) < 1e-6f);
+    const auto plain = juce::File::createTempFile ("xml");
+    plain.replaceWithText ("<DistPanSpeakers version=\"1\"><Speaker index=\"1\" x=\"0\" y=\"5\"/><Speaker index=\"2\" x=\"3\" y=\"5\"/></DistPanSpeakers>");
+    CHECK (tlos::io::load (q, tlos::io::Kind::Speakers, plain, report).wasOk());
+    CHECK (std::abs (getParam (q, distpan::params::speakerWeightId (1)) - 0.25f) < 2e-3f);
+    plain.replaceWithText ("<DistPanSpeakers version=\"1\"><Speaker index=\"1\" x=\"0\" y=\"5\" weight=\"7\"/><Speaker index=\"2\" x=\"3\" y=\"5\" weight=\"x\"/></DistPanSpeakers>");
+    CHECK (tlos::io::load (q, tlos::io::Kind::Speakers, plain, report).wasOk());
+    CHECK (std::abs (getParam (q, distpan::params::speakerWeightId (0)) - 1.0f) < 1e-6f && report.clamped >= 1 && report.skipped >= 1);
+    file.deleteFile();
+    plain.deleteFile();
+}
+
 /** 64 sources to 64 speakers: one source at a time keeps its energy, and the output is finite. */
 static void testFullSize64x64()
 {
@@ -642,6 +709,7 @@ int main (int argc, char** argv)
     testTrimMuteSolo();
     testMuteHasNoClick();
     testExclude();
+    testSpeakerWeights();
     testSpeakerUpdate();
     testNumberOfSourcesAndSpeakersInUse();
     testStateRoundTrip();

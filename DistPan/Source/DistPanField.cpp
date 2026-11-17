@@ -23,7 +23,8 @@ void DistPanField::updateOverlay (const tlos::IncludedSpeakers& speakers, const 
 
 tlos::SourceGains DistPanField::getLinkGains (int, tlos::Vec2 position, double spread) const
 {
-    auto gains = distpan::computeGains (includedSpeakers.positions, speakerHull, position, spread, dbapProcessor.getSettings());
+    auto gains = distpan::computeGains (includedSpeakers.positions, speakerHull, position, spread, dbapProcessor.getSettings(),
+                                       dbapProcessor.getWeights (includedSpeakers.channelOf));
 
     // Leave out what is more than 20 dB below the strongest share, so that the pad stays readable.
     float strongest = 0.0f;

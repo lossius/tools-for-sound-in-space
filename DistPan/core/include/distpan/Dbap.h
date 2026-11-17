@@ -37,9 +37,10 @@ double rolloffExponent (double rolloffDb) noexcept;
 /** Computes the speaker gains of a source with DBAP.
 
     Every speaker takes part: with d_i the distance from the source to speaker i (including the blur),
-    the gain is g_i = k / d_i^a, where a follows from the rolloff (see rolloffExponent()) and
-    k = 1 / sqrt(sum_j 1 / d_j^(2a)), so that the sum of squared gains is 1 (constant power) wherever the
-    source is. The spread of a source adds to the blur: d_i^2 = distance^2 + blur^2 + spread^2, so a larger
+    the gain is g_i = k w_i / d_i^a, where a follows from the rolloff (see rolloffExponent()), w_i is the weight
+    of the speaker (1 if there are no weights) and k = 1 / sqrt(sum_j (w_j / d_j^a)^2), so that the sum of squared
+    gains is 1 (constant power) wherever the source is. A weight of 0 takes a speaker out of the panning, a smaller
+    weight than the others gives it less of the signal, which the others make up for. The spread of a source adds to the blur: d_i^2 = distance^2 + blur^2 + spread^2, so a larger
     spread distributes the sound more evenly. Speakers with non-finite positions get no signal.
 
     Real-time safe: no allocation, no locks. Cost is linear in the number of speakers.
@@ -49,10 +50,12 @@ double rolloffExponent (double rolloffDb) noexcept;
     @param source    The source position in metres.
     @param spread    The source's spread radius in metres (0 = a point source).
     @param settings  Rolloff and blur.
+    @param weights   The weight of each speaker (same order as `speakers`; non-negative; missing or non-finite ones
+                     count as 1). Empty: all speakers have weight 1.
     @return          One entry per speaker (count == number of speakers used), or count == 0 if the source
                      position is not finite or there is no valid speaker. */
 tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, tlos::Vec2 source, double spread,
-                                const DbapSettings& settings) noexcept;
+                                const DbapSettings& settings, std::span<const float> weights = {}) noexcept;
 
 /** As above, and with the level falling off for a source outside the speaker layout: the gains are scaled by
     tlos::outsideFactor(distance from the source to the hull, settings.outsideRolloffDb), so they are as above
@@ -64,7 +67,8 @@ tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, tlos::Vec2
     @param source    The source position in metres.
     @param spread    The source's spread radius in metres.
     @param settings  Rolloff, blur and the outside rolloff.
+    @param weights   The weight of each speaker, as above.
     @return          One entry per speaker, as above. */
 tlos::SourceGains computeGains (std::span<const tlos::Vec2> speakers, const tlos::Hull& hull, tlos::Vec2 source,
-                                double spread, const DbapSettings& settings) noexcept;
+                                double spread, const DbapSettings& settings, std::span<const float> weights = {}) noexcept;
 }

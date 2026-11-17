@@ -15,6 +15,8 @@
 
 #include <array>
 #include <atomic>
+#include <functional>
+#include <optional>
 #include <vector>
 
 namespace tlos
@@ -34,6 +36,19 @@ struct ChannelGains
 {
     std::array<float, kMaxChannels> sources {};   ///< Gain of each source, applied to its signal before the panning.
     std::array<float, kMaxChannels> speakers {};  ///< Gain of each speaker, applied to its output after the panning.
+};
+
+/** A parameter of the panning method that every speaker has (DistPan: the weight). The speaker table shows it
+    as a column, and the speaker files carry it in an attribute. */
+struct SpeakerColumn
+{
+    juce::String title;                           ///< Header of the table column, for example "Weight".
+    juce::String attribute;                       ///< Name of the attribute in speaker files, for example "weight".
+    std::function<juce::String (int)> idFor;      ///< Parameter ID of speaker `index` (zero-based).
+    double minimum = 0.0;                         ///< Smallest value.
+    double maximum = 1.0;                         ///< Largest value.
+    double defaultValue = 1.0;                    ///< The default value of the parameter.
+    int decimals = 2;                             ///< Decimals shown in the table.
 };
 
 /** What every plugin in this repository has in common, so that they all look and behave alike.
@@ -173,6 +188,9 @@ public:
 
     /** The most virtual speakers in the manual list. */
     static constexpr int kMaxVirtualSpeakers = 64;
+
+    /** @return The per-speaker parameter of the panning method, if the plugin has one (the default is none). */
+    virtual std::optional<SpeakerColumn> getSpeakerColumn() const { return std::nullopt; }
 
     /** @return Whether the plugin uses virtual (imaginary) speakers. If not (the default), the editor has
         no menu for them and getVirtualMode() is always Off. */

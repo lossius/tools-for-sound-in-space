@@ -29,7 +29,10 @@ inline constexpr float kMaxBlur = 5.0f;
 /** Default blur in metres. */
 inline constexpr float kDefaultBlur = 0.2f;
 
-/** @return The plugin's own parameters (rolloff, then blur), to be added after the shared ones. */
+/** @return The parameter ID of the weight of speaker `index` (zero-based), for example "spk1weight". Part of saved sessions. */
+inline juce::String speakerWeightId (int index) { return "spk" + juce::String (index + 1) + "weight"; }
+
+/** @return The plugin's own parameters (rolloff, blur, then the weight of every speaker), to be added after the shared ones. */
 inline std::vector<std::unique_ptr<juce::RangedAudioParameter>> createParameters()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> out;
@@ -40,6 +43,11 @@ inline std::vector<std::unique_ptr<juce::RangedAudioParameter>> createParameters
     out.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { kBlurId, 1 }, "Blur",
                                                                 juce::NormalisableRange<float> (0.0f, kMaxBlur), kDefaultBlur,
                                                                 juce::AudioParameterFloatAttributes().withLabel ("m")));
+
+    // The weight of a speaker (as in the DBAP paper): 1 is a full speaker, less gives it a smaller share, 0 takes it out of the panning.
+    for (int i = 0; i < 64; ++i)
+        out.push_back (std::make_unique<juce::AudioParameterFloat> (juce::ParameterID { speakerWeightId (i), 1 }, "Speaker " + juce::String (i + 1) + " Weight",
+                                                                    juce::NormalisableRange<float> (0.0f, 1.0f), 1.0f));
     return out;
 }
 }
