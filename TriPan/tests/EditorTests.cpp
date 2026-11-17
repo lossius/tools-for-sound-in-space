@@ -1233,7 +1233,7 @@ int main (int argc, char** argv)
         // Start: the whole area, as before.
         CHECK (field.getViewHalfExtent() == 10.0 && field.getViewCentre().x == 0.0 && field.getViewCentre().y == 0.0);
         CHECK (zin.isEnabled() && ! zout.isEnabled());
-        CHECK (zin.getButtonText() == "Zoom In" && zout.getButtonText() == "Zoom Out");
+        CHECK (zin.getTitle() == "Zoom In" && zout.getTitle() == "Zoom Out" && zin.getButtonText().isEmpty() && zin.getWidth() <= 40 && zout.getWidth() <= 40);
 
         // The area with the speakers that are in use.
         double minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;

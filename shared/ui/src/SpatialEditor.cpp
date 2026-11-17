@@ -437,19 +437,19 @@ void SpatialEditor::layoutContent()
     showLinksButton.setBounds (bar.removeFromLeft (105));
     resetButton.setBounds (bar.removeFromLeft (90));
     bar.removeFromLeft (8);
-    zoomInButton.setBounds (bar.removeFromLeft (70));
+    zoomInButton.setBounds (bar.removeFromLeft (34));
     bar.removeFromLeft (4);
-    zoomOutButton.setBounds (bar.removeFromLeft (70));
+    zoomOutButton.setBounds (bar.removeFromLeft (34));
     bar.removeFromLeft (16);
     groupButton.setBounds (bar.removeFromLeft (62));
     bar.removeFromLeft (4);
     ungroupButton.setBounds (bar.removeFromLeft (74));
 
-    // Fourth row: the Settings button, and the line of text (track channels, import/export results).
-    auto last = nextRow();
-    settingsButton.setBounds (last.removeFromLeft (96));
-    last.removeFromLeft (12);
-    infoLabel.setBounds (last);
+    // The buttons that open windows (Table..., Table..., Settings...) are in one column at the right end of the rows.
+    settingsButton.setBounds (bar.removeFromRight (80));
+
+    // Fourth row: the line of text (track channels, import/export results).
+    infoLabel.setBounds (nextRow());
 
     // Footer: links at the left, in the centre and at the right, each only as wide as its text so that
     // clicking the empty space between them does nothing.

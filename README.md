@@ -77,7 +77,7 @@ a menu with Mute, Solo and Exclude from panning. Muted or silenced sources and s
 
 ## Settings window
 
-The **Settings...** button below the display options opens a window with what is set once and then left alone, so that the plugin
+The **Settings...** button, at the right end of the third row below the two **Table...** buttons, opens a window with what is set once and then left alone, so that the plugin
 window stays uncluttered:
 
 - **Room**: the room size.
@@ -248,7 +248,7 @@ Off if you prefer that. They are not host parameters. They are saved with the se
 XML file records the setting and, for Manual, the virtual speakers (see below).
 
 ## Zooming
-**Zoom In** and **Zoom Out** (third row) change the visible area of the pad. Each press of Zoom In
+The two magnifying-glass buttons, **Zoom In** (+) and **Zoom Out** (-), in the third row change the visible area of the pad. Each press of Zoom In
 zooms a step towards the area that contains all speakers in use and stops when they just fill the pad;
 Zoom Out zooms back in steps until the entire room is shown again, as at start. The view stays
 where it is while you drag speakers, so press Zoom In again after moving them if you want it refitted.

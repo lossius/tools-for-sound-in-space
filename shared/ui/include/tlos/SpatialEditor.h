@@ -7,6 +7,7 @@
 #pragma once
 
 #include "tlos/FieldComponent.h"
+#include "tlos/IconButton.h"
 #include "tlos/SettingsWindow.h"
 #include "tlos/SpatialProcessor.h"
 #include "tlos/PositionIO.h"
@@ -19,8 +20,8 @@ namespace tlos
 
     All controls live in a child component laid out at the base size (kBaseWidth x kBaseHeight) and
     scaled uniformly with the window, which has a fixed aspect ratio. Rows from the top: sources,
-    speakers, display options (an optional overlay toggle, links, reset, zoom, groups), the Settings button
-    with the status text, then the FieldComponent pad and a footer. Everything that is set once and then left
+    speakers, display options (an optional overlay toggle, links, reset, zoom, groups, and the Settings button at
+    the right end, below the Table buttons), the status text, then the FieldComponent pad and a footer. Everything that is set once and then left
     alone (room size, level outside the speakers, virtual speakers, the plugin's own settings, OSC) is in the
     settings window (SettingsContent), which the Settings button opens.
 
@@ -168,8 +169,8 @@ private:
     juce::ToggleButton overlayButton;                    ///< Shows or hides the plugin's overlay on the pad (e.g. the triangles).
     juce::ToggleButton showLinksButton { "Show links" }; ///< Draws the lines from each source to the speakers it feeds.
     juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.
-    juce::TextButton zoomInButton { "Zoom In" };         ///< Zooms the pad towards the speakers.
-    juce::TextButton zoomOutButton { "Zoom Out" };       ///< Zooms the pad back out.
+    IconButton zoomInButton { IconButton::Icon::ZoomIn, "Zoom In" };     ///< Zooms the pad towards the speakers (a magnifying glass with a plus).
+    IconButton zoomOutButton { IconButton::Icon::ZoomOut, "Zoom Out" };  ///< Zooms the pad back out (a magnifying glass with a minus).
     juce::TextButton groupButton { "Group" };            ///< Groups the selected sources.
     juce::TextButton ungroupButton { "Ungroup" };        ///< Dissolves the groups of the selected sources.
     juce::TextButton exportSourcesButton  { "Export sources..." };   ///< Saves source positions.
