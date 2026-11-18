@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -712,6 +713,57 @@ static void testFullSize64x64()
     }
 }
 
+/** The cost of processBlock alone with 64 sources and 64 speakers (printed, not checked: a Debug build is much slower than the Release one the plugin ships as). */
+static void testFullSizeCost()
+{
+    DistPanAudioProcessor p;
+    CHECK (configure (p, 64, 64, 512));
+
+    juce::AudioBuffer<float> buf (64, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (9);
+    std::uniform_real_distribution<float> u (-1.0f, 1.0f);
+    for (int s = 0; s < 64; ++s)
+        for (int i = 0; i < 512; ++i)
+            buf.setSample (s, i, u (rng));
+    const juce::AudioBuffer<float> input (buf);
+
+    // Scenario 0: sources stand still. 1: every source moves every block. 2: the same, with spread.
+    const char* names[] { "static sources", "all 64 sources moving", "all moving, with spread" };
+    for (int scenario = 0; scenario < 3; ++scenario)
+    {
+        double total = 0.0, worst = 0.0;
+        const int blocks = 300;
+        for (int block = -20; block < blocks; ++block)
+        {
+            if (scenario > 0)
+                for (int s = 0; s < 64; ++s)
+                {
+                    const float a = 0.05f * (float) block + (float) s;
+                    setParam (p, tlos::params::sourceId (s, 'x'), 6.0f * std::sin (a));
+                    setParam (p, tlos::params::sourceId (s, 'y'), 6.0f * std::cos (a));
+                    if (scenario == 2)
+                        setParam (p, tlos::params::spreadId (s), 2.0f);
+                }
+            for (int ch = 0; ch < 64; ++ch)
+                buf.copyFrom (ch, 0, input, ch, 0, 512);
+
+            const auto t0 = std::chrono::steady_clock::now();
+            p.processBlock (buf, midi);
+            const double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+            if (block >= 0)
+            {
+                total += ms;
+                worst = std::max (worst, ms);
+            }
+            CHECK (allFinite (buf, 64));
+        }
+        const double budget = 512.0 / 48000.0 * 1000.0;
+        std::printf ("DistPan 64x64, %-24s: %.3f ms per 512-sample block on average (%.1f %% of the %.1f ms available at 48 kHz), worst %.3f ms\n",
+                     names[scenario], total / blocks, 100.0 * total / blocks / budget, budget, worst);
+    }
+}
+
 /** Parameters change on one thread while another processes audio: no crash, finite output. */
 static void testParameterAutomationWhileProcessing()
 {
@@ -802,6 +854,7 @@ int main (int argc, char** argv)
     testNumberOfSourcesAndSpeakersInUse();
     testStateRoundTrip();
     testFullSize64x64();
+    testFullSizeCost();
     testParameterAutomationWhileProcessing();
 
     if (argc > 1)
