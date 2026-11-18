@@ -1,8 +1,8 @@
 # Tools for Sound in Space
 
 A collection of free, open-source (AGPLv3) plugins for spatial audio, all with the same pad, tables, source groups and
-import/export, so that they look and work alike. So far: **TriPan** (triangulation panning) and **DistPan** (distance-based
-amplitude panning, DBAP). VBAP and ViMiC are planned.
+import/export, so that they look and work alike. So far: **TriPan** (triangulation panning), **DistPan** (distance-based
+amplitude panning, DBAP) and **VecPan** (2D vector base amplitude panning, VBAP). ViMiC is planned.
 
 Status: pre-release, version 0.1.0. TriPan and DistPan work and are covered by automated tests and pluginval (strictness 10; the CI workflow runs
 them on macOS and Windows, but has not run yet); they have not yet been tested in every host. AAX is optional and unverified in Pro Tools.
@@ -20,10 +20,11 @@ with constant overall intensity.
 | `shared/core` | `TlosCore`: JUCE-free code every plugin uses (geometry types, channel limits, source groups, lock-free hand-over) |
 | `shared/ui` | `TlosUI`: the processor base class, host parameters, the XY pad, the editor window, table windows and position import/export |
 | `DistPan/` | DistPan: `core/` (the DBAP gain law, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
+| `VecPan/` | VecPan: `core/` (the 2D VBAP gain law, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
 | `TriPan/` | TriPan itself: `core/` (triangulation and gains, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
 | `speaker layouts/` | Ready-made speaker layouts (XML) that any plugin of the family can import |
 
-More plugins (VBAP, ViMiC) are planned and will sit next to `TriPan/` and `DistPan/`, reusing `shared/`.
+More plugins (ViMiC) are planned and will sit next to the others, reusing `shared/`.
 The built plug-ins end up in `<build folder>/<plugin>/<plugin>_artefacts/`.
 
 ## DistPan
@@ -58,6 +59,34 @@ smoothly with no step at the edge. Set it to 0 for the old behaviour, a constant
 speakers, or speakers on one line (a stereo pair), there is no inside to leave and the falloff does not apply.
 In TriPan the sound outside the layout is panned as if the source stood on the nearest edge of the layout; the
 rolloff comes on top of that. Sessions saved before this setting existed get the default (6 dB) when they are opened.
+
+## VecPan
+
+Two-dimensional vector base amplitude panning (VBAP, Pulkki) around the listener at the centre. A source is panned between the two
+speakers on either side of its direction, seen from the listener, with constant power; a source exactly on a speaker's direction uses
+that speaker alone. Only the direction counts, so the speakers need not lie on a circle, and the distance of a source inside the
+layout changes nothing. VecPan has no host parameters of its own; its positions are shown in azimuth and distance by default
+(see *Coordinates*).
+
+- **Speakers that do not surround the listener** (for example a stereo pair, or speakers on one side only): no vector base exists across a
+  gap of 180 degrees or more, so the two speakers on either side of the gap share the sound with a sine/cosine cross-fade over the angle.
+  The panning stays continuous and keeps constant power.
+- **Spread** is an angular width: a source of spread *s* at distance *d* is panned as three directions, at its own azimuth and at plus
+  and minus atan(*s* / *d*), and their powers are averaged (like MDAP). A source at the listener has no direction and is shared equally.
+- **Speakers in the same direction** count as one (the lowest-numbered takes the sound); a speaker exactly at the listener has no direction and
+  takes no part.
+- **Level outside the speakers**: as in the other plugins (see *Level outside the speakers*).
+- The pad can draw a line between every two neighbouring speakers that VBAP pans between (**Show pairs**), and links from each source to the
+  one or two speakers it feeds.
+
+## Coordinates: Cartesian or polar
+
+The host parameters, the position files and the pad always use x and y in metres. How the tables and the pad's readouts show positions is a
+setting (**Coordinates** in the settings window, also in the table windows): **Cartesian** (x, y) or **Polar** (azimuth in degrees,
+counter-clockwise from the front, so +90 is on the left; and distance in metres). In polar mode the table columns are Azimuth and Distance, typing
+one keeps the other, a source at the centre keeps its last azimuth, the pad draws distance rings and azimuth spokes instead of the grid,
+and the tooltip and the label that follows a dragged source give azimuth and distance. TriPan and DistPan start in Cartesian, VecPan in Polar.
+Position files may give `az` and `dist` instead of `x` and `y` for an entry (`x` and `y` win if both are there); exports always write x and y.
 
 ## Undo
 

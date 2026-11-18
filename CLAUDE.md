@@ -1,7 +1,7 @@
 # TriPan (part of "Tools for Sound in Space")
 
 This repository is the start of a family of spatial audio plugins that share code (`shared/`). TriPan is the first;
-DBAP ("DistPan"), VBAP and ViMiC are planned and should look and behave like TriPan (same pad, tables, groups, import/export).
+DBAP ("DistPan"), 2D VBAP ("VecPan") exist; ViMiC is planned and should look and behave like TriPan (same pad, tables, groups, import/export).
 
 Free, AGPLv3-licensed audio plugin (VST3, AU, Standalone; AAX optional) for macOS and Windows.
 Distributes n source channels to m speaker channels (up to 64 each). Sources and speakers lie in
@@ -21,12 +21,13 @@ triangle's three speakers using barycentric weights, power-normalised so overall
   `FieldComponent`; draws the triangulation and links), `PluginEditor` (a thin `SpatialEditor`).
 - `TriPan/tests/` — tests of `TriPanCore`, the processor and the editor, run through `ctest`.
 - `DistPan/` — the second plugin (DBAP, see below): `core/` (`DistPanCore`, namespace `distpan`, JUCE-free), `Source/`, `tests/`.
+- `VecPan/` — the third plugin (2D VBAP, see below): `core/` (`VecPanCore`, namespace `vecpan`, JUCE-free), `Source/`, `tests/`.
 - `cmake/TlosPlugin.cmake` — what every plugin's CMake needs: `TLOS_PLUGIN_FORMATS`, `tlos_finish_plugin(<target>)` (libraries, JUCE groups, install after build).
 - `JUCE/` — git submodule, pinned to a release tag. Do not edit.
 
 ### Adding a plugin
 Copy the shape of `DistPan/` (the simplest one): its own `core/` (only the panning method), `Source/` and `tests/`; call `juce_add_plugin(... FORMATS ${TLOS_PLUGIN_FORMATS})`, then `tlos_finish_plugin(<target>)`; add the folder
-in the root `CMakeLists.txt`. Choose a new plugin code (TriPan `TrPn`, DistPan `DsPn`); the manufacturer code stays `Tlos`.
+in the root `CMakeLists.txt`. Choose a new plugin code (TriPan `TrPn`, DistPan `DsPn`, VecPan `VcPn`); the manufacturer code stays `Tlos`.
 Parameters of the panning method are passed to the `SpatialProcessor` constructor (they follow the shared ones); controls for them
 are added in the editor with `addToContent()` + `layoutExtraControls()` + `relayout()`. The processor derives from `tlos::SpatialProcessor` and implements `processBlock`, `refreshLayout()`
 (called by a 30 Hz timer and after layout changes: build what the audio thread needs and hand it over with `tlos::Exchange<T>`),
@@ -44,7 +45,7 @@ cmake -B build -G Xcode          # or: cmake -B build -G Ninja -DCMAKE_BUILD_TYP
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
-On macOS every build of an AU target (`TriPan_AU`, `DistPan_AU`) likewise copies the bundle to `~/Library/Audio/Plug-Ins/Components`
+On macOS every build of an AU target (`TriPan_AU`, `DistPan_AU`, `VecPan_AU`) likewise copies the bundle to `~/Library/Audio/Plug-Ins/Components`
 (`-DTLOS_INSTALL_AU=OFF`, `-DTLOS_AU_INSTALL_DIR=...`). On macOS every build of a VST3 target also copies the bundle to `~/Library/Audio/Plug-Ins/VST3`
 (`-DTLOS_INSTALL_VST3=OFF` disables it; `-DTLOS_VST3_INSTALL_DIR=...` changes the folder; CI and
 the signing script turn it off).
@@ -78,6 +79,18 @@ warnings; keep it that way when adding code.
 - Processor: `refreshLayout()` publishes the speaker positions (`SpeakerSet` with an id) through `tlos::Exchange`; `processBlock` computes dense per-source gain rows
   (cache key: position, spread, rolloff, blur, set id), ramps linearly per block, fades speakers that leave "Number of Speakers". No virtual speakers (`supportsVirtualSpeakers()` is false).
 - Editor: `DistPanField` always draws the convex hull of the included speakers as its overlay (`paintOverlay`: 1 px lines in TriPan's triangulation colour 0xff7aa2c8 at alpha 0.55, no fill, no toggle) and links only for gains within 20 dB of the strongest; two sliders (DBAP rolloff, DBAP blur) are in the settings window.
+
+## VecPan (2D VBAP)
+- Gain law (`VecPan/core/src/Vbap.cpp`, namespace `vecpan`): `vecpan::Layout` (built off the audio thread when the speakers change; directions sorted by azimuth, for every neighbouring pair the inverse of the 2x2 matrix of the two
+  unit direction vectors, `wide` for gaps >= 180 deg) and `computeGains(layout, source, spread, VbapSettings{outsideRolloffDb})`. Azimuth is counter-clockwise from the front (`x = -d sin(az)`, `y = d cos(az)`, the OSC convention).
+  Source direction p between a pair: g = p L^-1 (clamped >= 0), scaled to sum of squares 1; in a wide gap (speakers that do not surround the listener) the two bounding speakers cross-fade with cos/sin of the angle
+  fraction (continuous, constant power; the layout with a gap of exactly 180 deg is the one place where it is not). One speaker gets everything; a source at the origin is shared equally. Same-direction speakers (1e-9 rad) count as one (lowest index);
+  a speaker at the origin or with a non-finite position takes no part. Spread (metres) = angular width atan(spread / distance): the squared gains of three directions (az, az +- width) are averaged. The distance inside the layout has no effect; outside it
+  the shared `outsideFactor` of the hull distance applies (`Layout::hull()`).
+- No host parameters of its own (`SpatialProcessor` gets no `PluginParameters`), no virtual speakers, no speaker column. `defaultCoordinateMode()` is Polar. The processor is DistPan's without weights: `SpeakerSet{Layout, channelOf, id}` through `tlos::Exchange`,
+  gain cache keyed by position, spread, outside rolloff and set id. State tag `VecPan`, plugin code `VcPn`, bundle ID `no.trondlossius.vecpan`; position files `VecPanSources` / `VecPanSpeakers`.
+- Editor: `VecPanField` draws a thin line (TriPan's triangulation colour) between every two neighbouring speakers that are not a wide gap (toggle "Show pairs") and links to the speakers a source feeds; no settings rows of its own.
+- Open design questions (nothing decided): whether distance should ever do something inside the layout (attenuation or spread), a ring-radius/"distance compensation" for speakers at different distances, and a 3D (triplet) VBAP.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.

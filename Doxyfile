@@ -7,7 +7,7 @@
 PROJECT_NAME           = "TriPan"
 PROJECT_BRIEF          = "Triangulation-based panning of n sources to m speakers"
 OUTPUT_DIRECTORY       = build/doxygen
-INPUT                  = README.md shared TriPan DistPan
+INPUT                  = README.md shared TriPan DistPan VecPan
 FILE_PATTERNS          = *.h *.cpp *.md
 RECURSIVE              = YES
 EXCLUDE_PATTERNS       = */speaker?layouts/* */build/*
