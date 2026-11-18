@@ -958,13 +958,15 @@ static void testSourceSpread()
     CHECK (q.getValueTreeState().getParameter (tlos::params::spreadId (63)) != nullptr);
 }
 
-/** The order of the parameters as a host lists them: counts, then each source (x, y, spread), then each speaker (x, y). */
+/** The order of the parameters as a host lists them: everything global first (counts, outside rolloff, virtual speaker mode and number),
+    then each source, each speaker, and last the virtual speaker positions. */
 static void testParameterOrder()
 {
     TriPanAudioProcessor p;
     const auto& parameters = p.getParameters();
 
-    std::vector<juce::String> expected { tlos::params::kNumSourcesId, tlos::params::kNumSpeakersId };
+    std::vector<juce::String> expected { tlos::params::kNumSourcesId, tlos::params::kNumSpeakersId, tlos::params::kOutsideRolloffId,
+                                         tlos::params::kVirtualModeId, tlos::params::kNumVirtualId };
     for (int i = 0; i < tlos::kMaxChannels; ++i)
     {
         expected.push_back (tlos::params::sourceId (i, 'x'));
@@ -984,9 +986,6 @@ static void testParameterOrder()
         expected.push_back (tlos::params::speakerSoloId (i));
         expected.push_back (tlos::params::speakerExcludeId (i));
     }
-    expected.push_back (tlos::params::kOutsideRolloffId);
-    expected.push_back (tlos::params::kVirtualModeId);
-    expected.push_back (tlos::params::kNumVirtualId);
     for (int i = 0; i < tlos::params::kMaxVirtualSpeakers; ++i)
     {
         expected.push_back (tlos::params::virtualId (i, 'x'));
@@ -994,7 +993,7 @@ static void testParameterOrder()
     }
 
     CHECK ((size_t) parameters.size() == expected.size());
-    CHECK (expected.size() == 2 + 64 * 7 + 64 * 6 + 1 + 2 + 128);
+    CHECK (expected.size() == 5 + 64 * 7 + 64 * 6 + 128);
 
     bool inOrder = parameters.size() == (int) expected.size();
     for (int i = 0; inOrder && i < parameters.size(); ++i)
@@ -1009,17 +1008,20 @@ static void testParameterOrder()
     CHECK (inOrder);
 
     // The names a host shows follow the same order.
-    CHECK (parameters[0]->getName (64) == "Number of Sources" && parameters[1]->getName (64) == "Number of Speakers");
-    CHECK (parameters[2]->getName (64) == "Source 1 X" && parameters[3]->getName (64) == "Source 1 Y" && parameters[4]->getName (64) == "Source 1 Spread");
-    CHECK (parameters[5]->getName (64) == "Source 1 Trim" && parameters[6]->getName (64) == "Source 1 Mute" && parameters[7]->getName (64) == "Source 1 Solo");
-    CHECK (parameters[8]->getName (64) == "Source 1 Group" && parameters[9]->getName (64) == "Source 2 X");
-    const int speakers = 2 + 64 * 7;
+    CHECK (parameters[0]->getName (64) == "Number of Sources" && parameters[1]->getName (64) == "Number of Speakers" && parameters[2]->getName (64) == "Outside Rolloff");
+    CHECK (parameters[3]->getName (64) == "Virtual Speakers" && parameters[4]->getName (64) == "Number of Virtual Speakers");
+    CHECK (parameters[5]->getName (64) == "Source 1 X" && parameters[6]->getName (64) == "Source 1 Y" && parameters[7]->getName (64) == "Source 1 Spread");
+    CHECK (parameters[8]->getName (64) == "Source 1 Trim" && parameters[9]->getName (64) == "Source 1 Mute" && parameters[10]->getName (64) == "Source 1 Solo");
+    CHECK (parameters[11]->getName (64) == "Source 1 Group" && parameters[12]->getName (64) == "Source 2 X");
+    const int speakers = 5 + 64 * 7;
     CHECK (parameters[speakers]->getName (64) == "Speaker 1 X" && parameters[speakers + 1]->getName (64) == "Speaker 1 Y");
     CHECK (parameters[speakers + 2]->getName (64) == "Speaker 1 Trim" && parameters[speakers + 4]->getName (64) == "Speaker 1 Solo" && parameters[speakers + 5]->getName (64) == "Speaker 1 Exclude");
-    const int outside = speakers + 64 * 6;
-    CHECK (parameters[outside]->getName (64) == "Outside Rolloff" && parameters[outside + 1]->getName (64) == "Virtual Speakers");
-    CHECK (parameters[outside + 2]->getName (64) == "Number of Virtual Speakers" && parameters[outside + 3]->getName (64) == "Virtual Speaker 1 X");
+    CHECK (parameters[speakers + 64 * 6]->getName (64) == "Virtual Speaker 1 X");
     CHECK (parameters[parameters.size() - 1]->getName (64) == "Virtual Speaker 64 Y");
+
+    // Hosts that show a tree (VST3 units, AU) get the same order as groups: Global first.
+    const auto& tree = p.getParameterTree();
+    CHECK (tree.getSubgroups (false).size() == 4 && tree.getSubgroups (false).getFirst()->getName() == "Global");
 }
 
 /** The limit of 64 manual virtual speakers: with 64 sources and 64 speakers the output stays finite and keeps its power, and the cost of a block is reported. */

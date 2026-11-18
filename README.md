@@ -66,6 +66,12 @@ action, for example grouping a selection or deleting a virtual speaker, is one u
 groups, exclusions and virtual speakers in the plugin's own state, open as before: they are moved into the parameters when loaded. The
 settings that are not edits of the sound stay with the session only: the Edit/View menus, the window size, the room size and the OSC settings.
 
+## Parameters in the host
+The host lists the global parameters first: the number of sources and speakers, the outside rolloff, the virtual speaker mode and number (TriPan) or
+the rolloff and blur (DistPan). After them come the parameters of each source (x, y, spread, trim, mute, solo, group), of each speaker (x, y, trim, mute,
+solo, exclude, and DistPan's weight) and, in TriPan, the positions of the manual virtual speakers. Hosts that show parameters as a tree (VST3 and AU hosts such as
+Cubase, Studio One, Bitwig and Logic) get the same structure as folders: Global, Sources, Speakers and Virtual Speakers, with one folder per source and per speaker.
+
 ## Trim, mute, solo and exclude
 
 Every source and every speaker has a **Trim** (-60 to +12 dB), a **Mute** switch and a **Solo** switch, all host parameters

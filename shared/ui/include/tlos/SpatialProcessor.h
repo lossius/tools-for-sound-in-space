@@ -72,12 +72,13 @@ public:
         @param buses            The buses (use stereo defaults; hosts change them).
         @param stateType        The tag of the saved state. Keep it unchanged between versions of a plugin: it
                                 is how an old session is recognised.
-        @param extraParameters  Parameters that belong to the plugin's panning method (for example a rolloff).
-                                They come after the shared ones in the host's list.
+        @param extraParameters  Parameters that belong to the plugin's panning method: global ones (for example a rolloff) are
+                                listed with the shared global parameters, before everything for sources and speakers; per-speaker
+                                ones (for example a weight) with the speaker's own parameters. See params::createLayout().
         @param virtualSpeakerParameters  Whether the plugin has virtual speakers, and so the parameters for their mode,
                                 number and positions. */
     SpatialProcessor (const BusesProperties& buses, const juce::String& stateType,
-                      std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters = {},
+                      params::PluginParameters extraParameters = {},
                       bool virtualSpeakerParameters = false);
 
     /** Stops the timer. */

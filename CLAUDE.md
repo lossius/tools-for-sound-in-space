@@ -71,7 +71,7 @@ warnings; keep it that way when adding code.
 ## DistPan (DBAP)
 - Gain law (`DistPan/core/src/Dbap.cpp`): `g_i = w_i / sqrt(sum w_j^2)`, `w_i = (d_i^2)^(-a/2)`, `d_i^2 = dx^2 + dy^2 + blur^2 + spread^2` (floored at 1e-12),
   `a = rolloffDb / 6.0206`. Every speaker takes part; non-finite speakers get 0; at most 64 speakers; result is a `tlos::SourceGains` with entry i = speaker i.
-- Extra host parameters (last in the host's list): `rolloff` (1..12 dB, default 6), `blur` (0..5 m, default 0.2), then `spk<N>weight` (0..1, default 1, N = 1..64).
+- Extra host parameters (global ones in the Global group right after the shared global ones, the weights in each speaker's group): `rolloff` (1..12 dB, default 6), `blur` (0..5 m, default 0.2), then `spk<N>weight` (0..1, default 1, N = 1..64).
   Weights enter the law as `w_i / d_i^a` before the normalisation (`distpan::computeGains(..., weights)`; empty span = all 1; negative = 0; non-finite = 1); the processor reads them every block (not through the
   published snapshot) and recomputes every source's cached gains when they change. The speaker table shows them through the generic `SpatialProcessor::getSpeakerColumn()` hook (title, file attribute, parameter IDs, limits),
   which also carries them in speaker files (`weight` attribute, same "any entry defines it for all" rule as trim). IDs and the state tag `DistPan` are part of saved sessions.
@@ -192,14 +192,15 @@ warnings; keep it that way when adding code.
   The host range is fixed; the effective count is clamped to the track's channel count
   (`getActiveSources/Speakers`). Unused sources are silent, unused speakers are left out of the
   triangulation. The GUI shows them at the top with their maximum set to the channel count.
-- Parameter order (as listed by hosts, set by the order in `createLayout`): Number of Sources, Number of Speakers, then
-  per source x, y, spread, trim, mute, solo (source 1, 2, ...), then per speaker x, y, trim, mute, solo (speaker 1, 2, ...), then `outsideRolloff`, then the plugin's own parameters (DistPan: `rolloff`, `blur`). `ProcessorTests` checks it.
+- Parameter order (as listed by hosts, set by `tlos::params::createLayout(withVirtualSpeakers, PluginParameters)`; also parameter *groups* for hosts that show a tree): **Global** first: Number of Sources, Number of Speakers,
+  `outsideRolloff`, (virtual: `virtualMode`, `numVirtualSpeakers`), then the plugin's own global ones (DistPan: `rolloff`, `blur`); then **Sources** (one subgroup per source: x, y, spread, trim, mute, solo, group), **Speakers** (one subgroup per speaker: x, y,
+  trim, mute, solo, exclude, then the plugin's per-speaker values, DistPan: `spk<N>weight`), and last **Virtual Speakers** (x, y each). A plugin passes `tlos::params::PluginParameters{global, perSpeaker}` to the `SpatialProcessor` constructor
+  (`perSpeaker` = k parameters per speaker, 64*k in all, in speaker order). Global parameters always go in front, so they are easy to find among ~1000 parameters. `ProcessorTests` checks the order and the groups.
 - **Everything a user can change is a host parameter, so the host's undo (and automation) covers it**: positions, spread, trim, mute, solo, source group, speaker exclude, the virtual speaker mode, number and positions,
   the outside rolloff, the plugin's own. Only settings that are not edits of the sound stay in the session state (Edit/View modes, editor width, room size, OSC settings). `SpatialProcessor::writeParameters` writes only the values that
   differ, with all change gestures begun together and ended together, so one editor action is one undo step (`setSourceGroups`, `setSpeakerExcluded`, `setManualVirtualSpeakers`, `setVirtualLayout`); a drag passes `ownGesture = false`
   and has its own `begin/endVirtualSpeakerGesture`. `migrateLegacyState()` (called by `setStateInformation`) moves the old state properties `sourceGroups`, `excludedSpeakers`, `virtualMode`, `manualVirtual` into the parameters and removes
-  them. Values are floats now (a typed 0.5 comes back as 0.50000003): compare with a tolerance. The parameter order is: counts; per source x y spread trim mute solo group; per speaker x y trim mute solo exclude; outsideRolloff;
-  (virtual: mode, number, vspk x y pairs); the plugin's own.
+  them. Values are floats now (a typed 0.5 comes back as 0.50000003): compare with a tolerance. The parameter order is described above (global parameters first).
 - Trim, mute, solo, exclude (both plugins; `shared/ui` + the processors): per source and per speaker the host parameters `src<N>trim|mute|solo` and `spk<N>trim|mute|solo` (trim -60..+12 dB default 0,
   mute/solo are bools; about 970 host parameters in TriPan, 900 in DistPan, in all). `SpatialProcessor::getChannelGains` turns them into linear gains per block (mute wins over solo; sources and speakers solo separately;
   channels not in use get 0); the processors multiply them into their per-block gain ramps (source gain x speaker gain on top of the *cached pure panning gains*, so a switch never invalidates the cache and

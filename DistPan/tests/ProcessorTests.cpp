@@ -102,26 +102,29 @@ bool allFinite (const juce::AudioBuffer<float>& b, int channels)
 }
 }
 
-/** The host sees the shared parameters first, then rolloff and blur. */
+/** The host lists the global parameters first (counts, outside rolloff, rolloff, blur), then each source, then each speaker (with its weight). */
 static void testParameterOrder()
 {
     DistPanAudioProcessor p;
     const auto& parameters = p.getParameters();
-    const int total = 2 + 64 * 7 + 64 * 6 + 1 + 2 + 64;
+    const int total = 3 + 2 + 64 * 7 + 64 * 7;
 
     CHECK (parameters.size() == total);
 
     const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
-    CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId);
-    CHECK (idOf (2) == tlos::params::sourceId (0, 'x'));
-    CHECK (idOf (2 + 64 * 7) == tlos::params::speakerId (0, 'x'));
-    const int outsideIndex = 2 + 64 * 7 + 64 * 6;
-    CHECK (idOf (outsideIndex - 1) == tlos::params::speakerExcludeId (63));
-    CHECK (idOf (outsideIndex) == tlos::params::kOutsideRolloffId);
-    CHECK (idOf (outsideIndex + 1) == distpan::params::kRolloffId && idOf (outsideIndex + 2) == distpan::params::kBlurId);
-    CHECK (parameters[outsideIndex + 1]->getName (64) == "Rolloff" && parameters[outsideIndex + 2]->getName (64) == "Blur");
-    CHECK (idOf (outsideIndex + 3) == distpan::params::speakerWeightId (0) && idOf (total - 1) == distpan::params::speakerWeightId (63));
-    CHECK (parameters[outsideIndex + 3]->getName (64) == "Speaker 1 Weight" && parameters[total - 1]->getName (64) == "Speaker 64 Weight");
+    CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId && idOf (2) == tlos::params::kOutsideRolloffId);
+    CHECK (idOf (3) == distpan::params::kRolloffId && idOf (4) == distpan::params::kBlurId);
+    CHECK (parameters[3]->getName (64) == "Rolloff" && parameters[4]->getName (64) == "Blur");
+    CHECK (idOf (5) == tlos::params::sourceId (0, 'x'));
+    const int speakers = 5 + 64 * 7;
+    CHECK (idOf (speakers - 1) == tlos::params::sourceGroupId (63));
+    CHECK (idOf (speakers) == tlos::params::speakerId (0, 'x'));
+    CHECK (idOf (speakers + 5) == tlos::params::speakerExcludeId (0) && idOf (speakers + 6) == distpan::params::speakerWeightId (0));
+    CHECK (parameters[speakers + 6]->getName (64) == "Speaker 1 Weight" && idOf (speakers + 7) == tlos::params::speakerId (1, 'x'));
+    CHECK (idOf (total - 1) == distpan::params::speakerWeightId (63) && parameters[total - 1]->getName (64) == "Speaker 64 Weight");
+
+    const auto& tree = p.getParameterTree();
+    CHECK (tree.getSubgroups (false).size() == 3 && tree.getSubgroups (false).getFirst()->getName() == "Global");
 
     CHECK (std::abs (getParam (p, distpan::params::kRolloffId) - distpan::params::kDefaultRolloff) < 1e-6f);
     CHECK (std::abs (getParam (p, distpan::params::kBlurId) - distpan::params::kDefaultBlur) < 1e-6f);

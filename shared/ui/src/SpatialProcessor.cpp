@@ -68,17 +68,14 @@ int clampCount (float parameterValue, int channels) noexcept
 namespace
 {
 /** The shared parameters followed by the plugin's own. */
-juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (std::vector<std::unique_ptr<juce::RangedAudioParameter>> extra, bool virtualSpeakers)
+juce::AudioProcessorValueTreeState::ParameterLayout makeLayout (params::PluginParameters extra, bool virtualSpeakers)
 {
-    auto layout = params::createLayout (virtualSpeakers);
-    for (auto& parameter : extra)
-        layout.add (std::move (parameter));
-    return layout;
+    return params::createLayout (virtualSpeakers, std::move (extra));
 }
 }
 
 SpatialProcessor::SpatialProcessor (const BusesProperties& buses, const juce::String& stateType,
-                                    std::vector<std::unique_ptr<juce::RangedAudioParameter>> extraParameters,
+                                    params::PluginParameters extraParameters,
                                     bool virtualSpeakerParameters)
     : AudioProcessor (buses),
       apvts (*this, nullptr, stateType, makeLayout (std::move (extraParameters), virtualSpeakerParameters)),
