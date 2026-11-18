@@ -190,6 +190,14 @@ public:
     /** Current position of a handle in metres. */
     juce::Point<double> position (const Handle& handle) const;
 
+    /** @return The name of a handle for readouts: "Source 3", "Speaker 2" or "Virtual speaker 1" (one-based). */
+    static juce::String nameOf (const Handle& handle);
+
+    /** @return The position of a handle as text in the processor's coordinate mode: "x 1.20 m, y 3.40 m", or
+        "azimuth 20.0 deg, distance 3.60 m" in polar mode (with the degree sign; a handle at the origin shows
+        azimuth 0). Used by the tooltip and the drag readout. */
+    juce::String positionText (const Handle& handle) const;
+
     /** Plane coordinates (metres) -> component coordinates. */
     juce::Point<float> toView (double x, double y) const;
     /** Topmost handle within grab distance of p (component coordinates), sources before speakers. Handles that
@@ -235,7 +243,8 @@ public:
     void mouseMove (const juce::MouseEvent&) override;
     /** Cmd+G groups the selection, Cmd+Shift+G ungroups it, Escape clears the selection. */
     bool keyPressed (const juce::KeyPress&) override;
-    /** Adds the group of the hovered source to the tooltip. */
+    /** Starts the tooltip with the name and position of the hovered source or speaker (in the processor's coordinate mode),
+        and adds the group of a hovered source. */
     juce::String getTooltip() override;
 
     /** The square, in component coordinates, in which the visible part of the plane is drawn (the pad's border). */

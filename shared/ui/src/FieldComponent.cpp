@@ -8,6 +8,7 @@
 #include "tlos/Parameters.h"
 
 #include "tlos/Groups.h"
+#include "tlos/Polar.h"
 
 #include <algorithm>
 #include <cmath>
@@ -328,13 +329,40 @@ bool FieldComponent::keyPressed (const juce::KeyPress& key)
     return false;
 }
 
+juce::String FieldComponent::nameOf (const Handle& h)
+{
+    return (h.isSource ? "Source " : h.isVirtual ? "Virtual speaker " : "Speaker ") + juce::String (h.index + 1);
+}
+
+juce::String FieldComponent::positionText (const Handle& h) const
+{
+    const auto p = position (h);
+
+    if (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar)
+    {
+        const auto polar = toPolar ({ p.x, p.y });
+        return "azimuth " + juce::String (std::abs (polar.azimuthDegrees) < 0.05 ? 0.0 : polar.azimuthDegrees, 1)
+             + juce::String (juce::CharPointer_UTF8 ("\xc2\xb0")) + ", distance " + juce::String (polar.distance, 2) + " m";
+    }
+
+    const auto clean = [] (double v) { return std::abs (v) < 0.005 ? 0.0 : v; };
+    return "x " + juce::String (clean (p.x), 2) + " m, y " + juce::String (clean (p.y), 2) + " m";
+}
+
 juce::String FieldComponent::getTooltip()
 {
-    if (hovered && hovered->isSource)
+    if (hovered)
     {
-        const int id = groups.groupOf (hovered->index);
-        if (id > 0)
-            return "Group " + juce::String (id) + " (" + juce::String (groups.sizeOf (id, activeSources())) + " sources)\n" + baseTooltip;
+        auto text = nameOf (*hovered) + ": " + positionText (*hovered) + "\n";
+
+        if (hovered->isSource)
+        {
+            const int id = groups.groupOf (hovered->index);
+            if (id > 0)
+                text += "Group " + juce::String (id) + " (" + juce::String (groups.sizeOf (id, activeSources())) + " sources)\n";
+        }
+
+        return text + baseTooltip;
     }
 
     return baseTooltip;
@@ -930,6 +958,19 @@ void FieldComponent::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white);
         g.setFont (juce::FontOptions (11.0f));
         g.drawText (text, label, juce::Justification::centred);
+    }
+
+    // While a source, speaker or virtual speaker is being moved, show its position next to it.
+    if (dragging && ! draggingSpread && (dragMode == DragMode::Move || dragMode == DragMode::MoveOne))
+    {
+        const auto pos = position (*dragging);
+        const auto c = toView (pos.x, pos.y) + juce::Point<float> (0.0f, 26.0f);
+        const auto label = juce::Rectangle<float> (200.0f, 16.0f).withCentre (c);
+        g.setColour (juce::Colour (0xff15181d).withAlpha (0.8f));
+        g.fillRoundedRectangle (label, 3.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (juce::FontOptions (11.0f));
+        g.drawText (positionText (*dragging), label, juce::Justification::centred);
     }
 
     if (marquee)

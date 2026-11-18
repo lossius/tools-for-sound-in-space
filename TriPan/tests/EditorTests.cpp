@@ -521,6 +521,16 @@ static void testCalibrationInterface (const char* snapshotPath)
         CHECK (std::abs (sources.getMainTable().getValue (0, Col::yColumn) - 3.0) < 1e-3);
         CHECK (sources.getMainTable().getTable().getHeader().getColumnName (Col::xColumn).startsWith ("Azimuth"));
         CHECK (sources.getCoordinateBox().getSelectedId() == 2 && speakers.getCoordinateBox().getSelectedId() == 2);
+
+        // The pad's tooltip and drag readout use the same mode.
+        auto& pad = editor->getField();
+        const tlos::FieldComponent::Handle first { true, 0 };
+        CHECK (pad.positionText (first).startsWith ("azimuth 90.0") && pad.positionText (first).endsWith ("distance 3.00 m"));
+        CHECK (tlos::FieldComponent::nameOf (first) == "Source 1" && tlos::FieldComponent::nameOf ({ false, 1 }) == "Speaker 2"
+               && tlos::FieldComponent::nameOf ({ false, 0, true }) == "Virtual speaker 1");
+        p.setCoordinateMode (Mode::Cartesian);
+        CHECK (pad.positionText (first) == "x -3.00 m, y 0.00 m");
+        p.setCoordinateMode (Mode::Polar);
         sources.getCoordinateBox().setSelectedId (1, juce::sendNotificationSync);          // the menu in the table window sets the mode
         CHECK (p.getCoordinateMode() == Mode::Cartesian);
         sources.getCoordinateBox().setSelectedId (2, juce::sendNotificationSync);
