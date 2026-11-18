@@ -556,6 +556,22 @@ PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
         addAndMakeVisible (virtualModeBox);
     }
 
+    // How positions are shown and typed, the same setting as in the settings window.
+    coordinateBox.addItem ("Cartesian (x, y)", 1);
+    coordinateBox.addItem ("Polar (azimuth, distance)", 2);
+    coordinateBox.setTooltip ("How positions are shown and edited. Azimuth is in degrees, counter-clockwise from the front.");
+    coordinateBox.setSelectedId (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 2 : 1, juce::dontSendNotification);
+    coordinateBox.onChange = [this]
+    {
+        if (! syncing)
+        {
+            processor.setCoordinateMode (coordinateBox.getSelectedId() == 2 ? SpatialProcessor::CoordinateMode::Polar
+                                                                            : SpatialProcessor::CoordinateMode::Cartesian);
+            refresh();
+        }
+    };
+    addAndMakeVisible (coordinateBox);
+
     // The room size, the same setting as in the settings window.
     roomLabel.setJustificationType (juce::Justification::centredRight);
     roomLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -594,9 +610,9 @@ const juce::String& PositionTableContent::countParameterId() const
 
 int PositionTableContent::getPreferredWidth() const
 {
-    const int roomWidth = 16 + 76 + 190;    // gap, caption, slider
-    const int topBar = kind == io::Kind::Sources ? 130 + 110 + roomWidth
-                                                         : 130 + 110 + 16 + 110 + 90 + roomWidth;
+    const int firstRow = kind == io::Kind::Sources ? 130 + 110 : 130 + 110 + 16 + 110 + 90;   // count, (virtual speaker menu)
+    const int secondRow = kCoordinateBoxWidth + 16 + 76 + 190;                                  // coordinates, room size
+    const int topBar = std::max (firstRow, secondRow);
     int tables = mainTable->getPreferredWidth();
     if (virtualTable != nullptr)
         tables += kGap + virtualTable->getPreferredWidth();
@@ -606,7 +622,7 @@ int PositionTableContent::getPreferredWidth() const
 
 int PositionTableContent::getHeightForRows (int rows) const
 {
-    return kMargin + kTopBarHeight + 8 + PositionTable::kCaptionHeight + PositionTable::kHeaderHeight
+    return kMargin + 2 * kTopBarHeight + 8 + PositionTable::kCaptionHeight + PositionTable::kHeaderHeight
          + rows * PositionTable::kRowHeight + 2 + kMargin;
 }
 
@@ -628,6 +644,10 @@ void PositionTableContent::refresh()
 
     if (! juce::approximatelyEqual (roomSlider.getValue(), processor.getRoomHalfExtent()) && ! roomSlider.isMouseButtonDown())
         roomSlider.setValue (processor.getRoomHalfExtent(), juce::dontSendNotification);
+
+    const int wantedCoordinates = processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 2 : 1;
+    if (coordinateBox.getSelectedId() != wantedCoordinates)
+        coordinateBox.setSelectedId (wantedCoordinates, juce::dontSendNotification);
 
     if (! sources && virtualModeBox.getSelectedId() != (int) processor.getVirtualMode())
         virtualModeBox.setSelectedId ((int) processor.getVirtualMode(), juce::dontSendNotification);
@@ -678,6 +698,10 @@ void PositionTableContent::resized()
         virtualLabel.setBounds (bar.removeFromLeft (110));
         virtualModeBox.setBounds (bar.removeFromLeft (90).reduced (0, 4));
     }
+
+    // Second row: how positions are shown, and the room size.
+    bar = area.removeFromTop (kTopBarHeight);
+    coordinateBox.setBounds (bar.removeFromLeft (kCoordinateBoxWidth).reduced (0, 4));
     bar.removeFromLeft (16);
     roomLabel.setBounds (bar.removeFromLeft (76));
     roomSlider.setBounds (bar.removeFromLeft (190).reduced (0, 4));

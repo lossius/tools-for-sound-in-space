@@ -516,9 +516,15 @@ static void testCalibrationInterface (const char* snapshotPath)
         setParam (p, tlos::params::sourceId (0, 'y'), 0.0f);
         p.setCoordinateMode (Mode::Polar);
         sources.refresh();
+        speakers.refresh();
         CHECK (std::abs (sources.getMainTable().getValue (0, Col::xColumn) - 90.0) < 1e-3);
         CHECK (std::abs (sources.getMainTable().getValue (0, Col::yColumn) - 3.0) < 1e-3);
         CHECK (sources.getMainTable().getTable().getHeader().getColumnName (Col::xColumn).startsWith ("Azimuth"));
+        CHECK (sources.getCoordinateBox().getSelectedId() == 2 && speakers.getCoordinateBox().getSelectedId() == 2);
+        sources.getCoordinateBox().setSelectedId (1, juce::sendNotificationSync);          // the menu in the table window sets the mode
+        CHECK (p.getCoordinateMode() == Mode::Cartesian);
+        sources.getCoordinateBox().setSelectedId (2, juce::sendNotificationSync);
+        CHECK (p.getCoordinateMode() == Mode::Polar);
         CHECK (sources.getMainTable().getTable().getHeader().getColumnName (Col::yColumn) == "Distance (m)");
 
         CHECK (sources.getMainTable().setValueFromText (0, Col::xColumn, "0") == "0.0");   // to the front, distance kept
