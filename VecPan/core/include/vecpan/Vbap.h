@@ -74,8 +74,14 @@ struct VbapSettings
 {
     /** Level drop in dB for each doubling of (1 + the distance outside the speaker layout in metres), see
         tlos::outsideFactor(). 0 = the level stays constant outside the layout. The distance of a source inside the layout never
-        changes its level: VBAP uses only the direction. */
+        changes its level (VBAP uses only the direction), except for the blend near the listener, see centreRadius. */
     double outsideRolloffDb = 0.0;
+
+    /** Radius in metres around the listener inside which the sound is blended towards an even share over all speakers. At the
+        listener a source has no direction and every speaker gets the same share; the blend grows smoothly (smoothstep of
+        distance / radius) from there to plain VBAP at this distance, so that a source moving through the centre does not jump.
+        0 = no blend: a source anywhere but exactly at the listener is panned by its direction alone. */
+    double centreRadius = 0.0;
 };
 
 /** The azimuth of a point as seen from the origin: radians counter-clockwise from the front (+y), x = -d sin(az), y = d cos(az). */
@@ -94,12 +100,13 @@ double azimuthOf (tlos::Vec2 p) noexcept;
     atan(spread / distance) from it, are panned and their squared gains averaged (MDAP-like; constant power, continuous). A
     source at the listener with a spread is shared equally.
 
+    Within VbapSettings::centreRadius of the listener the powers are blended with an even share over all speakers (see there).
     The level outside the layout falls off as in the other plugins (see VbapSettings). Real-time safe: no allocation, no locks.
 
     @param layout    The speakers (build it once when they change).
     @param source    The source position in metres.
     @param spread    The source's spread radius in metres (0 = a point source).
-    @param settings  The outside rolloff.
+    @param settings  The centre radius and the outside rolloff.
     @return          Entries for the speakers with a non-zero gain (speaker = index into the layout's speakers), or count == 0 if the
                      source position is not finite or no speaker takes part. */
 tlos::SourceGains computeGains (const Layout& layout, tlos::Vec2 source, double spread, const VbapSettings& settings = {}) noexcept;

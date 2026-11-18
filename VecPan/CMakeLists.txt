@@ -30,7 +30,8 @@ target_sources(VecPan PRIVATE
     Source/PluginEditor.cpp
     Source/PluginEditor.h
     Source/VecPanField.cpp
-    Source/VecPanField.h)
+    Source/VecPanField.h
+    Source/VecPanParameters.h)
 # In the IDE, sources and headers sit in separate subfolders.
 source_group("Sources/src" FILES
     Source/PluginProcessor.cpp
@@ -39,7 +40,8 @@ source_group("Sources/src" FILES
 source_group("Sources/include" FILES
     Source/PluginProcessor.h
     Source/PluginEditor.h
-    Source/VecPanField.h)
+    Source/VecPanField.h
+    Source/VecPanParameters.h)
 
 tlos_finish_plugin(VecPan)
 target_link_libraries(VecPan PUBLIC VecPanCore)

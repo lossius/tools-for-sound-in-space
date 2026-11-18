@@ -52,7 +52,10 @@ public:
     /** @return Polar: the positions of a VBAP layout are angles, so the tables and the pad grid start in azimuth and distance. */
     CoordinateMode defaultCoordinateMode() const override { return CoordinateMode::Polar; }
 
-    /** @return The current settings of the panning law (the outside rolloff). Safe to call from any thread. */
+    /** @return /vbap/centre: the centre radius. */
+    std::vector<tlos::OscParameter> getOscParameters() const override;
+
+    /** @return The current settings of the panning law (the outside rolloff and the centre radius). Safe to call from any thread. */
     vecpan::VbapSettings getSettings() const noexcept;
 
 protected:
@@ -77,6 +80,8 @@ private:
     bool havePublished = false;                ///< Whether anything has been published (message thread only).
     std::uint64_t nextSetId = 1;               ///< Id of the next published set (message thread only).
 
+    std::atomic<float>* centreRadiusParam = nullptr;   ///< Raw value of "Centre Radius".
+
     // Audio thread only
     GainMatrix prevGains {};   ///< Gains at the end of the previous block (with trim, mute and solo).
     GainMatrix panGains {};    ///< The panning gains of each source alone: what the cache holds.
@@ -90,6 +95,7 @@ private:
         float y = 0.0f;              ///< Source y position.
         float spread = 0.0f;         ///< Source spread radius.
         float outside = 0.0f;        ///< Outside rolloff the gains were computed with.
+        float centre = 0.0f;         ///< Centre radius the gains were computed with.
         std::uint64_t setId = 0;     ///< SpeakerSet::id the gains belong to.
         bool valid = false;          ///< False until gains have been computed.
     };

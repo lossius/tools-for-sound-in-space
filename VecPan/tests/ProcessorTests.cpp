@@ -6,6 +6,7 @@
     the layout, exclude, silent unused speakers, state round-trip, 64x64, speaker layout files, parameter order. */
 
 #include "../Source/PluginProcessor.h"
+#include "../Source/VecPanParameters.h"
 #include "tlos/Parameters.h"
 #include "tlos/PositionIO.h"
 
@@ -128,19 +129,21 @@ static double sumOf (const std::vector<double>& v)
 }
 
 
-/** The host lists the global parameters first (counts, outside rolloff), then each source, then each speaker. VecPan has no parameters of its own. */
+/** The host lists the global parameters first (counts, outside rolloff, centre radius), then each source, then each speaker. */
 static void testParameterOrder()
 {
     VecPanAudioProcessor p;
     const auto& parameters = p.getParameters();
-    const int total = 3 + 64 * 7 + 64 * 6;
+    const int total = 4 + 64 * 7 + 64 * 6;
 
     CHECK (parameters.size() == total);
 
     const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
     CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId && idOf (2) == tlos::params::kOutsideRolloffId);
-    CHECK (idOf (3) == tlos::params::sourceId (0, 'x'));
-    const int speakers = 3 + 64 * 7;
+    CHECK (idOf (3) == vecpan::params::kCentreRadiusId && parameters[3]->getName (64) == "Centre Radius");
+    CHECK (std::abs (getParam (p, vecpan::params::kCentreRadiusId) - vecpan::params::kDefaultCentreRadius) < 1e-6f);
+    CHECK (idOf (4) == tlos::params::sourceId (0, 'x'));
+    const int speakers = 4 + 64 * 7;
     CHECK (idOf (speakers - 1) == tlos::params::sourceGroupId (63));
     CHECK (idOf (speakers) == tlos::params::speakerId (0, 'x'));
     CHECK (idOf (speakers + 5) == tlos::params::speakerExcludeId (0) && idOf (speakers + 6) == tlos::params::speakerId (1, 'x'));
@@ -150,7 +153,7 @@ static void testParameterOrder()
     CHECK (tree.getSubgroups (false).size() == 3 && tree.getSubgroups (false).getFirst()->getName() == "Global");
 
     CHECK (! p.supportsVirtualSpeakers() && p.getVirtualMode() == tlos::VirtualMode::Off);
-    CHECK (! p.getSpeakerColumn().has_value());
+    CHECK (! p.getSpeakerColumn().has_value() && p.getOscParameters().size() == 1);
     CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);   // VBAP positions are directions
 }
 
@@ -243,6 +246,7 @@ static void testStateRoundTrip()
     CHECK (configure (a, 4, 6, 256));
     setParam (a, tlos::params::speakerId (3, 'x'), 1.25f);
     setParam (a, tlos::params::sourceId (2, 'y'), -2.5f);
+    setParam (a, vecpan::params::kCentreRadiusId, 1.75f);
     a.setSpeakersEditable (true);
     a.setSourcesEditable (false);
     a.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Cartesian);
@@ -259,6 +263,7 @@ static void testStateRoundTrip()
 
     CHECK (std::abs (getParam (b, tlos::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
     CHECK (std::abs (getParam (b, tlos::params::sourceId (2, 'y')) + 2.5f) < 1e-4f);
+    CHECK (std::abs (getParam (b, vecpan::params::kCentreRadiusId) - 1.75f) < 1e-4f);
     CHECK (! b.canEditSources() && b.canEditSpeakers());
     CHECK (b.getSourceGroups() == groups);
     CHECK (b.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Cartesian);
@@ -341,6 +346,40 @@ static void testExclude()
     for (int i = 0; i < 8; ++i)
         p.setSpeakerExcluded (i, false);
     CHECK (std::abs (sumOf (channelEnergies (p, buf, 8, 0, rng)) - 1.0) < 1e-3);
+}
+
+/** The centre radius: a source at the listener is shared equally, one on its way out blends smoothly to a speaker pair; 0 switches the blend off. */
+static void testCentreRadius()
+{
+    VecPanAudioProcessor p;
+    CHECK (configure (p, 1, 8, 512));
+    setParam (p, vecpan::params::kCentreRadiusId, 2.0f);
+    // Towards speaker 0 (the front), along the front axis.
+    const auto run = [&] (float y)
+    {
+        setParam (p, tlos::params::sourceId (0, 'x'), 0.0f);
+        setParam (p, tlos::params::sourceId (0, 'y'), y);
+        juce::AudioBuffer<float> buf (8, 512);
+        std::mt19937 rng (50);
+        return channelEnergies (p, buf, 8, 0, rng);
+    };
+
+    const auto centre = run (0.0f);
+    for (int ch = 0; ch < 8; ++ch)
+        CHECK (std::abs (centre[(size_t) ch] - 0.125) < 0.005);          // every speaker the same share
+
+    double previous = centre[0];
+    for (float y : { 0.5f, 1.0f, 1.5f, 2.0f })
+    {
+        const auto e = run (y);
+        CHECK (std::abs (sumOf (e) - 1.0) < 1e-3);
+        CHECK (e[0] > previous - 1e-6);                                    // more and more towards the speaker it points at
+        previous = e[0];
+    }
+    CHECK (previous > 0.999);                                              // at the radius: plain VBAP, on speaker 0
+
+    setParam (p, vecpan::params::kCentreRadiusId, 0.0f);                   // off: a source just off the centre is a point source
+    CHECK (run (0.05f)[0] > 0.999);
 }
 
 /** A stereo pair is the classic tangent-law pan, and a source anywhere keeps constant power. */
@@ -542,6 +581,7 @@ int main (int argc, char** argv)
     testParameterOrder();
     testStationaryEnergyAndLocality();
     testStereoPair();
+    testCentreRadius();
     testOutsideFalloff();
     testExclude();
     testSpeakerUpdate();

@@ -65,14 +65,16 @@ rolloff comes on top of that. Sessions saved before this setting existed get the
 Two-dimensional vector base amplitude panning (VBAP, Pulkki) around the listener at the centre. A source is panned between the two
 speakers on either side of its direction, seen from the listener, with constant power; a source exactly on a speaker's direction uses
 that speaker alone. Only the direction counts, so the speakers need not lie on a circle, and the distance of a source inside the
-layout changes nothing. VecPan has no host parameters of its own; its positions are shown in azimuth and distance by default
-(see *Coordinates*).
+layout changes nothing, with one exception near the listener: the **Centre radius** (0-5 m, default 0.5 m, a host parameter, under Panning in
+the settings window). A source at the listener has no direction and is shared equally by all speakers; within the centre radius the sound is blended
+smoothly (smoothstep of distance / radius) from that even share to the plain VBAP pan, so a source moving through the centre does not jump
+from one speaker pair to another. 0 switches the blend off. Positions are shown in azimuth and distance by default (see *Coordinates*).
 
 - **Speakers that do not surround the listener** (for example a stereo pair, or speakers on one side only): no vector base exists across a
   gap of 180 degrees or more, so the two speakers on either side of the gap share the sound with a sine/cosine cross-fade over the angle.
   The panning stays continuous and keeps constant power.
 - **Spread** is an angular width: a source of spread *s* at distance *d* is panned as three directions, at its own azimuth and at plus
-  and minus atan(*s* / *d*), and their powers are averaged (like MDAP). A source at the listener has no direction and is shared equally.
+  and minus atan(*s* / *d*), and their powers are averaged (like MDAP). A source at the listener is shared equally (see the centre radius above).
 - **Speakers in the same direction** count as one (the lowest-numbered takes the sound); a speaker exactly at the listener has no direction and
   takes no part.
 - **Level outside the speakers**: as in the other plugins (see *Level outside the speakers*).
@@ -98,7 +100,7 @@ settings that are not edits of the sound stay with the session only: the Edit/Vi
 
 ## Parameters in the host
 The host lists the global parameters first: the number of sources and speakers, the outside rolloff, the virtual speaker mode and number (TriPan) or
-the rolloff and blur (DistPan). After them come the parameters of each source (x, y, spread, trim, mute, solo, group), of each speaker (x, y, trim, mute,
+the rolloff and blur (DistPan) or the centre radius (VecPan). After them come the parameters of each source (x, y, spread, trim, mute, solo, group), of each speaker (x, y, trim, mute,
 solo, exclude, and DistPan's weight) and, in TriPan, the positions of the manual virtual speakers. Hosts that show parameters as a tree (VST3 and AU hosts such as
 Cubase, Studio One, Bitwig and Logic) get the same structure as folders: Global, Sources, Speakers and Virtual Speakers, with one folder per source and per speaker.
 
@@ -126,7 +128,7 @@ The **Settings...** button, at the right end of the third row below the two **Ta
 window stays uncluttered:
 
 - **Room**: the room size.
-- **Panning**: the outside rolloff, the virtual speakers menu (TriPan), and DistPan's own **DBAP rolloff** and **DBAP blur**.
+- **Panning**: the outside rolloff, the virtual speakers menu (TriPan), DistPan's own **DBAP rolloff** and **DBAP blur**, and VecPan's **Centre radius**.
 - **OSC**: the settings and a live view of the traffic (see *OSC control*).
 
 The window opens beside the plugin window, stays in front of it, and closing it only hides it. The room size is also in the top
@@ -163,6 +165,7 @@ floats or ints; address patterns with wildcards are not supported.
 | `/outside/rolloff` | dB per doubling outside the layout |
 | `/sources/count`, `/speakers/count` | the number in use |
 | `/dbap/rolloff`, `/dbap/blur` | DistPan only |
+| `/vbap/centre` | VecPan only: the centre radius in metres |
 | `/dump` | send everything now |
 
 **ADM-OSC** objects work as well, for sources: `/adm/obj/N/xyz` (three floats from -1 to 1, x right, y front, z is accepted

@@ -175,29 +175,36 @@ tlos::SourceGains computeGains (const Layout& layout, tlos::Vec2 source, double 
 
     std::array<double, (size_t) tlos::kMaxGainEntries> power {};
     const double distance = std::hypot (source.x, source.y);
+    const double radius = std::isfinite (settings.centreRadius) ? std::max (settings.centreRadius, 0.0) : 0.0;
 
+    // Weight of the directional panning: 0 at the listener, 1 from the centre radius outwards (smoothstep in between).
+    double directional = 1.0;
     if (distance < 1e-9)
-    {
-        // No direction: every speaker gets the same share.
-        for (const auto& e : layout.entries())
-            power[(size_t) e.speaker] = 1.0 / (double) layout.size();
-    }
-    else
+        directional = 0.0;
+    else if (distance < radius)
+        directional = (distance / radius) * (distance / radius) * (3.0 - 2.0 * distance / radius);
+
+    if (directional > 0.0)
     {
         const double azimuth = azimuthOf (source);
         const double width = std::isfinite (spread) && spread > 0.0 ? std::atan2 (spread, distance) : 0.0;
 
         if (width > 0.0)
         {
-            addPower (layout, azimuth - width, 1.0 / 3.0, power);
-            addPower (layout, azimuth,         1.0 / 3.0, power);
-            addPower (layout, azimuth + width, 1.0 / 3.0, power);
+            addPower (layout, azimuth - width, directional / 3.0, power);
+            addPower (layout, azimuth,         directional / 3.0, power);
+            addPower (layout, azimuth + width, directional / 3.0, power);
         }
         else
         {
-            addPower (layout, azimuth, 1.0, power);
+            addPower (layout, azimuth, directional, power);
         }
     }
+
+    // The rest is an even share over all speakers (all of it at the listener).
+    if (directional < 1.0)
+        for (const auto& e : layout.entries())
+            power[(size_t) e.speaker] += (1.0 - directional) / (double) layout.size();
 
     double factor = 1.0;
     if (settings.outsideRolloffDb > 0.0 && layout.hull().hasArea())

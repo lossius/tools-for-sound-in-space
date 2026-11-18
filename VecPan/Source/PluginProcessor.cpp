@@ -6,6 +6,7 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "VecPanParameters.h"
 #include "tlos/Parameters.h"
 
 #include <algorithm>
@@ -15,13 +16,19 @@ VecPanAudioProcessor::VecPanAudioProcessor()
     : SpatialProcessor (BusesProperties()
                             .withInput  ("Sources",  juce::AudioChannelSet::stereo(), true)
                             .withOutput ("Speakers", juce::AudioChannelSet::stereo(), true),
-                        "VecPan")
+                        "VecPan", vecpan::params::createParameters())
 {
+    centreRadiusParam = apvts.getRawParameterValue (vecpan::params::kCentreRadiusId);
+}
+
+std::vector<tlos::OscParameter> VecPanAudioProcessor::getOscParameters() const
+{
+    return { { "/vbap/centre", vecpan::params::kCentreRadiusId } };
 }
 
 vecpan::VbapSettings VecPanAudioProcessor::getSettings() const noexcept
 {
-    return { getOutsideRolloff() };
+    return { getOutsideRolloff(), (double) centreRadiusParam->load() };
 }
 
 void VecPanAudioProcessor::refreshLayout()
@@ -88,7 +95,7 @@ void VecPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     // Target gains from the current source positions, the settings and the latest published speakers.
     const SpeakerSet* speakers = exchange.acquire();
-    const float outside = outsideRolloffParam->load();
+    const float outside = outsideRolloffParam->load(), centre = centreRadiusParam->load();
 
     // Sources beyond the "Number of Sources" setting get no gains, so they fade out and stay silent.
     // (The speaker set only contains the speakers in use, so unused outputs stay silent too.)
@@ -111,15 +118,16 @@ void VecPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         // A source that has not moved, with unchanged speakers and settings, keeps its panning gains.
         const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load(), spread = srcSpread[(size_t) s]->load();
         if (key.valid && key.setId == speakers->id && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y)
-            && juce::exactlyEqual (key.spread, spread) && juce::exactlyEqual (key.outside, outside))
+            && juce::exactlyEqual (key.spread, spread) && juce::exactlyEqual (key.outside, outside)
+            && juce::exactlyEqual (key.centre, centre))
             continue;
 
-        const auto gains = vecpan::computeGains (speakers->layout, { (double) x, (double) y }, (double) spread, { (double) outside });
+        const auto gains = vecpan::computeGains (speakers->layout, { (double) x, (double) y }, (double) spread, { (double) outside, (double) centre });
         row.fill (0.0f);
         for (int i = 0; i < gains.count; ++i)
             row[(size_t) speakers->channelOf[(size_t) gains.speaker[(size_t) i]]] = gains.gain[(size_t) i];
 
-        key = { x, y, spread, outside, speakers->id, true };
+        key = { x, y, spread, outside, centre, speakers->id, true };
     }
 
     // Trim, mute and solo of the sources and speakers scale the panning gains.

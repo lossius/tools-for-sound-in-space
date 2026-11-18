@@ -214,6 +214,63 @@ static void testSpread()
     CHECK (isNear (gainOf (computeGains (layout, { 0.0, 0.0 }, 3.0), 0), std::sqrt (1.0 / 8.0)));
 }
 
+/** The centre radius: an even share at the listener, plain VBAP from the radius outwards, continuous in between, constant power. */
+static void testCentreRadius()
+{
+    std::vector<Vec2> spk;
+    for (int i = 0; i < 8; ++i)
+        spk.push_back (at (-45.0 * i));
+    const Layout layout (spk);
+    VbapSettings blend;
+    blend.centreRadius = 2.0;
+
+    // At the listener: every speaker the same; from the radius outwards: as without the blend.
+    const auto centre = computeGains (layout, { 0.0, 0.0 }, 0.0, blend);
+    CHECK (centre.count == 8 && isNear (gainOf (centre, 0), std::sqrt (1.0 / 8.0)));
+    for (double d : { 2.0, 2.5, 20.0 })
+    {
+        const auto with = computeGains (layout, at (-10.0, d), 0.0, blend);
+        const auto without = computeGains (layout, at (-10.0, d), 0.0);
+        for (int s = 0; s < 8; ++s)
+            CHECK (isNear (gainOf (with, s), gainOf (without, s), 1e-6));
+    }
+
+    // Inside the radius: constant power, a smooth move from the even share to the directional pan, no jump through the centre.
+    for (double d = 0.0; d <= 2.0; d += 0.05)
+        CHECK (isNear (sumSq (computeGains (layout, at (-10.0, d), 0.0, blend)), 1.0));
+
+    // The speaker it points at gets more and more of the sound on the way out (monotonic), and nothing jumps.
+    double previousGain = gainOf (centre, 0);
+    tlos::SourceGains previous = centre;
+    for (double d = 0.01; d <= 2.0; d += 0.01)
+    {
+        const auto g = computeGains (layout, at (0.0, d), 0.0, blend);
+        CHECK (gainOf (g, 0) >= previousGain - 1e-6);
+        for (int s = 0; s < 8; ++s)
+            CHECK (std::abs (gainOf (g, s) - gainOf (previous, s)) < 0.05);
+        previousGain = gainOf (g, 0);
+        previous = g;
+    }
+
+    // A path straight through the centre (front to back) is continuous.
+    previous = computeGains (layout, at (0.0, 3.0), 0.0, blend);
+    for (double y = 3.0; y >= -3.0; y -= 0.01)
+    {
+        const auto g = computeGains (layout, { 0.0, y }, 0.0, blend);
+        for (int s = 0; s < 8; ++s)
+            CHECK (std::abs (gainOf (g, s) - gainOf (previous, s)) < 0.06);
+        previous = g;
+    }
+
+    // Without a radius a source near (but not at) the listener is a point source, as before; invalid radii are off.
+    CHECK (computeGains (layout, at (0.0, 0.01), 0.0).count == 1);
+    CHECK (computeGains (layout, at (0.0, 0.01), 0.0, { .centreRadius = std::numeric_limits<double>::quiet_NaN() }).count == 1);
+    CHECK (computeGains (layout, at (0.0, 0.01), 0.0, { .centreRadius = -1.0 }).count == 1);
+
+    // With a spread the blend still applies and keeps the power.
+    CHECK (isNear (sumSq (computeGains (layout, at (0.0, 1.0), 2.0, blend)), 1.0));
+}
+
 /** The level outside the layout falls off like the other plugins'; inside, the distance changes nothing. */
 static void testOutside()
 {
@@ -250,6 +307,7 @@ int main()
     testWideGap();
     testEdgeCases();
     testSpread();
+    testCentreRadius();
     testOutside();
     testLayoutOrder();
 

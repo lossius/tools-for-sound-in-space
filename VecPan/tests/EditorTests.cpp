@@ -6,6 +6,7 @@
     parameters, the pad shows the speaker pairs, VBAP links and the polar grid; optional PNG snapshot (pass an output path as argv[1]). */
 
 #include "../Source/PluginEditor.h"
+#include "../Source/VecPanParameters.h"
 #include "../Source/PluginProcessor.h"
 #include "tlos/Parameters.h"
 
@@ -67,12 +68,19 @@ int main (int argc, char** argv)
     CHECK (p.canEditSpeakers());
     editor->getSpeakersModeBox().setSelectedId (2, juce::sendNotificationSync);
 
-    // The settings window has no row of VecPan's own, and starts in polar coordinates.
+    // The settings window has VecPan's centre radius row (under Panning), and starts in polar coordinates.
     {
         auto& window = editor->showSettingsWindow();
         CHECK (window.isVisible() && window.getName() == "VecPan - Settings");
         CHECK (! editor->getVirtualModeBox().isVisible());
         CHECK (editor->getSettingsContent().getCoordinateBox().getSelectedId() == 2);
+        auto& centre = editor->getCentreRadiusSlider();
+        CHECK (centre.isVisible() && centre.getParentComponent() == &editor->getSettingsContent());
+        CHECK (std::abs (centre.getValue() - (double) vecpan::params::kDefaultCentreRadius) < 1e-3);
+        centre.setValue (1.5, juce::sendNotificationSync);
+        CHECK (std::abs (value (p, vecpan::params::kCentreRadiusId) - 1.5f) < 1e-3f);
+        setParam (p, vecpan::params::kCentreRadiusId, 0.5f);                       // a host change moves the slider
+        CHECK (std::abs (centre.getValue() - 0.5) < 1e-3);
         window.setVisible (false);
     }
 

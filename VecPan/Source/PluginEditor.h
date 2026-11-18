@@ -18,6 +18,14 @@ public:
     /** Creates the editor for `processor`. */
     explicit VecPanAudioProcessorEditor (VecPanAudioProcessor& processor);
 
+    /// @name Access to the controls (used by the tests)
+    /// @{
+    juce::Slider& getCentreRadiusSlider() noexcept { return centreSlider; }   ///< The centre radius slider.
+    /// @}
+
 private:
+    juce::Slider centreSlider;                                              ///< Centre radius in metres.
+    std::unique_ptr<juce::SliderParameterAttachment> centreAttachment;      ///< Ties the slider to its parameter.
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VecPanAudioProcessorEditor)
 };

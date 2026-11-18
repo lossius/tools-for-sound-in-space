@@ -87,10 +87,12 @@ warnings; keep it that way when adding code.
   fraction (continuous, constant power; the layout with a gap of exactly 180 deg is the one place where it is not). One speaker gets everything; a source at the origin is shared equally. Same-direction speakers (1e-9 rad) count as one (lowest index);
   a speaker at the origin or with a non-finite position takes no part. Spread (metres) = angular width atan(spread / distance): the squared gains of three directions (az, az +- width) are averaged. The distance inside the layout has no effect; outside it
   the shared `outsideFactor` of the hull distance applies (`Layout::hull()`).
-- No host parameters of its own (`SpatialProcessor` gets no `PluginParameters`), no virtual speakers, no speaker column. `defaultCoordinateMode()` is Polar. The processor is DistPan's without weights: `SpeakerSet{Layout, channelOf, id}` through `tlos::Exchange`,
-  gain cache keyed by position, spread, outside rolloff and set id. State tag `VecPan`, plugin code `VcPn`, bundle ID `no.trondlossius.vecpan`; position files `VecPanSources` / `VecPanSpeakers`.
-- Editor: `VecPanField` draws a thin line (TriPan's triangulation colour) between every two neighbouring speakers that are not a wide gap (toggle "Show pairs") and links to the speakers a source feeds; no settings rows of its own.
-- Open design questions (nothing decided): whether distance should ever do something inside the layout (attenuation or spread), a ring-radius/"distance compensation" for speakers at different distances, and a 3D (triplet) VBAP.
+  Centre radius (`VbapSettings::centreRadius`, host parameter `centreRadius`, 0..5 m, default 0.5, 0 = off): the directional power is weighted by smoothstep(d / r) for d < r and the rest is an even share over all speakers (all of it at
+  the origin), so a source passing through the listener is continuous (constant power throughout); from r outwards it is plain VBAP.
+- One host parameter of its own, the global `centreRadius` (`VecPanParameters.h`; OSC `/vbap/centre`), no virtual speakers, no speaker column. `defaultCoordinateMode()` is Polar. The processor is DistPan's without weights: `SpeakerSet{Layout, channelOf, id}` through `tlos::Exchange`,
+  gain cache keyed by position, spread, outside rolloff, centre radius and set id. State tag `VecPan`, plugin code `VcPn`, bundle ID `no.trondlossius.vecpan`; position files `VecPanSources` / `VecPanSpeakers`.
+- Editor: `VecPanField` draws a thin line (TriPan's triangulation colour) between every two neighbouring speakers that are not a wide gap (toggle "Show pairs") and links to the speakers a source feeds; one settings row (Centre radius).
+- Open design questions (nothing decided): distance attenuation or distance-dependent spread inside the layout (deliberately not done; only the centre blend uses distance), compensation for speakers at different distances, and a 3D (triplet) VBAP.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.
