@@ -138,7 +138,7 @@ private:
 };
 
 /** The content of a table window: the controls on top (first row: the number of sources or speakers and, for
-    speakers, the virtual speaker mode; second row: the coordinate mode and the room size) and the table or tables below.
+    speakers, the virtual speaker mode, and the coordinate mode; second row: the room size) and the table or tables below.
 
     The speakers window shows a second table, to the right, with the manual virtual speakers while they
     can be edited by hand (mode Manual and the speakers set to Edit). Message thread only. */
@@ -148,7 +148,7 @@ class PositionTableContent final : public juce::Component,
 public:
     static constexpr int kMargin = 12;      ///< Space around the content in pixels.
     static constexpr int kTopBarHeight = 32; ///< Height of the row of controls in pixels.
-    static constexpr int kCoordinateBoxWidth = 190;   ///< Width of the coordinates menu in pixels.
+    static constexpr int kCoordinateBoxWidth = 100;   ///< Width of the coordinates menu in pixels.
     static constexpr int kMinVisibleRows = 4; ///< The window can not be made smaller than this many rows.
 
     /** Creates the content and starts a 10 Hz timer that follows the parameters.

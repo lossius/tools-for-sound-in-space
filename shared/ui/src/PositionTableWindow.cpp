@@ -557,9 +557,10 @@ PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
     }
 
     // How positions are shown and typed, the same setting as in the settings window.
-    coordinateBox.addItem ("Cartesian (x, y)", 1);
-    coordinateBox.addItem ("Polar (azimuth, distance)", 2);
-    coordinateBox.setTooltip ("How positions are shown and edited. Azimuth is in degrees, counter-clockwise from the front.");
+    coordinateBox.addItem ("Cartesian", 1);
+    coordinateBox.addItem ("Polar", 2);
+    coordinateBox.setTooltip ("How positions are shown and edited: Cartesian (x, y in metres) or Polar (azimuth in degrees, "
+                              "counter-clockwise from the front, and distance in metres).");
     coordinateBox.setSelectedId (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 2 : 1, juce::dontSendNotification);
     coordinateBox.onChange = [this]
     {
@@ -610,8 +611,9 @@ const juce::String& PositionTableContent::countParameterId() const
 
 int PositionTableContent::getPreferredWidth() const
 {
-    const int firstRow = kind == io::Kind::Sources ? 130 + 110 : 130 + 110 + 16 + 110 + 90;   // count, (virtual speaker menu)
-    const int secondRow = kCoordinateBoxWidth + 16 + 76 + 190;                                  // coordinates, room size
+    const int firstRow = (kind == io::Kind::Sources ? 130 + 110 : 130 + 110 + 16 + 110 + 90)   // count, (virtual speaker menu)
+                       + 16 + kCoordinateBoxWidth;                                              // coordinates
+    const int secondRow = 76 + 190;                                                             // room size
     const int topBar = std::max (firstRow, secondRow);
     int tables = mainTable->getPreferredWidth();
     if (virtualTable != nullptr)
@@ -698,11 +700,11 @@ void PositionTableContent::resized()
         virtualLabel.setBounds (bar.removeFromLeft (110));
         virtualModeBox.setBounds (bar.removeFromLeft (90).reduced (0, 4));
     }
-
-    // Second row: how positions are shown, and the room size.
-    bar = area.removeFromTop (kTopBarHeight);
-    coordinateBox.setBounds (bar.removeFromLeft (kCoordinateBoxWidth).reduced (0, 4));
     bar.removeFromLeft (16);
+    coordinateBox.setBounds (bar.removeFromLeft (kCoordinateBoxWidth).reduced (0, 4));
+
+    // Second row: the room size.
+    bar = area.removeFromTop (kTopBarHeight);
     roomLabel.setBounds (bar.removeFromLeft (76));
     roomSlider.setBounds (bar.removeFromLeft (190).reduced (0, 4));
 
