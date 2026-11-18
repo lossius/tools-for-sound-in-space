@@ -614,3 +614,27 @@ void SpatialProcessor::setStateInformation (const void* data, int sizeInBytes)
         }
 }
 }
+
+namespace tlos
+{
+/** Raises `slot` to `value` if it is higher (only the audio thread raises; the message thread resets). */
+static void raisePeak (std::atomic<float>& slot, float value) noexcept
+{
+    if (value > slot.load (std::memory_order_relaxed))
+        slot.store (value, std::memory_order_relaxed);
+}
+
+void SpatialProcessor::recordInputLevels (const juce::AudioBuffer<float>& buffer, int numChannels) noexcept
+{
+    const int count = std::min ({ numChannels, buffer.getNumChannels(), kMaxChannels });
+    for (int ch = 0; ch < count; ++ch)
+        raisePeak (inputPeaks[(size_t) ch], buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+}
+
+void SpatialProcessor::recordOutputLevels (const juce::AudioBuffer<float>& buffer, int numChannels) noexcept
+{
+    const int count = std::min ({ numChannels, buffer.getNumChannels(), kMaxChannels });
+    for (int ch = 0; ch < count; ++ch)
+        raisePeak (outputPeaks[(size_t) ch], buffer.getMagnitude (ch, 0, buffer.getNumSamples()));
+}
+}

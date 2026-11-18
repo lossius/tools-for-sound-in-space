@@ -150,6 +150,12 @@ warnings; keep it that way when adding code.
   keyboard focus; `keyPressed`), Group/Ungroup buttons in row 3, Group column in the sources table, optional `group` attribute in source
   XML (an import where any entry has it replaces all groups). Groups and moving need sources on Edit; members above `numSources` keep
   their group but are ignored when moving. Drawing: every member takes the own colour of the lowest-numbered member (`FieldComponent::sourceColour(source, groups)`; ungrouping restores the individual colours), also for the ring, spread circle, links, widened hull band, "G<n>" tag and the table swatch.
+- Level meters (row 3 toggle "Show levels", off by default, `FieldComponent::setShowLevels`): `SpatialProcessor::recordInputLevels/recordOutputLevels` (called at the start and end of `processBlock`, peak per channel into `std::atomic<float>`,
+  real-time safe); the pad's 30 Hz timer reads and resets them (`takeInputPeak/takeOutputPeak`) and draws a ring around each speaker (output, with a peak-hold dot, 1 s) and each source (input) on a -60..0 dB scale
+  (green, amber above -12 dB, red above -3 dB; instant attack, 0.05 per tick fall). Not saved. Tests: `getSourceLevel/getSpeakerLevel`.
+- Level meters (row 3 toggle "Show levels", off by default, `FieldComponent::setShowLevels`): `SpatialProcessor::recordInputLevels/recordOutputLevels` (called at the start and end of `processBlock`, peak per channel into `std::atomic<float>`,
+  real-time safe); the pad's 30 Hz timer reads and resets them (`takeInputPeak/takeOutputPeak`) and draws a ring around each speaker (output, with a peak-hold dot, 1 s) and each source (input) on a -60..0 dB scale
+  (green, amber above -12 dB, red above -3 dB; instant attack, 0.05 per tick fall). Not saved. Tests: `getSourceLevel/getSpeakerLevel`.
 - Zoom (`FieldComponent::zoomIn/zoomOut`, buttons in row 3): the view is (centre, half extent); full view = +-room half extent (10 m by default)
   centred on 0. Zoom In steps by 1.5x towards `fittedView()` (bounding box of the speakers in use, min +-2 m) and
   stops there; Zoom Out steps back to the full view. The view is fixed once set (it doesn't follow dragged

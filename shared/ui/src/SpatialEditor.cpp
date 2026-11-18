@@ -68,6 +68,10 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
     showLinksButton.onClick = [this] { field->setShowLinks (showLinksButton.getToggleState()); };
     content.addAndMakeVisible (showLinksButton);
 
+    showLevelsButton.setTooltip ("Draw a ring around each speaker (its output level) and each source (its input level), with a peak mark on the speakers.");
+    showLevelsButton.onClick = [this] { field->setShowLevels (showLevelsButton.getToggleState()); };
+    content.addAndMakeVisible (showLevelsButton);
+
     resetButton.setTooltip ("Place the unlocked sources and speakers in use on rings");
     resetButton.onClick = [this]
     {
@@ -441,6 +445,7 @@ void SpatialEditor::layoutContent()
         overlayButton.setBounds (bar.removeFromLeft (std::min (140, textWidth + 36)));
     }
     showLinksButton.setBounds (bar.removeFromLeft (105));
+    showLevelsButton.setBounds (bar.removeFromLeft (105));
     resetButton.setBounds (bar.removeFromLeft (90));
     bar.removeFromLeft (8);
     zoomInButton.setBounds (bar.removeFromLeft (34));

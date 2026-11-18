@@ -94,6 +94,15 @@ void FieldComponent::paintOverlay (juce::Graphics&) {}
 
 SourceGains FieldComponent::getLinkGains (int, Vec2, double) const { return {}; }
 
+void FieldComponent::setShowLevels (bool shouldShow)
+{
+    showLevels = shouldShow;
+    sourceLevels.fill (0.0f);
+    speakerLevels.fill (0.0f);
+    speakerHold.fill (0.0f);
+    repaint();
+}
+
 void FieldComponent::setShowLinks (bool shouldShow)
 {
     showLinks = shouldShow;
@@ -566,6 +575,39 @@ void FieldComponent::timerCallback()
 
     updateOverlay (processor.getIncludedSpeakers(), virtualSpeakers);
 
+    if (showLevels)
+    {
+        // Peak levels on a -60..0 dB scale: they rise at once and fall by 0.05 per tick (about 1.2 s for the whole scale at 30 Hz);
+        // a speaker's hold mark stays for 1 s and then falls with the level.
+        const auto toScale = [] (float peak) { return juce::jlimit (0.0f, 1.0f, (juce::Decibels::gainToDecibels (peak, -60.0f) + 60.0f) / 60.0f); };
+        for (int s = 0; s < kMaxChannels; ++s)
+        {
+            const float peak = processor.takeInputPeak (s);
+            sourceLevels[(size_t) s] = s < n ? std::max (toScale (peak), sourceLevels[(size_t) s] - 0.05f) : 0.0f;
+        }
+        for (int i = 0; i < kMaxChannels; ++i)
+        {
+            const float level = toScale (processor.takeOutputPeak (i));
+            auto& shown = speakerLevels[(size_t) i];
+            shown = i < m ? std::max (level, shown - 0.05f) : 0.0f;
+            if (shown >= speakerHold[(size_t) i])
+            {
+                speakerHold[(size_t) i] = shown;
+                speakerHoldTicks[(size_t) i] = 30;
+            }
+            else if (speakerHoldTicks[(size_t) i] > 0)
+                --speakerHoldTicks[(size_t) i];
+            else
+                speakerHold[(size_t) i] = std::max (shown, speakerHold[(size_t) i] - 0.05f);
+        }
+        for (int i = 0; i < kMaxChannels; ++i)
+        {
+            mix (std::round (64.0 * sourceLevels[(size_t) i]));
+            mix (std::round (64.0 * speakerLevels[(size_t) i]));
+            mix (std::round (64.0 * speakerHold[(size_t) i]));
+        }
+    }
+
     if (hash != lastStateHash)
     {
         lastStateHash = hash;
@@ -732,6 +774,44 @@ void FieldComponent::paint (juce::Graphics& g)
                 g.setColour (sourceColour (s, groups).withAlpha (0.15f + 0.75f * gain));
                 g.drawLine (from.x, from.y, to.x, to.y, 0.8f + 2.4f * gain);
             }
+        }
+    }
+
+    // Level rings: an arc from the top, clockwise, as long as the level (-60..0 dB): green, amber above -12 dB, red above -3 dB.
+    const auto levelColour = [] (float level)
+    {
+        return level > 0.95f ? juce::Colour (0xffff5a5a) : level > 0.8f ? juce::Colour (0xffe6b450) : juce::Colour (0xff5fd38d);
+    };
+    const auto drawRing = [&] (juce::Point<float> c, float radius, float level, float hold, float thickness)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.drawEllipse (juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (c), thickness);
+        if (level > 0.004f)
+        {
+            juce::Path arc;
+            arc.addCentredArc (c.x, c.y, radius, radius, 0.0f, 0.0f, level * juce::MathConstants<float>::twoPi, true);
+            g.setColour (levelColour (level).withAlpha (0.95f));
+            g.strokePath (arc, juce::PathStrokeType (thickness));
+        }
+        if (hold > 0.02f)
+        {
+            const float angle = hold * juce::MathConstants<float>::twoPi;
+            const auto tip = c.getPointOnCircumference (radius, angle);
+            g.setColour (levelColour (hold));
+            g.fillEllipse (juce::Rectangle<float> (4.0f, 4.0f).withCentre (tip));
+        }
+    };
+    if (showLevels)
+    {
+        for (int i = 0; i < m; ++i)
+        {
+            const auto pos = position ({ false, i });
+            drawRing (toView (pos.x, pos.y), 12.0f, speakerLevels[(size_t) i], speakerHold[(size_t) i], 3.0f);
+        }
+        for (int s = 0; s < n; ++s)
+        {
+            const auto pos = position ({ true, s });
+            drawRing (toView (pos.x, pos.y), 15.0f, sourceLevels[(size_t) s], 0.0f, 2.0f);
         }
     }
 

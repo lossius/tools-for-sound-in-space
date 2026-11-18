@@ -58,6 +58,18 @@ public:
     /** @return Whether the source-to-speaker lines are drawn. */
     bool getShowLinks() const noexcept { return showLinks; }
 
+    /** Shows or hides the level meters: a ring around each speaker (its output level) and each source (its input level). Off by default. */
+    void setShowLevels (bool shouldShow);
+
+    /** @return Whether the level meters are drawn. */
+    bool getShowLevels() const noexcept { return showLevels; }
+
+    /** @return The displayed level of source `index` (zero-based), 0 (-60 dB or less) to 1 (0 dBFS), after attack and decay. */
+    float getSourceLevel (int index) const noexcept { return sourceLevels[(size_t) index]; }
+
+    /** @return The displayed level of speaker `index` (zero-based), 0 (-60 dB or less) to 1 (0 dBFS), after attack and decay. */
+    float getSpeakerLevel (int index) const noexcept { return speakerLevels[(size_t) index]; }
+
     /** Radius in pixels of a source's inner circle. This is also its mouse target: the (semi-transparent)
         spread circle around it is only a display and never takes part in mouse interaction. */
     static constexpr float kSourceRadius = 9.0f;
@@ -283,6 +295,11 @@ private:
     std::array<std::atomic<float>*, tlos::kMaxChannels> spkSoloRaw {};  ///< Raw values of the speaker solo switches.
     size_t lastStateHash = 0;                                  ///< Hash of what was last drawn, to skip repaints.
     bool showOverlay = true;                                   ///< Whether the plugin's overlay is drawn.
+    bool showLevels = false;                                   ///< Whether the level rings are drawn.
+    std::array<float, kMaxChannels> sourceLevels {};           ///< Displayed input level per source (0..1 on a -60..0 dB scale).
+    std::array<float, kMaxChannels> speakerLevels {};          ///< Displayed output level per speaker (0..1 on a -60..0 dB scale).
+    std::array<float, kMaxChannels> speakerHold {};            ///< Peak-hold mark per speaker (0..1).
+    std::array<int, kMaxChannels> speakerHoldTicks {};         ///< Timer ticks left before the hold mark starts to fall.
     bool showLinks = true;                                     ///< Whether the source-to-speaker lines are drawn.
     double viewHalf = params::kDefaultRoomHalf;        ///< Half extent of the view in metres, see zoomIn().
     double lastRoomHalf = params::kDefaultRoomHalf;    ///< The room half extent the view was last set for.

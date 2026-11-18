@@ -142,6 +142,20 @@ public:
         @param gains  Receives the result. */
     void getChannelGains (ChannelGains& gains) const noexcept;
 
+    /** Audio thread. Records the peak level of the first `numChannels` channels of `buffer` as input levels (call before the panning).
+        Real-time safe. */
+    void recordInputLevels (const juce::AudioBuffer<float>& buffer, int numChannels) noexcept;
+
+    /** Audio thread. Records the peak level of the first `numChannels` channels of `buffer` as output levels (call after the panning).
+        Real-time safe. */
+    void recordOutputLevels (const juce::AudioBuffer<float>& buffer, int numChannels) noexcept;
+
+    /** Message thread. The highest absolute sample value of source `index` (zero-based) since the last call, then forgets it. */
+    float takeInputPeak (int index) noexcept { return inputPeaks[(size_t) index].exchange (0.0f); }
+
+    /** Message thread. The highest absolute sample value of speaker `index` (zero-based) since the last call, then forgets it. */
+    float takeOutputPeak (int index) noexcept { return outputPeaks[(size_t) index].exchange (0.0f); }
+
     /** Message thread. Whether speaker `index` (zero-based) is excluded from the panning: the panning is
         computed as if it did not exist (use this for an LFE channel or a broken speaker). Unlike mute, the
         others then share its signal. A host parameter ("Speaker N Exclude"), so the host's undo covers it. */
@@ -288,6 +302,9 @@ protected:
     std::atomic<float>* outsideRolloffParam = nullptr; ///< Raw value of "Outside Rolloff".
 
 private:
+    std::array<std::atomic<float>, kMaxChannels> inputPeaks {};   ///< Peak since the last takeInputPeak(), per source.
+    std::array<std::atomic<float>, kMaxChannels> outputPeaks {};  ///< Peak since the last takeOutputPeak(), per speaker.
+
     /** Timer callback (30 Hz, message thread): calls refreshLayout(). */
     void timerCallback() override { refreshLayout(); }
     /** Sets parameters to real values: only those that differ are written, and with `gestures` all inside change

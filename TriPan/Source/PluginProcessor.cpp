@@ -120,6 +120,8 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
         return;
     }
 
+    recordInputLevels (buffer, n);
+
     // Target gains from the current source positions and the latest published triangulation.
     const LayoutSnapshot* snapshot = exchange.acquire();
     const tripan::SpeakerLayout* tri = snapshot != nullptr ? &snapshot->layout : nullptr;
@@ -249,6 +251,7 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
     for (int s = 0; s < n; ++s)
         prevGains[(size_t) s] = target[(size_t) s];
+    recordOutputLevels (buffer, m);
 }
 
 juce::AudioProcessorEditor* TriPanAudioProcessor::createEditor()

@@ -109,6 +109,8 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         return;
     }
 
+    recordInputLevels (buffer, n);
+
     // Target gains from the current source positions, the settings and the latest published speakers.
     const SpeakerSet* speakers = exchange.acquire();
     const float rolloff = rolloffParam->load(), blur = blurParam->load(), outside = outsideRolloffParam->load();
@@ -247,6 +249,8 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
     for (int s = 0; s < n; ++s)
         prevGains[(size_t) s] = targetGains[(size_t) s];
+
+    recordOutputLevels (buffer, m);
 }
 
 juce::AudioProcessorEditor* DistPanAudioProcessor::createEditor()

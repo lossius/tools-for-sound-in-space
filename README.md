@@ -262,6 +262,12 @@ inside a ring are spread more widely than the strict three speakers of plain tri
 Off if you prefer that. The mode, the number of manual virtual speakers and their positions are host parameters ("Virtual Speakers", "Number of Virtual Speakers", "Virtual Speaker N X/Y"), so the host's undo covers adding, moving and deleting them. They are saved with the session, and a speaker
 XML file records the setting and, for Manual, the virtual speakers (see below).
 
+## Level meters
+Tick **Show levels** in the third row to see the signal on the pad: a ring around each speaker shows its output level, with a small dot that holds the
+peak for a second, and a thinner ring around each source shows its input level. The scale is -60 to 0 dBFS; the ring is green, amber above -12 dB and red above -3 dB.
+It is peak metering, it rises at once and falls in about a second, and the setting is not saved with the session. It costs one pass over the buffers
+and nothing when the toggle is off (the audio thread always records the peaks, the pad only reads them while the toggle is on).
+
 ## Zooming
 The two magnifying-glass buttons, **Zoom In** (+) and **Zoom Out** (-), in the third row change the visible area of the pad. Each press of Zoom In
 zooms a step towards the area that contains all speakers in use and stops when they just fill the pad;

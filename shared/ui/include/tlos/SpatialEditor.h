@@ -71,6 +71,7 @@ public:
     juce::Slider& getRoomSlider() noexcept { return settingsContent.getRoomSlider(); }            ///< "Room size" slider (in the settings window).
     juce::Slider& getOutsideSlider() noexcept { return settingsContent.getOutsideSlider(); }      ///< "Outside rolloff" slider (in the settings window).
     juce::ToggleButton& getOverlayButton() noexcept { return overlayButton; }          ///< The overlay toggle (e.g. "Show triangulation").
+    juce::ToggleButton& getShowLevelsButton() noexcept { return showLevelsButton; }    ///< "Show levels".
     juce::ToggleButton& getShowLinksButton() noexcept { return showLinksButton; }      ///< "Show links".
     juce::TextButton& getResetButton() noexcept { return resetButton; }                ///< "Reset layout".
     juce::TextButton& getZoomInButton() noexcept { return zoomInButton; }              ///< "Zoom In".
@@ -167,6 +168,7 @@ private:
     SettingsContent settingsContent;                     ///< What the settings window shows (owned here so that its controls always exist).
     std::unique_ptr<SettingsWindow> settingsWindow;      ///< The settings window, created on first use.
     juce::ToggleButton overlayButton;                    ///< Shows or hides the plugin's overlay on the pad (e.g. the triangles).
+    juce::ToggleButton showLevelsButton { "Show levels" }; ///< Draws a level ring around each source and speaker.
     juce::ToggleButton showLinksButton { "Show links" }; ///< Draws the lines from each source to the speakers it feeds.
     juce::TextButton resetButton { "Reset layout" };     ///< Puts the editable kinds back on rings.
     IconButton zoomInButton { IconButton::Icon::ZoomIn, "Zoom In" };     ///< Zooms the pad towards the speakers (a magnifying glass with a plus).

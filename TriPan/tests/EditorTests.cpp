@@ -86,7 +86,7 @@ static void testGroups (const char* snapshotPath)
         const juce::Component* controls[] { &editor->getSourceCountSlider(), &editor->getSpeakerCountSlider(), &editor->getSourcesModeBox(),
                                             &editor->getSpeakersModeBox(), &editor->getVirtualModeBox(), &editor->getExportSourcesButton(),
                                             &editor->getImportSourcesButton(), &editor->getExportSpeakersButton(), &editor->getImportSpeakersButton(),
-                                            &editor->getSourcesTableButton(), &editor->getSpeakersTableButton(), &editor->getShowLinksButton(),
+                                            &editor->getSourcesTableButton(), &editor->getSpeakersTableButton(), &editor->getShowLinksButton(), &editor->getShowLevelsButton(),
                                             &editor->getResetButton(), &editor->getZoomInButton(), &editor->getZoomOutButton(),
                                             &editor->getGroupButton(), &editor->getUngroupButton() };
         for (const auto* c : controls)
@@ -136,7 +136,39 @@ static void testGroups (const char* snapshotPath)
     CHECK (! field.getShowLinks());
     editor->getShowLinksButton().setToggleState (true, juce::sendNotificationSync);
     CHECK (field.getShowLinks());
-    CHECK (editor->getShowLinksButton().getRight() <= editor->getResetButton().getX() && editor->getUngroupButton().getRight() < editor->getWidth());
+
+    // Show levels: off by default; with it on, the pad reads the processor's peaks (a loud first source lights its ring and the speakers it feeds).
+    CHECK (! field.getShowLevels() && ! editor->getShowLevelsButton().getToggleState());
+    editor->getShowLevelsButton().setToggleState (true, juce::sendNotificationSync);
+    CHECK (field.getShowLevels());
+    {
+        juce::AudioBuffer<float> block (std::max (p.getTotalNumInputChannels(), p.getTotalNumOutputChannels()), 256);
+        juce::MidiBuffer midi;
+        for (int round = 0; round < 3; ++round)
+        {
+            block.clear();
+            for (int i = 0; i < 256; ++i)
+                block.setSample (0, i, 0.5f);               // -6 dBFS on source 1
+            p.processBlock (block, midi);
+            field.refresh();
+        }
+        CHECK (field.getSourceLevel (0) > 0.85f && field.getSourceLevel (0) < 0.95f);   // 0.5 = -6 dB = 0.9 on the -60..0 scale
+        CHECK (field.getSourceLevel (1) < 0.01f);
+        float loudest = 0.0f;
+        for (int i = 0; i < 64; ++i)
+            loudest = std::max (loudest, field.getSpeakerLevel (i));
+        CHECK (loudest > 0.5f);
+        block.clear();
+        for (int round = 0; round < 40; ++round)
+        {
+            p.processBlock (block, midi);
+            field.refresh();
+        }
+        CHECK (field.getSourceLevel (0) < 0.01f);                                          // decays to nothing
+    }
+    editor->getShowLevelsButton().setToggleState (false, juce::sendNotificationSync);
+    CHECK (! field.getShowLevels() && field.getSourceLevel (0) == 0.0f);
+    CHECK (editor->getShowLinksButton().getRight() <= editor->getShowLevelsButton().getX() && editor->getShowLevelsButton().getRight() <= editor->getResetButton().getX() && editor->getUngroupButton().getRight() < editor->getWidth());
 
     // Group them (the button and Cmd+G do the same).
     editor->syncControls();
