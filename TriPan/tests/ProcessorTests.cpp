@@ -686,18 +686,19 @@ static void testSpeakerPresets (const juce::File& dir)
     load ("Grid-4x4.xml", v);
     CHECK (std::abs (v[0].x + 5.0) < 1e-3 && std::abs (v[0].y - 5.0) < 1e-3 && std::abs (v[15].x - 5.0) < 1e-3 && std::abs (v[15].y + 5.0) < 1e-3);
 
-    // Corridor: 2 rows of 8, every cell a rectangle (all rows share their y, all columns their x).
+    // Corridor: 2 rows of 8, every cell a square (all rows share their y, all columns their x, row spacing = column spacing).
     for (const char* file : { "Corridor-8x2.xml", "Corridor-8x2-virtual-centres.xml" })
     {
         load (file, v);
         CHECK (v.size() == 16);
         for (int c = 0; c < 8; ++c)
         {
-            CHECK (std::abs (v[(size_t) c].y - 1.5) < 1e-3 && std::abs (v[(size_t) (8 + c)].y + 1.5) < 1e-3); // two rows, front then back
+            CHECK (std::abs (v[(size_t) c].y - 5.0 / 7.0) < 1e-3 && std::abs (v[(size_t) (8 + c)].y + 5.0 / 7.0) < 1e-3); // two rows, front then back
             CHECK (std::abs (v[(size_t) c].x - v[(size_t) (8 + c)].x) < 1e-3);                                 // columns line up
             if (c > 0)
                 CHECK (std::abs ((v[(size_t) c].x - v[(size_t) (c - 1)].x) - 10.0 / 7.0) < 1e-3);             // equal spacing
         }
+        CHECK (std::abs ((v[0].y - v[8].y) - (v[1].x - v[0].x)) < 2e-3);                                       // square cells
     }
 
     // 8x8 grids: 64 speakers, equal spacing in both directions.

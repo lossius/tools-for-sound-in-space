@@ -136,14 +136,14 @@ def main():
           "16 speakers as in Grid-4x4, plus 9 manual virtual speakers at the centres of the 9 squares",
           grid(4), cell_centres(4, 4))
 
-    # Corridor: 8 columns spanning +-5 m and 2 rows 3 m apart, so every cell is a 1.43 m x 3 m rectangle.
-    CORRIDOR_HALF_HEIGHT = 1.5
-    corridor_description = "16 speakers in 2 rows of 8, x spanning +-5 m, rows at y = +-1.5 m (every cell is a 1.43 m x 3 m rectangle), numbered row by row from the front-left"
+    # Corridor: 8 columns spanning +-5 m and 2 rows one column spacing apart (10 / 7 m), so every cell is a 1.43 m square.
+    CORRIDOR_HALF_HEIGHT = RADIUS / 7
+    corridor_description = "16 speakers in 2 rows of 8, x spanning +-5 m, rows at y = +-0.714 m (every cell is a 1.43 m square), numbered row by row from the front-left"
     write("Corridor-8x2", "8x2 corridor", corridor_description,
           rect_grid(8, 2, RADIUS, CORRIDOR_HALF_HEIGHT))
 
     write("Corridor-8x2-virtual-centres", "8x2 corridor with virtual speakers at the cell centres",
-          corridor_description + ", plus 7 manual virtual speakers at the centres of the 7 rectangles",
+          corridor_description + ", plus 7 manual virtual speakers at the centres of the 7 squares",
           rect_grid(8, 2, RADIUS, CORRIDOR_HALF_HEIGHT), cell_centres(8, 2, RADIUS, CORRIDOR_HALF_HEIGHT))
 
     write("Grid-8x8", "8x8 grid", "64 speakers on a square grid spanning +-5 m, numbered row by row from the front-left",

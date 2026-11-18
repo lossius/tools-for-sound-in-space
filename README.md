@@ -338,8 +338,8 @@ right-click it on the pad) if you want it to be fed.
 | `Grid-4x4.xml` | 16 | square grid spanning +-5 m, numbered row by row from the front-left |
 | `Grid-3x3-virtual-centres.xml` | 9 + 4 virtual | as `Grid-3x3.xml`, with manual virtual speakers at the centre of each of the 4 squares |
 | `Grid-4x4-virtual-centres.xml` | 16 + 9 virtual | as `Grid-4x4.xml`, with manual virtual speakers at the centre of each of the 9 squares |
-| `Corridor-8x2.xml` | 16 | 2 rows of 8 ("corridor"): x spans +-5 m, rows at y = +-1.5 m, so every cell is a 1.43 m x 3 m rectangle |
-| `Corridor-8x2-virtual-centres.xml` | 16 + 7 virtual | as `Corridor-8x2.xml`, with manual virtual speakers at the centre of each of the 7 rectangles |
+| `Corridor-8x2.xml` | 16 | 2 rows of 8 ("corridor"): x spans +-5 m, rows at y = +-0.714 m, so every cell is a 1.43 m square |
+| `Corridor-8x2-virtual-centres.xml` | 16 + 7 virtual | as `Corridor-8x2.xml`, with manual virtual speakers at the centre of each of the 7 squares |
 | `Grid-8x8.xml` | 64 | square grid spanning +-5 m, numbered row by row from the front-left (needs a track with 64 outputs) |
 | `Grid-8x8-virtual-centres.xml` | 64 + 49 virtual | as `Grid-8x8.xml`, with manual virtual speakers at the centre of each of the 49 squares |
 | `Random-16.xml` | 16 | random positions within 6 m, at least 1.5 m apart (fixed seed) |
