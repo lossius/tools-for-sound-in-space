@@ -22,7 +22,8 @@ void placeBeside (juce::TopLevelWindow& window, juce::Component* around);
 
 /** What the settings window shows: sections of labelled controls, from the top
 
-    - **Room**: the room size slider (see SpatialProcessor::getRoomHalfExtent()).
+    - **Room**: the room size slider (see SpatialProcessor::getRoomHalfExtent()) and the coordinates menu
+      (Cartesian or Polar, see SpatialProcessor::getCoordinateMode()).
     - **Panning**: the outside rolloff slider, the virtual speaker menu (only for a plugin that has virtual
       speakers) and the rows the plugin adds with addRow() (DistPan: rolloff and blur).
     - **OSC**: the OscSettingsPanel.
@@ -57,6 +58,7 @@ public:
     /// @name Access to the controls (used by the tests)
     /// @{
     juce::Slider& getRoomSlider() noexcept { return roomSlider; }              ///< Room size.
+    juce::ComboBox& getCoordinateBox() noexcept { return coordinateBox; }      ///< Cartesian / Polar.
     juce::Slider& getOutsideSlider() noexcept { return outsideSlider; }        ///< Outside rolloff.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }    ///< Auto / Manual / Off (plugins with virtual speakers).
     OscSettingsPanel& getOscPanel() noexcept { return oscPanel; }              ///< The OSC section.
@@ -90,6 +92,8 @@ private:
     juce::Label roomHeader { {}, "Room" };                 ///< Header of the Room section.
     juce::Label roomLabel { {}, "Room size" };             ///< Caption of the room size slider.
     juce::Slider roomSlider;                               ///< Half the width of the room in metres.
+    juce::Label coordinateLabel { {}, "Coordinates" };     ///< Caption of the coordinates menu.
+    juce::ComboBox coordinateBox;                          ///< Cartesian / Polar.
     juce::Label panningHeader { {}, "Panning" };           ///< Header of the Panning section.
     juce::Label outsideLabel { {}, "Outside rolloff" };    ///< Caption of the outside rolloff slider.
     juce::Slider outsideSlider;                            ///< Level drop in dB per doubling of the distance outside the speakers.

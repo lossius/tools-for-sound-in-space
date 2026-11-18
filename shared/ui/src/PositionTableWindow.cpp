@@ -7,6 +7,7 @@
 #include "tlos/PositionTableWindow.h"
 #include "tlos/FieldComponent.h"
 #include "tlos/Parameters.h"
+#include "tlos/Polar.h"
 
 #include <cmath>
 #include <functional>
@@ -80,6 +81,25 @@ void setParameter (SpatialProcessor& processor, const juce::String& id, float va
     }
 }
 
+/** Sets several parameters to real values, all inside change gestures begun together and ended together. */
+void setParameters (SpatialProcessor& processor, std::initializer_list<std::pair<juce::String, float>> changes)
+{
+    std::vector<juce::RangedAudioParameter*> touched;
+    for (const auto& change : changes)
+        if (auto* parameter = processor.getValueTreeState().getParameter (change.first))
+            touched.push_back (parameter);
+
+    for (auto* parameter : touched)
+        parameter->beginChangeGesture();
+
+    for (const auto& change : changes)
+        if (auto* parameter = processor.getValueTreeState().getParameter (change.first))
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (change.second));
+
+    for (auto* parameter : touched)
+        parameter->endChangeGesture();
+}
+
 /** Parses a plain decimal number (no letters other than an exponent, no empty text). */
 bool parseNumber (const juce::String& text, double& out)
 {
@@ -144,6 +164,7 @@ PositionTable::PositionTable (SpatialProcessor& p, Content c)
 
     addAndMakeVisible (table);
 
+    updateCoordinateHeaders();
     lastSignature = signature();
 }
 
@@ -173,10 +194,40 @@ int PositionTable::getRowCount() const
     return 0;
 }
 
+void PositionTable::updateCoordinateHeaders()
+{
+    shownMode = processor.getCoordinateMode();
+    const bool polar = shownMode == SpatialProcessor::CoordinateMode::Polar;
+    table.getHeader().setColumnName (xColumn, polar ? juce::String ("Azimuth (") + juce::String::charToString (0xb0) + ")" : juce::String ("X (m)"));
+    table.getHeader().setColumnName (yColumn, polar ? juce::String ("Distance (m)") : juce::String ("Y (m)"));
+}
+
+Vec2 PositionTable::positionOf (int row) const
+{
+    if (content == Content::VirtualSpeakers)
+    {
+        const auto list = processor.getManualVirtualSpeakers();
+        return row >= 0 && row < (int) list.size() ? Vec2 { list[(size_t) row].x, list[(size_t) row].y } : Vec2 {};
+    }
+
+    const auto read = [this] (const juce::String& id) { return (double) processor.getValueTreeState().getRawParameterValue (id)->load(); };
+    const bool sources = content == Content::Sources;
+    return { read (sources ? params::sourceId (row, 'x') : params::speakerId (row, 'x')),
+             read (sources ? params::sourceId (row, 'y') : params::speakerId (row, 'y')) };
+}
+
 double PositionTable::getValue (int row, int column) const
 {
     if (row < 0 || row >= getRowCount())
         return 0.0;
+
+    if ((column == xColumn || column == yColumn) && processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar)
+    {
+        const auto polar = toPolar (positionOf (row), lastAzimuth[(size_t) row]);
+        if (polar.distance > 1e-9)
+            lastAzimuth[(size_t) row] = polar.azimuthDegrees;
+        return column == xColumn ? polar.azimuthDegrees : polar.distance;
+    }
 
     const auto read = [this] (const juce::String& id) { return (double) processor.getValueTreeState().getRawParameterValue (id)->load(); };
 
@@ -228,6 +279,9 @@ juce::String PositionTable::formatCell (int column, double value) const
     if (column == extraColumn)
         return juce::String (value, processor.getSpeakerColumn() ? processor.getSpeakerColumn()->decimals : 2);
 
+    if (column == xColumn && shownMode == SpatialProcessor::CoordinateMode::Polar)
+        return juce::String (std::abs (value) < 0.05 ? 0.0 : value, 1);   // degrees: one decimal, no "-0.0"
+
     if (column != trimColumn)
         return format (value);
 
@@ -251,6 +305,39 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
     double typed = 0.0;
     if (row < 0 || row >= getRowCount() || ! parseNumber (text, typed))
         return formatCell (column, getValue (row, column));
+
+    // Polar mode: the typed azimuth or distance replaces that part of the current position, which is then
+    // written as x and y (one undo step).
+    if ((column == xColumn || column == yColumn) && processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar)
+    {
+        const auto current = toPolar (positionOf (row), lastAzimuth[(size_t) row]);
+        const double azimuth = column == xColumn ? typed : current.azimuthDegrees;
+        const double distance = column == yColumn ? std::max (0.0, typed) : current.distance;
+        const auto p = fromPolar (azimuth, distance);
+        const double limit = params::kCoordRange;
+        const double nx = juce::jlimit (-limit, limit, p.x), ny = juce::jlimit (-limit, limit, p.y);
+        lastAzimuth[(size_t) row] = wrapAzimuth (azimuth);
+
+        switch (content)
+        {
+            case Content::Sources:
+                setParameters (processor, { { params::sourceId (row, 'x'), (float) nx }, { params::sourceId (row, 'y'), (float) ny } });
+                break;
+            case Content::Speakers:
+                setParameters (processor, { { params::speakerId (row, 'x'), (float) nx }, { params::speakerId (row, 'y'), (float) ny } });
+                break;
+            case Content::VirtualSpeakers:
+            {
+                auto list = processor.getManualVirtualSpeakers();
+                list[(size_t) row].x = nx;
+                list[(size_t) row].y = ny;
+                processor.setManualVirtualSpeakers (list);
+                break;
+            }
+        }
+
+        return formatCell (column, getValue (row, column));
+    }
 
     const bool isSpread = content == Content::Sources && column == spreadColumn;
     const bool isTrim = column == trimColumn && content != Content::VirtualSpeakers;
@@ -293,7 +380,7 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
 size_t PositionTable::signature() const
 {
     const int rows = getRowCount();
-    size_t seed = (size_t) rows;
+    size_t seed = (size_t) rows + (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 1000003u : 0u);
 
     for (int row = 0; row < rows; ++row)
         for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn, (int) trimColumn, (int) muteColumn, (int) soloColumn, (int) excludeColumn, (int) extraColumn })
@@ -311,6 +398,9 @@ size_t PositionTable::signature() const
 
 void PositionTable::refresh()
 {
+    if (processor.getCoordinateMode() != shownMode)
+        updateCoordinateHeaders();
+
     const auto current = signature();
     if (current == lastSignature)
         return;

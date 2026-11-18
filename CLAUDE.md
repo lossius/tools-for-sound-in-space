@@ -163,6 +163,10 @@ warnings; keep it that way when adding code.
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
+- Coordinates: host parameters, files and the pad are always Cartesian (x, y in metres). `SpatialProcessor::getCoordinateMode()` (Cartesian / Polar, session state `coordinateMode`, not a host parameter; menu "Coordinates" in the Room section of the settings window;
+  `defaultCoordinateMode()` is virtual so a plugin such as VBAP can start in Polar) only changes how the tables show and edit positions: the x / y columns become Azimuth (degrees, counter-clockwise from the front, wrapped to -180..180) and Distance (m),
+  and an edit replaces that part of the current position and writes x and y in one gesture (a point at the origin has no azimuth: the table keeps the last one shown). The maths is `shared/core/.../Polar.h` (`toPolar`, `fromPolar`, `wrapAzimuth`; same convention as ADM-OSC).
+  Position files may give `az` and `dist` instead of `x` and `y` (`x`/`y` win if both are there); exports always write x and y.
 - Table windows (`shared/ui/.../PositionTableWindow.*`): a "Table..." button at the right end of the sources row and of the
   speakers row opens a `PositionTableWindow` (native title bar, always on top so it is in front of the host's floating plug-in window, owned by the editor, close = hide, and the button toggles it; opened beside the plug-in window, right if the screen has room, else left, else centred over it: `chooseBesidePosition`). Sources: table of
   x, y, spread for the sources in use; speakers: x, y for the speakers in use, plus a second table to the right with

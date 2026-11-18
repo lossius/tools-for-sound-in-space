@@ -32,6 +32,8 @@ const juce::Identifier kManualVirtual { "manualVirtual" };
 const juce::Identifier kExcludedSpeakers { "excludedSpeakers" };
 /// State property: the room half extent in metres.
 const juce::Identifier kRoomHalf { "roomHalfExtent" };
+/// State property: the CoordinateMode as an integer (0 Cartesian, 1 Polar).
+const juce::Identifier kCoordinateMode { "coordinateMode" };
 /// State property: whether OSC listens.
 const juce::Identifier kOscReceive { "oscReceive" };
 /// State property: the port OSC listens on.
@@ -385,6 +387,19 @@ void SpatialProcessor::setRoomHalfExtent (double metres)
         return;
 
     apvts.state.setProperty (kRoomHalf, juce::jlimit (params::kMinRoomHalf, params::kMaxRoomHalf, metres), nullptr);
+}
+
+SpatialProcessor::CoordinateMode SpatialProcessor::getCoordinateMode() const
+{
+    if (! apvts.state.hasProperty (kCoordinateMode))
+        return defaultCoordinateMode();
+
+    return (int) apvts.state.getProperty (kCoordinateMode) == 1 ? CoordinateMode::Polar : CoordinateMode::Cartesian;
+}
+
+void SpatialProcessor::setCoordinateMode (CoordinateMode mode)
+{
+    apvts.state.setProperty (kCoordinateMode, mode == CoordinateMode::Polar ? 1 : 0, nullptr);
 }
 
 int SpatialProcessor::getEditorWidth() const

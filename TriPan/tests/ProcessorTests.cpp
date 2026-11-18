@@ -592,6 +592,28 @@ static void testSpeakerPresets (const juce::File& dir)
             }
     }
 
+    // Files may give a position as azimuth and distance instead of x and y.
+    {
+        TriPanAudioProcessor p;
+        CHECK (configure (p, 2, 8, 256));
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("tlos-polar-speakers.xml");
+        file.replaceWithText ("<TriPanSpeakers version=\"1\" count=\"3\">"
+                              "<Speaker index=\"1\" az=\"0\" dist=\"4\"/>"
+                              "<Speaker index=\"2\" az=\"90\" dist=\"2\"/>"
+                              "<Speaker index=\"3\" x=\"1.5\" y=\"-2\" az=\"10\" dist=\"9\"/>"   // x and y win
+                              "</TriPanSpeakers>");
+        tlos::io::ImportReport r;
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, file, r).wasOk() && r.skipped == 0);
+        const auto px = [&] (int i, char c) { return p.getValueTreeState().getRawParameterValue (tlos::params::speakerId (i, c))->load(); };
+        CHECK (std::abs (px (0, 'x')) < 1e-4f && std::abs (px (0, 'y') - 4.0f) < 1e-4f);
+        CHECK (std::abs (px (1, 'x') + 2.0f) < 1e-4f && std::abs (px (1, 'y')) < 1e-4f);
+        CHECK (std::abs (px (2, 'x') - 1.5f) < 1e-4f && std::abs (px (2, 'y') + 2.0f) < 1e-4f);
+        file.replaceWithText ("<TriPanSpeakers version=\"1\"><Speaker index=\"1\" az=\"0\" dist=\"-1\"/></TriPanSpeakers>");
+        tlos::io::ImportReport bad;
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, file, bad).failed() || bad.skipped == 1);
+        file.deleteFile();
+    }
+
     // The number of speakers follows the file, in both directions, as long as the track supports it.
     {
         TriPanAudioProcessor p;

@@ -508,6 +508,40 @@ static void testCalibrationInterface (const char* snapshotPath)
     CHECK (speakers.getMainTable().setValueFromText (1, Col::trimColumn, "2.5") == "2.5");
     CHECK (std::abs (value (p, tlos::params::speakerTrimId (1)) - 2.5f) < 0.01f);
 
+    // Polar mode: the same cells show and edit azimuth (degrees, counter-clockwise from the front) and distance.
+    {
+        using Mode = tlos::SpatialProcessor::CoordinateMode;
+        CHECK (p.getCoordinateMode() == Mode::Cartesian);
+        setParam (p, tlos::params::sourceId (0, 'x'), -3.0f);
+        setParam (p, tlos::params::sourceId (0, 'y'), 0.0f);
+        p.setCoordinateMode (Mode::Polar);
+        sources.refresh();
+        CHECK (std::abs (sources.getMainTable().getValue (0, Col::xColumn) - 90.0) < 1e-3);
+        CHECK (std::abs (sources.getMainTable().getValue (0, Col::yColumn) - 3.0) < 1e-3);
+        CHECK (sources.getMainTable().getTable().getHeader().getColumnName (Col::xColumn).startsWith ("Azimuth"));
+        CHECK (sources.getMainTable().getTable().getHeader().getColumnName (Col::yColumn) == "Distance (m)");
+
+        CHECK (sources.getMainTable().setValueFromText (0, Col::xColumn, "0") == "0.0");   // to the front, distance kept
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x'))) < 1e-4f && std::abs (value (p, tlos::params::sourceId (0, 'y')) - 3.0f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (0, Col::yColumn, "5") == "5.000");
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'y')) - 5.0f) < 1e-4f);
+        CHECK (sources.getMainTable().setValueFromText (0, Col::xColumn, "-90") == "-90.0"); // to the right
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 5.0f) < 1e-3f && std::abs (value (p, tlos::params::sourceId (0, 'y'))) < 1e-3f);
+        CHECK (sources.getMainTable().setValueFromText (0, Col::xColumn, "270") == "-90.0");  // wrapped
+        CHECK (sources.getMainTable().setValueFromText (0, Col::yColumn, "-4") == "0.000");   // negative distance = 0
+        CHECK (sources.getMainTable().setValueFromText (0, Col::yColumn, "2") == "2.000");    // back out along the last azimuth
+        CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 2.0f) < 1e-3f);
+        CHECK (sources.getMainTable().setValueFromText (0, Col::yColumn, "500") != "2.000");  // limited to +-100 m per axis
+        CHECK (value (p, tlos::params::sourceId (0, 'x')) <= 100.0f);
+        CHECK (sources.getMainTable().setValueFromText (0, Col::xColumn, "north") != "north"); // rubbish is rejected
+
+        p.setCoordinateMode (Mode::Cartesian);
+        sources.refresh();
+        CHECK (sources.getMainTable().getTable().getHeader().getColumnName (Col::xColumn) == "X (m)");
+        setParam (p, tlos::params::sourceId (0, 'x'), 1.0f);
+        setParam (p, tlos::params::sourceId (0, 'y'), 2.0f);
+    }
+
     // The check boxes are real buttons; clicking one writes the parameter (exclude: the session state).
     const auto cell = [] (tlos::PositionTable& table, int column, int row)
     {

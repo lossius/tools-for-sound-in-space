@@ -41,7 +41,7 @@ SettingsContent::SettingsContent (SpatialProcessor& p) : processor (p), oscPanel
         header->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.9f));
         addAndMakeVisible (header);
     }
-    for (auto* label : { &roomLabel, &outsideLabel, &virtualLabel })
+    for (auto* label : { &roomLabel, &coordinateLabel, &outsideLabel, &virtualLabel })
     {
         label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
         addAndMakeVisible (label);
@@ -64,6 +64,20 @@ SettingsContent::SettingsContent (SpatialProcessor& p) : processor (p), oscPanel
             processor.setRoomHalfExtent (roomSlider.getValue());
     };
     addAndMakeVisible (roomSlider);
+
+    // How the tables show positions; the host parameters stay x and y either way.
+    coordinateBox.addItem ("Cartesian (x, y)", 1);
+    coordinateBox.addItem ("Polar (azimuth, distance)", 2);
+    coordinateBox.setTooltip ("How the tables show and edit positions. Azimuth is in degrees, counter-clockwise from the front. "
+                              "The host parameters, files and the pad always use x and y in metres.");
+    coordinateBox.setSelectedId (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 2 : 1, juce::dontSendNotification);
+    coordinateBox.onChange = [this]
+    {
+        if (! syncing)
+            processor.setCoordinateMode (coordinateBox.getSelectedId() == 2 ? SpatialProcessor::CoordinateMode::Polar
+                                                                            : SpatialProcessor::CoordinateMode::Cartesian);
+    };
+    addAndMakeVisible (coordinateBox);
 
     // How the level falls for a source outside the speaker layout (same for every plugin).
     outsideSlider.setSliderStyle (juce::Slider::LinearHorizontal);
@@ -122,7 +136,7 @@ void SettingsContent::addRow (const juce::String& caption, juce::Component& cont
 void SettingsContent::updateLayoutData()
 {
     const int panningRows = 1 + (processor.supportsVirtualSpeakers() ? 1 : 0) + (int) pluginRows.size();
-    const int height = 12 + (kRowHeight + 4 + kRowHeight)                          // Room: header and one row
+    const int height = 12 + (kRowHeight + 4 + 2 * kRowHeight)                      // Room: header and two rows
                      + 10 + (kRowHeight + 4 + panningRows * kRowHeight)           // Panning: header and rows
                      + 10 + (kRowHeight + 4 + OscSettingsPanel::kHeight) + 12;    // OSC: header and the panel
 
@@ -142,6 +156,10 @@ void SettingsContent::refresh()
 
     if (! juce::approximatelyEqual (roomSlider.getValue(), processor.getRoomHalfExtent()) && ! roomSlider.isMouseButtonDown())
         roomSlider.setValue (processor.getRoomHalfExtent(), juce::dontSendNotification);
+
+    const int wantedCoordinates = processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 2 : 1;
+    if (coordinateBox.getSelectedId() != wantedCoordinates)
+        coordinateBox.setSelectedId (wantedCoordinates, juce::dontSendNotification);
 
     if (virtualModeBox.getSelectedId() != (int) processor.getVirtualMode())
         virtualModeBox.setSelectedId ((int) processor.getVirtualMode(), juce::dontSendNotification);
@@ -169,6 +187,11 @@ void SettingsContent::resized()
 
     section (roomHeader);
     row (roomLabel, roomSlider);
+    {
+        auto r = area.removeFromTop (kRowHeight);
+        coordinateLabel.setBounds (r.removeFromLeft (kLabelWidth));
+        coordinateBox.setBounds (r.removeFromLeft (200).reduced (0, 2));
+    }
     area.removeFromTop (10);
 
     section (panningHeader);

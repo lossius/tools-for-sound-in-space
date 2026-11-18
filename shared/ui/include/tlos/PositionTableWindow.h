@@ -39,8 +39,8 @@ public:
     enum Column
     {
         indexColumn = 1,  ///< Row number (1-based), not editable.
-        xColumn,          ///< X position in metres.
-        yColumn,          ///< Y position in metres.
+        xColumn,          ///< X position in metres; in polar mode the azimuth in degrees.
+        yColumn,          ///< Y position in metres; in polar mode the distance in metres.
         spreadColumn,     ///< Spread in metres (sources only).
         groupColumn,      ///< Group number of the source (sources only), not editable here: groups are made on the pad.
         trimColumn,       ///< Trim in dB (sources and speakers).
@@ -70,13 +70,16 @@ public:
     /** @return The number of rows: the sources or speakers in use, or the manual virtual speakers. */
     int getRowCount() const;
 
-    /** @return The value in a cell: metres for xColumn, yColumn and spreadColumn, dB for trimColumn, and 0 or 1 for
+    /** @return The value in a cell: metres for xColumn, yColumn and spreadColumn (in polar mode degrees for
+        xColumn and metres for yColumn, see SpatialProcessor::getCoordinateMode()), dB for trimColumn, and 0 or 1 for
         the switch columns. @param row  Zero-based row. @param column  The column. Returns 0 for cells that do not exist. */
     double getValue (int row, int column) const;
 
     /** Sets a cell from text typed by the user.
         @param row     Zero-based row.
-        @param column  xColumn, yColumn, spreadColumn or trimColumn.
+        @param column  xColumn, yColumn, spreadColumn or trimColumn. In polar mode xColumn is the azimuth (wrapped to
+                       -180..180) and yColumn the distance; the position keeps the other one and is limited to +-100 m
+                       on each axis. A source at the origin has no azimuth, so the last one shown is used.
         @param text    The text; it must be a plain number, otherwise the cell is left alone.
         @return        The text to show in the cell afterwards: the new value, limited to the allowed range
                        and rounded to 3 decimals, or the old value if the text was rejected. */
@@ -93,6 +96,12 @@ public:
     void resized() override;
 
 private:
+    /** @return The Cartesian position of a row (zero-based, in range), read from the parameters or the virtual speaker list. */
+    Vec2 positionOf (int row) const;
+
+    /** Sets the header texts of the x and y columns for the current coordinate mode. */
+    void updateCoordinateHeaders();
+
     /** Formats a value in metres for display (3 decimals, no negative zero). */
     static juce::String format (double metres);
 
@@ -122,6 +131,8 @@ private:
     juce::Label caption;               ///< Title above the table.
     juce::TableListBox table;          ///< The table itself.
     size_t lastSignature = 0;          ///< Signature at the last refresh().
+    SpatialProcessor::CoordinateMode shownMode = SpatialProcessor::CoordinateMode::Cartesian;   ///< Mode the headers show.
+    mutable std::array<double, kMaxChannels> lastAzimuth {};   ///< Last azimuth shown per row, used where a point is at the origin.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PositionTable)
 };

@@ -5,6 +5,7 @@
     @brief XML writing and strict, all-or-nothing reading of position files. */
 
 #include "tlos/PositionIO.h"
+#include "tlos/Polar.h"
 #include "tlos/Parameters.h"
 
 #include <algorithm>
@@ -74,6 +75,23 @@ bool readNumber (const juce::XmlElement& e, const char* name, double& out)
 
     out = text.getDoubleValue();
     return std::isfinite (out);
+}
+
+/** Reads a position from an element: `x` and `y` if both are numbers, otherwise `az` (degrees, counter-clockwise from the
+    front) and `dist` (metres). Returns false if neither pair is there. */
+bool readPosition (const juce::XmlElement& e, double& x, double& y)
+{
+    if (readNumber (e, "x", x) && readNumber (e, "y", y))
+        return true;
+
+    double azimuth = 0.0, distance = 0.0;
+    if (! readNumber (e, "az", azimuth) || ! readNumber (e, "dist", distance) || distance < 0.0)
+        return false;
+
+    const auto p = fromPolar (azimuth, distance);
+    x = p.x;
+    y = p.y;
+    return true;
 }
 
 /** One validated entry of an imported file. */
@@ -244,7 +262,7 @@ juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, Impor
         const int index = e->getIntAttribute ("index", ordinal);
         double x = 0.0, y = 0.0;
 
-        if (index < 1 || index > kMaxChannels || ! readNumber (*e, "x", x) || ! readNumber (*e, "y", y))
+        if (index < 1 || index > kMaxChannels || ! readPosition (*e, x, y))
         {
             ++report.skipped;
             continue;
@@ -329,7 +347,7 @@ juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, Impor
             {
                 double x = 0.0, y = 0.0;
 
-                if (! readNumber (*e, "x", x) || ! readNumber (*e, "y", y)
+                if (! readPosition (*e, x, y)
                     || (int) newManual.size() >= SpatialProcessor::kMaxVirtualSpeakers)
                 {
                     ++report.skipped;

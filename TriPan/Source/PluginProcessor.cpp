@@ -206,7 +206,7 @@ void TriPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce:
 
             // A constant gain uses the SIMD multiply-add; a ramp computes a + inc * i, which has no
             // sample-to-sample dependency, so the compiler can vectorise it.
-            if (g0 == g1)
+            if (juce::exactlyEqual (g0, g1))
             {
                 juce::FloatVectorOperations::addWithMultiply (out, in, a, len);
             }

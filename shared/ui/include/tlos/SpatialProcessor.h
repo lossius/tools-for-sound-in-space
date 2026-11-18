@@ -177,6 +177,22 @@ public:
     /** Sets the room half extent, limited to tlos::params::kMinRoomHalf .. kMaxRoomHalf. */
     void setRoomHalfExtent (double metres);
 
+    /** How positions are shown and typed in the tables: x / y in metres, or azimuth (degrees, counter-clockwise
+        from the front) and distance (metres). A display preference only: the host parameters are always x and y. */
+    enum class CoordinateMode
+    {
+        Cartesian,   ///< X and Y in metres.
+        Polar        ///< Azimuth in degrees and distance in metres.
+    };
+
+    /** Message thread. The coordinate mode of the tables. Saved with the state (not a host parameter); until
+        the user chooses, it is defaultCoordinateMode(). */
+    CoordinateMode getCoordinateMode() const;
+    /** Sets the coordinate mode. */
+    void setCoordinateMode (CoordinateMode mode);
+    /** @return The mode a new instance starts in. Plugins whose positions are more naturally angles (VBAP) override it. */
+    virtual CoordinateMode defaultCoordinateMode() const { return CoordinateMode::Cartesian; }
+
     /** Message thread. Places the active sources and/or speakers on rings (speakers on half the room half extent,
         5 m in the default room; sources on a quarter of it; first speaker at front). */
     void resetLayoutToRings (bool resetSources = true, bool resetSpeakers = true);

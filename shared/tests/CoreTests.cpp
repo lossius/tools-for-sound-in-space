@@ -7,6 +7,7 @@
 #include "tlos/Groups.h"
 #include "tlos/Hull.h"
 #include "tlos/Limits.h"
+#include "tlos/Polar.h"
 
 #include <cmath>
 #include <cstdio>
@@ -227,6 +228,43 @@ static void testOutsideFactor()
     }
 }
 
+/** Polar conversion: the convention (0 = front, +90 = left), wrapping, the origin and the round trip. */
+static void testPolar()
+{
+    const auto front = toPolar ({ 0.0, 2.0 });
+    CHECK (isNear (front.azimuthDegrees, 0.0) && isNear (front.distance, 2.0));
+    const auto left = toPolar ({ -3.0, 0.0 });
+    CHECK (isNear (left.azimuthDegrees, 90.0) && isNear (left.distance, 3.0));
+    const auto right = toPolar ({ 1.0, 0.0 });
+    CHECK (isNear (right.azimuthDegrees, -90.0));
+    const auto back = toPolar ({ 0.0, -1.0 });
+    CHECK (isNear (back.azimuthDegrees, 180.0)); // +180, not -180
+
+    const auto v = fromPolar (90.0, 2.0);
+    CHECK (isNear (v.x, -2.0) && isNear (v.y, 0.0));
+    const auto w = fromPolar (0.0, 1.5);
+    CHECK (isNear (w.x, 0.0) && isNear (w.y, 1.5));
+
+    CHECK (isNear (wrapAzimuth (190.0), -170.0) && isNear (wrapAzimuth (-190.0), 170.0));
+    CHECK (isNear (wrapAzimuth (-180.0), 180.0) && isNear (wrapAzimuth (540.0), 180.0));
+    CHECK (isNear (wrapAzimuth (std::numeric_limits<double>::quiet_NaN()), 0.0));
+
+    // The origin keeps the direction it is given; a negative or non-finite distance is the origin.
+    const auto centre = toPolar ({ 0.0, 0.0 }, 45.0);
+    CHECK (isNear (centre.azimuthDegrees, 45.0) && isNear (centre.distance, 0.0));
+    CHECK (isNear (fromPolar (30.0, -1.0).x, 0.0) && isNear (fromPolar (30.0, -1.0).y, 0.0));
+    CHECK (isNear (fromPolar (std::numeric_limits<double>::infinity(), 1.0).y, 0.0));
+
+    // Round trip over a ring of points, also far out.
+    for (int i = 0; i < 360; i += 7)
+        for (double d : { 0.01, 1.0, 37.5, 100.0 })
+        {
+            const auto back2 = toPolar (fromPolar (i - 180.0, d));
+            CHECK (isNear (back2.distance, d, 1e-9));
+            CHECK (isNear (std::abs (wrapAzimuth (back2.azimuthDegrees - (i - 180.0))), 0.0, 1e-7));
+        }
+}
+
 /** Runs all shared core tests. @return 0 if every check passed, otherwise 1. */
 int main()
 {
@@ -235,6 +273,7 @@ int main()
     testGroupGeometry();
     testHull();
     testOutsideFactor();
+    testPolar();
 
     if (failures == 0)
         std::printf ("All tests passed\n");
