@@ -88,6 +88,10 @@ struct PluginParameters
     /** Settings of the whole plugin (for example DistPan's rolloff and blur): listed with the other global parameters. */
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> global;
 
+    /** Values per source (for example ViMiC's yaw and pattern): either empty, or `perSourceCount * kMaxChannels` parameters, the first `perSourceCount`
+        for source 1, the next for source 2 and so on. They are listed with that source's other parameters (after its group). */
+    std::vector<std::unique_ptr<juce::RangedAudioParameter>> perSource;
+
     /** Values per speaker (for example DistPan's weight): either empty, or `perSpeakerCount * kMaxChannels` parameters, the
         first `perSpeakerCount` for speaker 1, the next for speaker 2 and so on. They are listed with that speaker's other parameters. */
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> perSpeaker;
@@ -153,8 +157,11 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout (bool wi
         layout.add (std::move (global));
     }
 
-    // Then one group per source and per speaker, in order: source 1 (x, y, spread, trim, mute, solo, group), source 2, ...
+    // Then one group per source and per speaker, in order: source 1 (x, y, spread, trim, mute, solo, group, then the plugin's own), source 2, ...
     {
+        const size_t perSource = extra.perSource.size() / (size_t) kMaxChannels;
+        jassert (extra.perSource.size() == perSource * (size_t) kMaxChannels);
+
         auto sources = makeGroup ("sources", "Sources");
         for (int i = 0; i < kMaxChannels; ++i)
         {
@@ -169,6 +176,8 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout (bool wi
             source->addChild (makeSwitch (sourceMuteId (i), name + " Mute"));
             source->addChild (makeSwitch (sourceSoloId (i), name + " Solo"));
             source->addChild (std::make_unique<juce::AudioParameterInt> (juce::ParameterID { sourceGroupId (i), 1 }, name + " Group", 0, kMaxChannels / 2, 0));
+            for (size_t k = 0; k < perSource; ++k)
+                source->addChild (std::move (extra.perSource[(size_t) i * perSource + k]));
             sources->addChild (std::move (source));
         }
         layout.add (std::move (sources));

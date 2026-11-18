@@ -159,9 +159,8 @@ PositionTable::PositionTable (SpatialProcessor& p, Content c)
     }
     if (content == Content::Speakers)
         table.getHeader().addColumn ("Excl.", excludeColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
-    if (content == Content::Speakers)
-        for (int k = 0; k < (int) processor.getSpeakerColumns().size(); ++k)
-            table.getHeader().addColumn (processor.getSpeakerColumns()[(size_t) k].title, extraColumn + k, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
+    for (int k = 0; k < (int) extraColumns().size(); ++k)
+        table.getHeader().addColumn (extraColumns()[(size_t) k].title, extraColumn + k, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
 
     addAndMakeVisible (table);
 
@@ -179,7 +178,7 @@ int PositionTable::getPreferredWidth() const noexcept
     const int valueColumns = content == Content::Sources ? (processor.usesSpread() ? 4 : 3) : content == Content::Speakers ? 3 : 2; // x, y, (spread), (trim)
     const int groupWidth = content == Content::Sources ? kGroupColumnWidth : 0;
     const int switches = content == Content::Sources ? 2 : content == Content::Speakers ? 3 : 0;    // mute, solo, (exclude)
-    const int extra = content == Content::Speakers ? (int) processor.getSpeakerColumns().size() * kValueColumnWidth : 0;
+    const int extra = (int) extraColumns().size() * kValueColumnWidth;
     return kIndexColumnWidth + valueColumns * kValueColumnWidth + extra + groupWidth + switches * kSwitchColumnWidth + kScrollBarWidth + 2;
 }
 
@@ -193,6 +192,18 @@ int PositionTable::getRowCount() const
     }
 
     return 0;
+}
+
+std::vector<SpeakerColumn> PositionTable::extraColumns() const
+{
+    switch (content)
+    {
+        case Content::Sources:         return processor.getSourceColumns();
+        case Content::Speakers:        return processor.getSpeakerColumns();
+        case Content::VirtualSpeakers: break;
+    }
+
+    return {};
 }
 
 void PositionTable::updateCoordinateHeaders()
@@ -241,6 +252,9 @@ double PositionTable::getValue (int row, int column) const
             if (column == trimColumn)   return read (params::sourceTrimId (row));
             if (column == muteColumn)   return read (params::sourceMuteId (row)) >= 0.5 ? 1.0 : 0.0;
             if (column == soloColumn)   return read (params::sourceSoloId (row)) >= 0.5 ? 1.0 : 0.0;
+            if (column >= extraColumn)
+                if (const auto columns = extraColumns(); column - extraColumn < (int) columns.size())
+                    return read (columns[(size_t) (column - extraColumn)].idFor (row));
             break;
 
         case Content::Speakers:
@@ -251,7 +265,7 @@ double PositionTable::getValue (int row, int column) const
             if (column == soloColumn)   return read (params::speakerSoloId (row)) >= 0.5 ? 1.0 : 0.0;
             if (column == excludeColumn) return processor.isSpeakerExcluded (row) ? 1.0 : 0.0;
             if (column >= extraColumn)
-                if (const auto columns = processor.getSpeakerColumns(); column - extraColumn < (int) columns.size())
+                if (const auto columns = extraColumns(); column - extraColumn < (int) columns.size())
                     return read (columns[(size_t) (column - extraColumn)].idFor (row));
             break;
 
@@ -279,7 +293,7 @@ juce::String PositionTable::formatCell (int column, double value) const
 {
     if (column >= extraColumn)
     {
-        const auto columns = processor.getSpeakerColumns();
+        const auto columns = extraColumns();
         return juce::String (value, column - extraColumn < (int) columns.size() ? columns[(size_t) (column - extraColumn)].decimals : 2);
     }
 
@@ -346,8 +360,8 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
     const bool isSpread = content == Content::Sources && column == spreadColumn;
     const bool isTrim = column == trimColumn && content != Content::VirtualSpeakers;
     std::optional<SpeakerColumn> extra;
-    if (content == Content::Speakers && column >= extraColumn)
-        if (const auto columns = processor.getSpeakerColumns(); column - extraColumn < (int) columns.size())
+    if (column >= extraColumn)
+        if (const auto columns = extraColumns(); column - extraColumn < (int) columns.size())
             extra = columns[(size_t) (column - extraColumn)];
     const float limit = params::kCoordRange;
     const double value = isSpread ? juce::jlimit (0.0, (double) params::kMaxSpread, typed)
@@ -362,6 +376,7 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
             if (column == yColumn)      setParameter (processor, params::sourceId (row, 'y'), (float) value);
             if (column == spreadColumn) setParameter (processor, params::spreadId (row), (float) value);
             if (column == trimColumn)   setParameter (processor, params::sourceTrimId (row), (float) value);
+            if (extra)                  setParameter (processor, extra->idFor (row), (float) value);
             break;
 
         case Content::Speakers:

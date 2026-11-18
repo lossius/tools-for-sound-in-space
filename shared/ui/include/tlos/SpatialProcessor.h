@@ -40,8 +40,8 @@ struct ChannelGains
     std::array<float, kMaxChannels> speakers {};  ///< Gain of each speaker, applied to its output after the panning.
 };
 
-/** A parameter of the panning method that every speaker has (DistPan: the weight). The speaker table shows it
-    as a column, and the speaker files carry it in an attribute. */
+/** A parameter of the panning method that every speaker (DistPan: the weight; ViMiC: the microphone's yaw and pattern) or every source
+    (ViMiC: the source's yaw and pattern) has. The table shows it as a column, and the position files carry it in an attribute. */
 struct SpeakerColumn
 {
     juce::String title;                           ///< Header of the table column, for example "Weight".
@@ -253,6 +253,11 @@ public:
     /** @return The per-speaker parameters of the panning method, in column order (DistPan: the weight; ViMiC: the yaw and the pattern of the
         microphone), at most kMaxSpeakerColumns; the default is none. */
     virtual std::vector<SpeakerColumn> getSpeakerColumns() const { return {}; }
+
+    /** @return The per-source parameters of the panning method, in column order (ViMiC: the yaw and the pattern of the source), at most kMaxSpeakerColumns;
+        the default is none. The sources table shows them as columns after the group, the source files carry them in attributes, and OSC has
+        /source/N/<attribute>. */
+    virtual std::vector<SpeakerColumn> getSourceColumns() const { return {}; }
 
     /** @return What the plugin calls its outputs, singular and with a capital: "Speaker" (the default) or for example "Microphone". Used in the
         editor, the table windows, the pad and messages; code, files and parameter IDs keep saying "speaker". */

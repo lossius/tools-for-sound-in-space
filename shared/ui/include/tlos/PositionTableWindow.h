@@ -47,7 +47,7 @@ public:
         muteColumn,       ///< Mute switch, a check box (sources and speakers).
         soloColumn,       ///< Solo switch, a check box (sources and speakers).
         excludeColumn,    ///< Exclude from panning, a check box (speakers only).
-        extraColumn       ///< The plugin's own per-speaker parameters (SpatialProcessor::getSpeakerColumns()), speakers only: extraColumn + k is the k-th (zero-based).
+        extraColumn       ///< The plugin's own per-channel parameters (SpatialProcessor::getSourceColumns() / getSpeakerColumns()): extraColumn + k is the k-th (zero-based).
     };
 
     static constexpr int kRowHeight = 24;       ///< Height of a row in pixels.
@@ -96,6 +96,9 @@ public:
     void resized() override;
 
 private:
+    /** @return The plugin's own per-channel columns of this table (none for the virtual speakers). */
+    std::vector<SpeakerColumn> extraColumns() const;
+
     /** @return The Cartesian position of a row (zero-based, in range), read from the parameters or the virtual speaker list. */
     Vec2 positionOf (int row) const;
 

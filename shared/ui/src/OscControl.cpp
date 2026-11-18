@@ -181,6 +181,8 @@ bool OscControl::changed (Slot& slot, float a, float b, float c)
 
 void OscControl::sendEverything()
 {
+    for (auto& column : srcExtra)
+        column.fill (Slot {});
     for (auto& column : spkExtra)
         column.fill (Slot {});
     for (auto* group : { &srcXY, &srcSpread, &srcTrim, &srcMute, &srcSolo, &spkXY, &spkTrim, &spkMute, &spkSolo, &spkExclude, &admXYZ, &admGain, &admMute })
@@ -197,6 +199,7 @@ void OscControl::sendChanges()
     const int n = processor.getActiveSources(), m = processor.getActiveSpeakers();
     const double room = processor.getRoomHalfExtent();
     const auto columns = processor.getSpeakerColumns();
+    const auto sourceColumns = processor.getSourceColumns();
 
     for (int i = 0; i < n; ++i)
     {
@@ -383,9 +386,9 @@ bool OscControl::handleMessage (const juce::OSCMessage& message)
                 understood = true;
             }
         }
-        else if (! source)
+        else
         {
-            for (const auto& column : processor.getSpeakerColumns())
+            for (const auto& column : source ? processor.getSourceColumns() : processor.getSpeakerColumns())
                 if (name == column.attribute)
                     if (const auto v = number (0))
                     {
