@@ -9,3 +9,6 @@ xcuserdata/
 dist/
 build-release/
 build-install/
+build-install/
+build-tsan/
+build-validate/

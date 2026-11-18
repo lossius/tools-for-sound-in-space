@@ -10,7 +10,7 @@ on:
   pull_request:
 
 # AAX is not built here: the Avid AAX SDK is not redistributable. See README.md.
-# Both plugins are built, tested and validated here; the release zips are still TriPan only.
+# Both plugins are built, tested, validated and packaged here (zips for TriPan and DistPan).
 
 env:
   PLUGINVAL_VERSION: v1.0.4
@@ -69,20 +69,25 @@ jobs:
           rm "$RUNNER_TEMP/cert.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
           security list-keychains -d user -s "$KEYCHAIN" login.keychain
-          NO_BUILD=1 BUILD_DIR=build scripts/sign-and-notarize.sh
+          for plugin in TriPan DistPan; do
+            PLUGIN=$plugin NO_BUILD=1 BUILD_DIR=build scripts/sign-and-notarize.sh
+          done
           security delete-keychain "$KEYCHAIN"
 
       - name: Package (unsigned)
         if: env.HAS_SIGNING != 'true'
         run: |
           mkdir -p dist
-          ditto -c -k --keepParent build/TriPan/TriPan_artefacts/Release/VST3/TriPan.vst3 dist/TriPan-macOS-VST3.zip
-          ditto -c -k --keepParent build/TriPan/TriPan_artefacts/Release/AU/TriPan.component dist/TriPan-macOS-AU.zip
-          ditto -c -k --keepParent build/TriPan/TriPan_artefacts/Release/Standalone/TriPan.app dist/TriPan-macOS-Standalone.zip
+          for plugin in TriPan DistPan; do
+            art="build/$plugin/${plugin}_artefacts/Release"
+            ditto -c -k --keepParent "$art/VST3/$plugin.vst3" "dist/$plugin-macOS-VST3.zip"
+            ditto -c -k --keepParent "$art/AU/$plugin.component" "dist/$plugin-macOS-AU.zip"
+            ditto -c -k --keepParent "$art/Standalone/$plugin.app" "dist/$plugin-macOS-Standalone.zip"
+          done
 
       - uses: actions/upload-artifact@v4
         with:
-          name: TriPan-macOS
+          name: macOS
           path: dist/*.zip
 
   windows:
@@ -117,12 +122,15 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path build/TriPan/TriPan_artefacts/Release/VST3/TriPan.vst3 -DestinationPath dist/TriPan-Windows-VST3.zip
-          Compress-Archive -Path build/TriPan/TriPan_artefacts/Release/Standalone/TriPan.exe -DestinationPath dist/TriPan-Windows-Standalone.zip
+          foreach ($plugin in "TriPan", "DistPan") {
+            $art = "build/$plugin/${plugin}_artefacts/Release"
+            Compress-Archive -Path "$art/VST3/$plugin.vst3" -DestinationPath "dist/$plugin-Windows-VST3.zip"
+            Compress-Archive -Path "$art/Standalone/$plugin.exe" -DestinationPath "dist/$plugin-Windows-Standalone.zip"
+          }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: TriPan-Windows
+          name: Windows
           path: dist/*.zip
 
   release:

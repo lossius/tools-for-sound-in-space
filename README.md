@@ -4,13 +4,14 @@ A collection of free, open-source (AGPLv3) plugins for spatial audio, all with t
 import/export, so that they look and work alike. So far: **TriPan** (triangulation panning) and **DistPan** (distance-based
 amplitude panning, DBAP). VBAP and ViMiC are planned.
 
+Status: pre-release, version 0.1.0. TriPan and DistPan work and are covered by automated tests and pluginval (strictness 10; the CI workflow runs
+them on macOS and Windows, but has not run yet); they have not yet been tested in every host. AAX is optional and unverified in Pro Tools.
+
 ## TriPan
 
 A free, open-source (AGPLv3) spatial audio plugin that distributes n sound sources to m speakers in a
 2D plane. Each source is panned to the three speakers of the Delaunay triangle that contains it,
 with constant overall intensity.
-
-Status: early development (M1 skeleton).
 
 ## Repository layout
 
@@ -388,7 +389,7 @@ Then:
 SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=tripan-notary \
     scripts/sign-and-notarize.sh
 ```
-This builds a universal binary, signs with the hardened runtime, notarizes, staples and writes
+Set `PLUGIN=DistPan` for the other plugin (TriPan is the default). This builds a universal binary, signs with the hardened runtime, notarizes, staples and writes
 zips to `dist/`. Add `DRY_RUN=1` to test the signing step only (no upload, zips are not releasable).
 
 In CI, the macOS job signs and notarizes automatically when these repository secrets exist:
@@ -400,7 +401,7 @@ hardened runtime). Windows builds are unsigned; Windows may show a SmartScreen w
 
 ## Continuous integration
 `.github/workflows/build.yml` builds, tests and validates (pluginval, strictness 10) on macOS
-(universal arm64 + x86_64) and Windows, and uploads zips. Pushing a tag such as `v0.1.0`
+(universal arm64 + x86_64) and Windows, and uploads zips of both plugins. Pushing a tag such as `v0.1.0`
 also publishes a GitHub release with the zips. AAX is not built in CI.
 
 ## Licence
