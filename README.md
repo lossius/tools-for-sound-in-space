@@ -77,7 +77,14 @@ from one speaker pair to another. 0 switches the blend off. Positions are shown 
   and minus atan(*s* / *d*), and their powers are averaged (like MDAP). A source at the listener is shared equally (see the centre radius above).
 - **Speakers in the same direction** count as one (the lowest-numbered takes the sound); a speaker exactly at the listener has no direction and
   takes no part.
-- **Level outside the speakers**: as in the other plugins (see *Level outside the speakers*).
+- **Speakers at different distances**: VecPan pans by direction only and takes all speakers to be at one distance, the **reference radius** =
+  the distance of the farthest speaker (the one a gain and delay compensation would align to). The pad always draws it as a dashed circle.
+  Inside it the distance of a source does not matter; beyond it the level falls off by the **Outside rolloff** (the distance counted from
+  the circle, not from the polygon of the speakers as in the other plugins), so you can see where gain reduction starts. As in the other
+  plugins, a layout with no area (a stereo pair, speakers on one line) has no falloff. Differing speaker distances are best corrected with
+  level and delay compensation (not part of this plugin). **Place speakers on circle** (Settings window, Panning) moves every speaker that
+  takes part (in use and not excluded) to the reference radius, keeping its direction; it is one undo step and works whatever the Edit/View
+  menu says.
 - The pad can draw a line between every two neighbouring speakers that VBAP pans between (**Show pairs**), and links from each source to the
   one or two speakers it feeds.
 

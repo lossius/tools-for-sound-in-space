@@ -382,6 +382,49 @@ static void testCentreRadius()
     CHECK (run (0.05f)[0] > 0.999);
 }
 
+/** "Place speakers on circle": every speaker that takes part goes to the farthest one's distance, keeping its direction; one step; excluded ones stay. */
+static void testPlaceSpeakersOnCircle()
+{
+    VecPanAudioProcessor p;
+    CHECK (configure (p, 1, 6, 256));
+    const double radii[] { 2.0, 5.0, 3.0, 4.0, 1.0, 2.5 };
+    const double azimuths[] { 0.0, 60.0, 120.0, 180.0, -120.0, -60.0 };
+    for (int i = 0; i < 6; ++i)
+    {
+        const double a = azimuths[i] * 3.14159265358979323846 / 180.0;
+        setParam (p, tlos::params::speakerId (i, 'x'), (float) (-radii[i] * std::sin (a)));
+        setParam (p, tlos::params::speakerId (i, 'y'), (float) (radii[i] * std::cos (a)));
+    }
+    p.setSpeakerExcluded (4, true);          // the excluded speaker is not moved and does not set the circle
+    setParam (p, tlos::params::speakerId (1, 'x'), -5.0f * std::sin (60.0f * 3.14159265f / 180.0f));
+    p.refreshLayout();
+
+    const auto distance = [&] (int i) { return std::hypot (getParam (p, tlos::params::speakerId (i, 'x')), getParam (p, tlos::params::speakerId (i, 'y'))); };
+    const auto azimuth = [&] (int i) { return std::atan2 (-getParam (p, tlos::params::speakerId (i, 'x')), getParam (p, tlos::params::speakerId (i, 'y'))) * 180.0 / 3.14159265358979323846; };
+    const double before1 = distance (1), beforeAzimuth2 = azimuth (2), excludedDistance = distance (4);
+    CHECK (std::abs (before1 - 5.0) < 1e-3);
+
+    CHECK (p.placeSpeakersOnCircle());
+    for (int i : { 0, 1, 2, 3, 5 })
+        CHECK (std::abs (distance (i) - before1) < 1e-3);                      // all at the farthest speaker's distance
+    CHECK (std::abs (azimuth (2) - beforeAzimuth2) < 1e-2 && std::abs (azimuth (5) + 60.0) < 1e-2);   // directions kept
+    CHECK (std::abs (distance (4) - excludedDistance) < 1e-4);                 // excluded: not moved
+    CHECK (! p.placeSpeakersOnCircle());                                       // already on the circle: nothing to do
+
+    // A speaker at the listener has no direction and stays; with only such speakers there is nothing to do.
+    setParam (p, tlos::params::speakerId (0, 'x'), 0.0f);
+    setParam (p, tlos::params::speakerId (0, 'y'), 0.0f);
+    CHECK (p.placeSpeakersOnCircle() == false && distance (0) == 0.0);
+
+    // The sound follows: a source pointing at a speaker still feeds that speaker alone.
+    setParam (p, tlos::params::sourceId (0, 'x'), 0.5f * getParam (p, tlos::params::speakerId (3, 'x')));
+    setParam (p, tlos::params::sourceId (0, 'y'), 0.5f * getParam (p, tlos::params::speakerId (3, 'y')));
+    p.refreshLayout();
+    juce::AudioBuffer<float> buf (6, 256);
+    std::mt19937 rng (60);
+    CHECK (channelEnergies (p, buf, 6, 0, rng)[3] > 0.99);
+}
+
 /** A stereo pair is the classic tangent-law pan, and a source anywhere keeps constant power. */
 static void testStereoPair()
 {
@@ -582,6 +625,7 @@ int main (int argc, char** argv)
     testStationaryEnergyAndLocality();
     testStereoPair();
     testCentreRadius();
+    testPlaceSpeakersOnCircle();
     testOutsideFalloff();
     testExclude();
     testSpeakerUpdate();

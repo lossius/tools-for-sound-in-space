@@ -31,6 +31,39 @@ vecpan::VbapSettings VecPanAudioProcessor::getSettings() const noexcept
     return { getOutsideRolloff(), (double) centreRadiusParam->load() };
 }
 
+bool VecPanAudioProcessor::placeSpeakersOnCircle()
+{
+    const auto speakers = getIncludedSpeakers();
+
+    double radius = 0.0;
+    for (const auto& p : speakers.positions)
+        if (std::isfinite (p.x) && std::isfinite (p.y))
+            radius = std::max (radius, std::hypot (p.x, p.y));
+
+    radius = std::min (radius, (double) tlos::params::kCoordRange);
+    if (radius < 1e-9)
+        return false;
+
+    std::vector<int> channels;
+    std::vector<tlos::Vec2> moved;
+    for (size_t i = 0; i < speakers.positions.size(); ++i)
+    {
+        const auto& p = speakers.positions[i];
+        const double d = std::hypot (p.x, p.y);
+        if (! std::isfinite (d) || d < 1e-9 || std::abs (d - radius) < 1e-4)
+            continue;
+
+        channels.push_back (speakers.channelOf[i]);
+        moved.push_back ({ p.x * radius / d, p.y * radius / d });
+    }
+
+    if (channels.empty())
+        return false;
+
+    setSpeakerPositions (channels, moved);
+    return true;
+}
+
 void VecPanAudioProcessor::refreshLayout()
 {
     const auto speakers = getIncludedSpeakers();

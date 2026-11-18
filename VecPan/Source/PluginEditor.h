@@ -21,10 +21,12 @@ public:
     /// @name Access to the controls (used by the tests)
     /// @{
     juce::Slider& getCentreRadiusSlider() noexcept { return centreSlider; }   ///< The centre radius slider.
+    juce::TextButton& getCircleButton() noexcept { return circleButton; }     ///< "Place speakers on circle".
     /// @}
 
 private:
     juce::Slider centreSlider;                                              ///< Centre radius in metres.
+    juce::TextButton circleButton { "Place speakers on circle" };           ///< Moves the speakers to the reference circle.
     std::unique_ptr<juce::SliderParameterAttachment> centreAttachment;      ///< Ties the slider to its parameter.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VecPanAudioProcessorEditor)

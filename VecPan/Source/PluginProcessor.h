@@ -52,6 +52,12 @@ public:
     /** @return Polar: the positions of a VBAP layout are angles, so the tables and the pad grid start in azimuth and distance. */
     CoordinateMode defaultCoordinateMode() const override { return CoordinateMode::Polar; }
 
+    /** Message thread. Moves every speaker that takes part (in use and not excluded) to the reference circle: the distance of the farthest
+        one (see vecpan::Layout::referenceRadius(), limited to the coordinate range), keeping its direction. A speaker at the listener has
+        no direction and stays. One undo step; works whatever the Edit/View menus say, like the tables.
+        @return Whether any speaker moved. */
+    bool placeSpeakersOnCircle();
+
     /** @return /vbap/centre: the centre radius. */
     std::vector<tlos::OscParameter> getOscParameters() const override;
 

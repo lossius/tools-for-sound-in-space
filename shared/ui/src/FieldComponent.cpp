@@ -93,6 +93,8 @@ void FieldComponent::updateOverlay (const IncludedSpeakers&, const std::vector<V
 
 void FieldComponent::paintOverlay (juce::Graphics&) {}
 
+void FieldComponent::paintBackdrop (juce::Graphics&) {}
+
 SourceGains FieldComponent::getLinkGains (int, Vec2, double) const { return {}; }
 
 void FieldComponent::setShowLevels (bool shouldShow)
@@ -780,6 +782,7 @@ void FieldComponent::paint (juce::Graphics& g)
     const int n = activeSources(), m = activeSpeakers();
 
     // What the plugin draws under everything else (TriPan: the triangulation).
+    paintBackdrop (g);
     if (showOverlay)
         paintOverlay (g);
 

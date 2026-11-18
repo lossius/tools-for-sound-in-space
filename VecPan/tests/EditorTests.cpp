@@ -81,6 +81,16 @@ int main (int argc, char** argv)
         CHECK (std::abs (value (p, vecpan::params::kCentreRadiusId) - 1.5f) < 1e-3f);
         setParam (p, vecpan::params::kCentreRadiusId, 0.5f);                       // a host change moves the slider
         CHECK (std::abs (centre.getValue() - 0.5) < 1e-3);
+
+        // The "Place speakers on circle" button moves the speakers to the farthest one's distance (one step, whatever the Edit/View menu says).
+        auto& circle = editor->getCircleButton();
+        CHECK (circle.isVisible() && circle.getParentComponent() == &editor->getSettingsContent());
+        setParam (p, tlos::params::speakerId (1, 'x'), 3.0f);                      // speaker 2 closer in, speaker 1 stays at 5 m
+        setParam (p, tlos::params::speakerId (1, 'y'), 0.0f);
+        const auto radius = [&] (int i) { return std::hypot (value (p, tlos::params::speakerId (i, 'x')), value (p, tlos::params::speakerId (i, 'y'))); };
+        CHECK (std::abs (radius (1) - 3.0) < 1e-3 && std::abs (radius (0) - 5.0) < 1e-3);
+        circle.onClick();
+        CHECK (std::abs (radius (1) - radius (0)) < 1e-3 && std::abs (radius (0) - 5.0) < 1e-3 && std::abs (value (p, tlos::params::speakerId (1, 'y'))) < 1e-4f);
         window.setVisible (false);
     }
 

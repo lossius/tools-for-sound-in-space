@@ -276,6 +276,25 @@ void SpatialProcessor::setSpeakerExcluded (int index, bool excluded)
     refreshLayout();
 }
 
+void SpatialProcessor::setSpeakerPositions (const std::vector<int>& channels, const std::vector<Vec2>& positions)
+{
+    std::vector<std::pair<juce::String, float>> changes;
+    const size_t count = std::min (channels.size(), positions.size());
+    const double limit = params::kCoordRange;
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        if (channels[i] < 0 || channels[i] >= kMaxChannels || ! std::isfinite (positions[i].x) || ! std::isfinite (positions[i].y))
+            continue;
+
+        changes.emplace_back (params::speakerId (channels[i], 'x'), (float) juce::jlimit (-limit, limit, positions[i].x));
+        changes.emplace_back (params::speakerId (channels[i], 'y'), (float) juce::jlimit (-limit, limit, positions[i].y));
+    }
+
+    writeParameters (changes);
+    refreshLayout();
+}
+
 IncludedSpeakers SpatialProcessor::getIncludedSpeakers() const
 {
     const int m = getActiveSpeakers();

@@ -24,7 +24,7 @@ namespace tlos
     speakers it feeds, and whatever the plugin draws underneath (TriPan: the triangulation). Handles can be dragged.
 
     What is specific to a panning method is left to the plugin's subclass through three hooks:
-    updateOverlay() (follow the layout), paintOverlay() (draw under the sources) and getLinkGains()
+    updateOverlay() (follow the layout), paintOverlay() (draw under the sources; paintBackdrop() for what is always shown) and getLinkGains()
     (which speakers a source feeds, and how much). Everything else (dragging, groups, selection,
     spread, scale, rotate, zoom, grid) is the same for all plugins. */
 class FieldComponent : public juce::Component,
@@ -260,6 +260,11 @@ protected:
     /** Hook: draws what lies under the group bands and spread circles, if the overlay is switched on
         (setShowOverlay()). Clipped to the plane; use toView() for coordinates. The default draws nothing. */
     virtual void paintOverlay (juce::Graphics& g);
+
+    /** Hook: draws what must always be visible, whether or not the overlay is switched on (VecPan: the circle where the level starts to fall off
+        outside the speakers). Drawn just before the overlay, under the group bands and spread circles. Clipped to the plane; use toView() for
+        coordinates. The default draws nothing. */
+    virtual void paintBackdrop (juce::Graphics& g);
 
     /** Hook: the speakers a source at `position` with the given spread feeds and their gains (indexed by output
         channel), drawn as links when "Show links" is on. The default returns no speakers (no links). */

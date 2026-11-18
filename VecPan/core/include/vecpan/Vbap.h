@@ -35,8 +35,14 @@ public:
     /** @return How many speakers take part in the panning. */
     int size() const noexcept { return (int) sorted.size(); }
 
-    /** @return The convex hull of the speakers (all of them, for the level outside the layout). */
+    /** @return The convex hull of the speakers (all of them). Only its having an area matters to the panning: the level falls off outside the
+        layout only if the speakers surround some area (not for a stereo pair). */
     const tlos::Hull& hull() const noexcept { return speakerHull; }
+
+    /** @return The reference radius in metres: the distance of the farthest speaker from the listener (0 if none). The speakers
+        are taken to be at this distance (a gain and delay compensation would align them to it), and the level of a source falls off
+        beyond this circle. */
+    double referenceRadius() const noexcept { return radius; }
 
     /** @return The speakers that take part, in order of increasing azimuth (the index into the `speakers` the layout was built from). */
     std::vector<int> order() const;
@@ -67,13 +73,14 @@ private:
     std::vector<Entry> sorted;       ///< The speakers that take part, by azimuth.
     std::vector<Pair> neighbours;    ///< The pair after each entry.
     tlos::Hull speakerHull;          ///< Hull of all finite speakers.
+    double radius = 0.0;             ///< Distance of the farthest finite speaker from the origin.
 };
 
 /** The settings of the panning law. */
 struct VbapSettings
 {
-    /** Level drop in dB for each doubling of (1 + the distance outside the speaker layout in metres), see
-        tlos::outsideFactor(). 0 = the level stays constant outside the layout. The distance of a source inside the layout never
+    /** Level drop in dB for each doubling of (1 + the distance beyond the reference circle in metres), see
+        tlos::outsideFactor() and Layout::referenceRadius(). 0 = the level stays constant outside the circle. The distance of a source inside the layout never
         changes its level (VBAP uses only the direction), except for the blend near the listener, see centreRadius. */
     double outsideRolloffDb = 0.0;
 
@@ -101,7 +108,8 @@ double azimuthOf (tlos::Vec2 p) noexcept;
     source at the listener with a spread is shared equally.
 
     Within VbapSettings::centreRadius of the listener the powers are blended with an even share over all speakers (see there).
-    The level outside the layout falls off as in the other plugins (see VbapSettings). Real-time safe: no allocation, no locks.
+    The level beyond the reference circle (the distance of the farthest speaker) falls off by tlos::outsideFactor() of the distance beyond it,
+    if the speakers surround an area (see VbapSettings). Real-time safe: no allocation, no locks.
 
     @param layout    The speakers (build it once when they change).
     @param source    The source position in metres.

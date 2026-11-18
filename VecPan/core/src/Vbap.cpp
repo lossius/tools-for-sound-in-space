@@ -54,6 +54,7 @@ Layout::Layout (std::span<const tlos::Vec2> speakers)
             continue;
 
         finite.push_back (p);
+        radius = std::max (radius, std::hypot (p.x, p.y));
         if (std::hypot (p.x, p.y) < 1e-9)
             continue; // at the listener: no direction
 
@@ -208,7 +209,7 @@ tlos::SourceGains computeGains (const Layout& layout, tlos::Vec2 source, double 
 
     double factor = 1.0;
     if (settings.outsideRolloffDb > 0.0 && layout.hull().hasArea())
-        factor = tlos::outsideFactor (layout.hull().distance (source), settings.outsideRolloffDb);
+        factor = tlos::outsideFactor (std::max (distance - layout.referenceRadius(), 0.0), settings.outsideRolloffDb);
 
     for (int i = 0; i < tlos::kMaxGainEntries; ++i)
         if (power[(size_t) i] > 0.0)

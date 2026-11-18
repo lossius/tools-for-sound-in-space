@@ -271,18 +271,35 @@ static void testCentreRadius()
     CHECK (isNear (sumSq (computeGains (layout, at (0.0, 1.0), 2.0, blend)), 1.0));
 }
 
-/** The level outside the layout falls off like the other plugins'; inside, the distance changes nothing. */
+/** The level beyond the reference circle (the farthest speaker's distance) falls off; inside it, the distance changes nothing. */
 static void testOutside()
 {
-    const Layout layout (speakersAt ({ 45.0, 135.0, -135.0, -45.0 }));    // a square, ring radius 5 m
+    const Layout layout (speakersAt ({ 45.0, 135.0, -135.0, -45.0 }));    // a square on a ring of radius 5 m
+    CHECK (isNear (layout.referenceRadius(), 5.0));
     const VbapSettings off {}, on { 6.0 };
 
     CHECK (isNear (sumSq (computeGains (layout, at (10.0, 2.0), 0.0, on)), 1.0));            // inside: unchanged
+    CHECK (isNear (sumSq (computeGains (layout, at (10.0, 5.0), 0.0, on)), 1.0));            // on the circle: unchanged (also between the speakers)
     CHECK (isNear (sumSq (computeGains (layout, at (10.0, 30.0), 0.0, off)), 1.0));          // off: constant at any distance
+
+    // Beyond the circle by 0.5 m: the gain of tlos::outsideFactor (0.5, 6 dB), wherever the source is (the corners of the square included).
+    for (double a : { 0.0, 45.0, 90.0 })
+        CHECK (isNear (std::sqrt (sumSq (computeGains (layout, at (a, 5.5), 0.0, on))), tlos::outsideFactor (0.5, 6.0), 1e-4));
 
     const double outside = std::sqrt (sumSq (computeGains (layout, at (10.0, 30.0), 0.0, on)));
     CHECK (outside < 0.2 && outside > 0.0);
     CHECK (outside < std::sqrt (sumSq (computeGains (layout, at (10.0, 8.0), 0.0, on))));    // further is quieter
+
+    // Speakers at different distances: the circle is the farthest one's.
+    const Layout mixed (std::vector<Vec2> { at (45.0, 3.0), at (135.0, 5.0), at (-135.0, 4.0), at (-45.0, 2.0) });
+    CHECK (isNear (mixed.referenceRadius(), 5.0));
+    CHECK (isNear (sumSq (computeGains (mixed, at (0.0, 4.9), 0.0, on)), 1.0));
+    CHECK (sumSq (computeGains (mixed, at (0.0, 6.0), 0.0, on)) < 0.3);
+
+    // No area (a stereo pair, speakers on one line): no falloff at all, so a stereo pair keeps its level.
+    const Layout stereo (speakersAt ({ 30.0, -30.0 }));
+    CHECK (isNear (stereo.referenceRadius(), 5.0) && isNear (sumSq (computeGains (stereo, at (0.0, 30.0), 0.0, on)), 1.0));
+    CHECK (Layout().referenceRadius() == 0.0);
 }
 
 /** The layout's order and pairs. */

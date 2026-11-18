@@ -163,6 +163,12 @@ public:
     bool isSpeakerExcluded (int index) const;
     /** Excludes or includes a speaker, and calls refreshLayout(). */
     void setSpeakerExcluded (int index, bool excluded);
+    /** Sets the positions of several speakers at once: all x and y parameters that differ are written inside change gestures
+        that are begun together and ended together (one step for the host's undo), then refreshLayout() is called. Positions are
+        limited to +-params::kCoordRange. Independent of the Edit/View menus, like the tables and imports.
+        @param channels   Zero-based speaker numbers.
+        @param positions  The new position of each, in metres (same length as `channels`; the rest is ignored). */
+    void setSpeakerPositions (const std::vector<int>& channels, const std::vector<Vec2>& positions);
     /** @return The excluded speakers (indexed by zero-based speaker number, also those not in use). */
     std::array<bool, kMaxChannels> getExcludedSpeakers() const;
     /** Replaces all exclusions at once, and calls refreshLayout(). */
