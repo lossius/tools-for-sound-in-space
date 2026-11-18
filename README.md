@@ -4,7 +4,7 @@ A collection of free, open-source (AGPLv3) plugins for spatial audio, all with t
 import/export, so that they look and work alike. So far: **TriPan** (triangulation panning), **DistPan** (distance-based
 amplitude panning, DBAP) and **VecPan** (2D vector base amplitude panning, VBAP). ViMiC is planned.
 
-Status: pre-release, version 0.1.0. TriPan and DistPan work and are covered by automated tests and pluginval (strictness 10; the CI workflow runs
+Status: pre-release, version 0.1.0. TriPan, DistPan and VecPan work and are covered by automated tests and pluginval (strictness 10; the CI workflow runs
 them on macOS and Windows, but has not run yet); they have not yet been tested in every host. AAX is optional and unverified in Pro Tools.
 
 ## TriPan
