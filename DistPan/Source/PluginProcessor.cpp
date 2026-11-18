@@ -215,10 +215,16 @@ void DistPanAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 float a = g0 + (g1 - g0) * f0;
                 const float inc = ((g0 + (g1 - g0) * f1) - a) / (float) len;
 
-                for (int i = 0; i < len; ++i)
+                // A constant gain (the common case) uses the SIMD multiply-add; a ramp computes a + inc * i,
+                // which has no sample-to-sample dependency, so the compiler can vectorise it.
+                if (g0 == g1)
                 {
-                    out[i] += in[i] * a;
-                    a += inc;
+                    juce::FloatVectorOperations::addWithMultiply (out, in, a, len);
+                }
+                else
+                {
+                    for (int i = 0; i < len; ++i)
+                        out[i] += in[i] * (a + inc * (float) i);
                 }
             }
         }
