@@ -28,23 +28,37 @@ double distanceGain (double distance, const PathSettings& settings) noexcept
     return std::pow (d, -std::clamp (settings.power, 0.0, 9.0));
 }
 
+double sourceDirectivity (double pattern, int power, double cosAngle) noexcept
+{
+    return directivity (pattern, power, cosAngle, true);
+}
+
 PathResult computeDirectPath (tlos::Vec2 source, const Microphone& mic, const PathSettings& settings) noexcept
+{
+    return computeDirectPath (Source { source, 0.0, 1.0 }, mic, settings);
+}
+
+PathResult computeDirectPath (const Source& source, const Microphone& mic, const PathSettings& settings) noexcept
 {
     PathResult result;
 
-    if (! std::isfinite (source.x) || ! std::isfinite (source.y) || ! std::isfinite (mic.position.x) || ! std::isfinite (mic.position.y))
+    if (! std::isfinite (source.position.x) || ! std::isfinite (source.position.y) || ! std::isfinite (mic.position.x) || ! std::isfinite (mic.position.y))
         return result;
 
-    const double dx = source.x - mic.position.x;
-    const double dy = source.y - mic.position.y;
+    const double dx = source.position.x - mic.position.x;
+    const double dy = source.position.y - mic.position.y;
     const double dz = settings.sourceHeight - settings.micHeight;
     const double distance = std::sqrt (dx * dx + dy * dy + dz * dz);
 
     // The axis of the microphone is (-sin yaw, cos yaw, 0): the same convention as azimuths.
     const double cosAngle = distance > 1e-9 ? (-std::sin (mic.yaw) * dx + std::cos (mic.yaw) * dy) / distance : 1.0;
 
+    // The source's axis is (-sin yaw, cos yaw, 0) too; the direction from the source to the microphone is the opposite of (dx, dy, dz).
+    const double cosRadiation = distance > 1e-9 ? (std::sin (source.yaw) * dx - std::cos (source.yaw) * dy) / distance : 1.0;
+
     const double polarityFloor = settings.restrictPolarity ? 0.0 : -1.0;
-    const double gain = distanceGain (distance, settings) * directivity (mic.pattern, settings.micPower, cosAngle, settings.restrictPolarity);
+    const double gain = distanceGain (distance, settings) * directivity (mic.pattern, settings.micPower, cosAngle, settings.restrictPolarity)
+                      * sourceDirectivity (source.pattern, settings.sourcePower, cosRadiation);
 
     result.distance = distance;
     result.delaySeconds = distance / speedOfSound (settings.temperatureCelsius);

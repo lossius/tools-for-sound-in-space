@@ -89,7 +89,7 @@ int main (int argc, char** argv)
         auto& content = editor->getSettingsContent();
         CHECK (editor->getDistanceLawBox().isVisible() && editor->getDistanceLawBox().getParentComponent() == &content);
         CHECK (editor->getDelayModeBox().isVisible() && editor->getPolarityButton().isVisible());
-        for (const auto& id : { vimic::params::kDistancePowerId, vimic::params::kDistanceDbId, vimic::params::kMinDistanceId, vimic::params::kMicPowerId,
+        for (const auto& id : { vimic::params::kDistancePowerId, vimic::params::kDistanceDbId, vimic::params::kMinDistanceId, vimic::params::kMicPowerId, vimic::params::kSourcePowerId,
                                 vimic::params::kTemperatureId, vimic::params::kSourceHeightId, vimic::params::kMicHeightId,
                                 vimic::params::kDirectGainId, vimic::params::kOutputGainId })
         {
@@ -135,7 +135,8 @@ int main (int argc, char** argv)
         CHECK (speakers.getName() == "ViMiC - Microphones" && sources.getName() == "ViMiC - Sources");
         auto& sourceHeader = sources.getContent().getMainTable().getTable().getHeader();
         auto& micHeader = speakers.getContent().getMainTable().getTable().getHeader();
-        CHECK (sourceHeader.getNumColumns (true) == 7 && micHeader.getNumColumns (true) == 9);        // sources: no Spread; microphones: Yaw and Pattern
+        CHECK (sourceHeader.getNumColumns (true) == 9 && micHeader.getNumColumns (true) == 9);        // sources: no Spread, but Yaw and Pattern; microphones: Yaw and Pattern
+        CHECK (sourceHeader.getColumnName (tlos::PositionTable::extraColumn).startsWith ("Yaw") && sourceHeader.getColumnName (tlos::PositionTable::extraColumn + 1) == "Pattern");
         CHECK (micHeader.getColumnName (tlos::PositionTable::extraColumn).startsWith ("Yaw") && micHeader.getColumnName (tlos::PositionTable::extraColumn + 1) == "Pattern");
 
         auto& table = speakers.getContent().getMainTable();
@@ -146,6 +147,15 @@ int main (int argc, char** argv)
         CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "much") == "1.00");                                // rubbish is rejected
         setParam (p, vimic::params::micYawId (1), 0.0f);
         setParam (p, vimic::params::micPatternId (1), 0.5f);
+
+        // The sources table has them as well.
+        auto& sourceTable = sources.getContent().getMainTable();
+        CHECK (sourceTable.getValue (0, tlos::PositionTable::extraColumn + 1) == 1.0);                                                 // a source is omni by default
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn, "-60") == "-60.0" && std::abs (value (p, vimic::params::srcYawId (0)) + 60.0f) < 1e-3f);
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 1, "0.5") == "0.50" && std::abs (value (p, vimic::params::srcPatternId (0)) - 0.5f) < 1e-4f);
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 1, "9") == "1.00");
+        setParam (p, vimic::params::srcYawId (0), 0.0f);
+        setParam (p, vimic::params::srcPatternId (0), 1.0f);
     }
 
     // The spread has no use: a spread drag (Option) on a source does nothing, and its circle is never drawn.
@@ -157,6 +167,18 @@ int main (int argc, char** argv)
     field.dragTo (start + juce::Point<float> (0.0f, -60.0f));
     field.release();
     CHECK (value (p, tlos::params::spreadId (0)) < 1e-6f);
+
+    // A source with a pattern gets a lobe and an arrow on the pad; paint the pad with one (no crash), and the links follow the source's direction.
+    setParam (p, vimic::params::srcPatternId (1), 0.3f);
+    setParam (p, vimic::params::srcYawId (1), 40.0f);
+    field.refresh();
+    {
+        juce::Image image (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+        juce::Graphics g (image);
+        editor->paintEntireComponent (g, true);
+    }
+    setParam (p, vimic::params::srcPatternId (1), 1.0f);
+    setParam (p, vimic::params::srcYawId (1), 0.0f);
 
     // The pad drags a source through the parameters, as in the other plugins, and shows its position in the polar mode.
     field.pressAt (start, juce::ModifierKeys());
@@ -182,6 +204,12 @@ int main (int argc, char** argv)
         editor->paintEntireComponent (g, true);
     }
     p.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Polar);
+
+    // For the picture: two sources with a radiation pattern (a cardioid and a sharper one).
+    setParam (p, vimic::params::srcPatternId (1), 0.5f);
+    setParam (p, vimic::params::srcYawId (1), 40.0f);
+    setParam (p, vimic::params::srcPatternId (2), 0.0f);
+    setParam (p, vimic::params::srcYawId (2), -120.0f);
 
     if (argc > 1)
     {

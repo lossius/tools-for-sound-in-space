@@ -256,7 +256,7 @@ public:
 
     /** @return The per-source parameters of the panning method, in column order (ViMiC: the yaw and the pattern of the source), at most kMaxSpeakerColumns;
         the default is none. The sources table shows them as columns after the group, the source files carry them in attributes, and OSC has
-        /source/N/<attribute>. */
+        /source/N/(attribute). */
     virtual std::vector<SpeakerColumn> getSourceColumns() const { return {}; }
 
     /** @return What the plugin calls its outputs, singular and with a capital: "Speaker" (the default) or for example "Microphone". Used in the

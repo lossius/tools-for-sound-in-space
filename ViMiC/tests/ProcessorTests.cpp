@@ -159,14 +159,17 @@ static void testParameterOrder()
 {
     ViMiCAudioProcessor p;
     const auto& parameters = p.getParameters();
-    const int total = 3 + 12 + 64 * 7 + 64 * 8;
+    const int total = 3 + 13 + 64 * 9 + 64 * 8;
 
     CHECK (parameters.size() == total);
 
     const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
     CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId && idOf (2) == tlos::params::kOutsideRolloffId);
-    CHECK (idOf (3) == vimic::params::kDistanceLawId && idOf (14) == vimic::params::kOutputGainId && idOf (15) == tlos::params::sourceId (0, 'x'));
-    const int speakers = 15 + 64 * 7;
+    CHECK (idOf (3) == vimic::params::kDistanceLawId && idOf (15) == vimic::params::kOutputGainId && idOf (16) == tlos::params::sourceId (0, 'x'));
+    CHECK (idOf (3 + vimic::params::SourcePower) == vimic::params::kSourcePowerId && idOf (3 + vimic::params::DelayModeIndex) == vimic::params::kDelayModeId);
+    CHECK (idOf (16 + 7) == vimic::params::srcYawId (0) && idOf (16 + 8) == vimic::params::srcPatternId (0) && idOf (16 + 9) == tlos::params::sourceId (1, 'x'));
+    CHECK (parameters[16 + 7]->getName (64) == "Source 1 Yaw" && std::abs (getParam (p, vimic::params::srcPatternId (3)) - 1.0f) < 1e-4f);
+    const int speakers = 16 + 64 * 9;
     CHECK (idOf (speakers) == tlos::params::speakerId (0, 'x'));
     CHECK (idOf (speakers + 6) == vimic::params::micYawId (0) && idOf (speakers + 7) == vimic::params::micPatternId (0));
     CHECK (parameters[speakers + 6]->getName (64) == "Microphone 1 Yaw" && parameters[speakers]->getName (64) == "Microphone 1 X");
@@ -187,7 +190,8 @@ static void testParameterOrder()
     CHECK (p.getOutputNoun() == "Microphone" && ! p.usesSpread() && ! p.usesOutsideRolloff() && ! p.supportsVirtualSpeakers());
     CHECK (p.getSpeakerColumns().size() == 2 && p.getSpeakerColumns()[0].attribute == "yaw" && p.getSpeakerColumns()[1].attribute == "pattern");
     CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);
-    CHECK (p.getLatencySamples() == 2 && p.getOscParameters().size() == 12);
+    CHECK (p.getSourceColumns().size() == 2 && p.getSourceColumns()[0].attribute == "yaw" && p.getSourceColumns()[1].attribute == "pattern" && p.getSourceColumns()[1].defaultValue == 1.0);
+    CHECK (p.getLatencySamples() == 2 && p.getOscParameters().size() == 13);
 }
 
 /** The default layout points the microphones outwards (yaw = azimuth of the position). */
@@ -203,6 +207,17 @@ static void testDefaultLayout()
         difference = std::min (difference, 360.0 - difference);
         CHECK (difference < 1e-3);
     }
+
+    // The sources face the centre (the direction from the source to the origin): the source at the front left faces back right, and so on.
+    for (int i = 0; i < 2; ++i)
+    {
+        const double x = getParam (p, tlos::params::sourceId (i, 'x')), y = getParam (p, tlos::params::sourceId (i, 'y'));
+        const double towardsCentre = std::atan2 (x, -y) * 180.0 / std::numbers::pi;
+        double difference = std::abs (towardsCentre - getParam (p, vimic::params::srcYawId (i)));
+        difference = std::min (difference, 360.0 - difference);
+        CHECK (difference < 1e-3);
+    }
+    CHECK (std::abs (getParam (p, vimic::params::srcYawId (0)) + 135.0) < 1e-3);   // source 1 is at the front left (-1.77, 1.77): it faces back right
 
     // "Reset layout" does it again.
     setParam (p, vimic::params::micYawId (2), 17.0f);
@@ -306,6 +321,64 @@ static void testPatternAndYaw()
     CHECK (std::abs (level (-4.0f, 0.0f) - 0.25) < 1e-3);
     setParam (p, vimic::params::micYawId (0), 0.0f);
     CHECK (std::abs (level (-4.0f, 0.0f) - 0.25 * 0.25) < 1e-3);   // (0.5)^2 at 90 degrees
+}
+
+/** A source that radiates more in one direction: heard when it faces the microphone, not when it faces away; yaw, the exponent and the files follow. */
+static void testSourceDirectivity()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 1, 2048));
+    placeMic (p, 0, 0.0f, 0.0f, 0.0f, 1.0f);                       // an omni microphone at the centre
+    placeSource (p, 0, 0.0f, 4.0f);                                 // 4 m in front of it
+    p.refreshLayout();
+    juce::AudioBuffer<float> out;
+    double sum = 0.0;
+
+    const auto level = [&]
+    {
+        out = impulseResponse (p, 1, 1, 2048);
+        centroid (out, 0, sum);
+        return sum;
+    };
+
+    CHECK (std::abs (level() - 0.25) < 1e-3);                      // omni by default: only the distance counts, whatever the yaw
+    setParam (p, vimic::params::srcYawId (0), 123.0f);
+    CHECK (std::abs (level() - 0.25) < 1e-3);
+
+    setParam (p, vimic::params::srcPatternId (0), 0.5f);          // a cardioid source
+    setParam (p, vimic::params::srcYawId (0), 180.0f);            // facing the microphone (at its back, towards the centre)
+    CHECK (std::abs (level() - 0.25) < 1e-3);
+    setParam (p, vimic::params::srcYawId (0), 0.0f);              // facing away
+    CHECK (std::abs (level()) < 1e-3);
+    setParam (p, vimic::params::srcYawId (0), 90.0f);             // to the left: the microphone is at its side
+    CHECK (std::abs (level() - 0.125) < 1e-3);
+    setParam (p, vimic::params::kSourcePowerId, 2.0f);            // the exponent
+    CHECK (std::abs (level() - 0.25 * 0.25) < 1e-3);
+    setParam (p, vimic::params::kSourcePowerId, 1.0f);
+    CHECK (p.getSource (0).pattern == 0.5 && std::abs (p.getSource (0).yaw - std::numbers::pi / 2.0) < 1e-4 && std::abs (p.getSource (0).position.y - 4.0) < 1e-4);
+
+    // Every microphone hears the source differently: a source turned towards one of two microphones.
+    ViMiCAudioProcessor q;
+    CHECK (configure (q, 1, 2, 2048));
+    placeMic (q, 0, -3.0f, 0.0f, 0.0f, 1.0f);
+    placeMic (q, 1, 3.0f, 0.0f, 0.0f, 1.0f);
+    placeSource (q, 0, 0.0f, 0.0f);
+    setParam (q, vimic::params::srcPatternId (0), 0.0f);          // a figure-8 source (the rear lobe is removed), turned to the left
+    setParam (q, vimic::params::srcYawId (0), 90.0f);
+    q.refreshLayout();
+    out = impulseResponse (q, 1, 2, 2048);
+    double sumLeft = 0.0, sumRight = 0.0;
+    centroid (out, 0, sumLeft);
+    centroid (out, 1, sumRight);
+    CHECK (std::abs (sumLeft - 1.0 / 3.0) < 1e-3 && std::abs (sumRight) < 1e-3);
+
+    // OSC: /source/N/yaw and /pattern (and /speaker/N/yaw) set the parameters.
+    auto& osc = q.getOscControl();
+    CHECK (osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/source/1/yaw"), -45.0f)));
+    CHECK (std::abs (getParam (q, vimic::params::srcYawId (0)) + 45.0f) < 1e-3f);
+    CHECK (osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/source/1/pattern"), 0.25f)) && std::abs (getParam (q, vimic::params::srcPatternId (0)) - 0.25f) < 1e-4f);
+    CHECK (osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/speaker/2/pattern"), 0.8f)) && std::abs (getParam (q, vimic::params::micPatternId (1)) - 0.8f) < 1e-4f);
+    CHECK (osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/vimic/sourcepower"), 3.0f)) && getParam (q, vimic::params::kSourcePowerId) == 3.0f);
 }
 
 /** Heights: the paths are longer and the sound arrives off the axis. */
@@ -434,6 +507,9 @@ static void testStateRoundTrip()
     ViMiCAudioProcessor a;
     CHECK (configure (a, 4, 6, 256));
     placeMic (a, 3, 1.25f, 2.0f, 33.0f, 0.7f);
+    setParam (a, vimic::params::srcYawId (2), -70.0f);
+    setParam (a, vimic::params::srcPatternId (2), 0.4f);
+    setParam (a, vimic::params::kSourcePowerId, 4.0f);
     setParam (a, vimic::params::kDelayModeId, 1.0f);
     setParam (a, vimic::params::kTemperatureId, 9.0f);
     a.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Cartesian);
@@ -447,6 +523,7 @@ static void testStateRoundTrip()
     CHECK (std::abs (getParam (b, tlos::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
     CHECK (std::abs (getParam (b, vimic::params::micYawId (3)) - 33.0f) < 1e-3f && std::abs (getParam (b, vimic::params::micPatternId (3)) - 0.7f) < 1e-4f);
     CHECK (b.getDelayMode() == vimic::params::DelayMode::Absolute && std::abs (getParam (b, vimic::params::kTemperatureId) - 9.0f) < 1e-3f);
+    CHECK (std::abs (getParam (b, vimic::params::srcYawId (2)) + 70.0f) < 1e-3f && std::abs (getParam (b, vimic::params::srcPatternId (2)) - 0.4f) < 1e-4f && getParam (b, vimic::params::kSourcePowerId) == 4.0f);
     CHECK (b.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Cartesian);
 
     // A VecPan session is not a ViMiC session.
@@ -472,6 +549,20 @@ static void testFilesAndColumns()
     const auto text = file.loadFileAsString();
     CHECK (text.contains ("yaw=\"") && text.contains ("pattern=\"") && text.contains ("<ViMiCSpeakers"));
     CHECK (! tlos::io::save (p, tlos::io::Kind::Sources, file).failed() && ! file.loadFileAsString().contains ("spread="));   // no spread for ViMiC
+
+    // The sources have them too (in their own files).
+    setParam (p, vimic::params::srcYawId (0), 20.0f);
+    setParam (p, vimic::params::srcPatternId (0), 0.5f);
+    CHECK (tlos::io::save (p, tlos::io::Kind::Sources, file).wasOk());
+    {
+        const auto sourceText = file.loadFileAsString();
+        CHECK (sourceText.contains ("yaw=\"") && sourceText.contains ("pattern=\"") && sourceText.contains ("<ViMiCSources"));
+        ViMiCAudioProcessor r;
+        CHECK (configure (r, 1, 3, 256));
+        tlos::io::ImportReport sourceReport;
+        CHECK (tlos::io::load (r, tlos::io::Kind::Sources, file, sourceReport).wasOk());
+        CHECK (std::abs (getParam (r, vimic::params::srcYawId (0)) - 20.0f) < 0.1f && std::abs (getParam (r, vimic::params::srcPatternId (0)) - 0.5f) < 0.01f);
+    }
 
     ViMiCAudioProcessor q;
     CHECK (configure (q, 1, 3, 256));
@@ -695,6 +786,7 @@ int main (int argc, char** argv)
     testDefaultLayout();
     testGainsAndDelays();
     testPatternAndYaw();
+    testSourceDirectivity();
     testHeights();
     testChannelControls();
     testMovingSource();

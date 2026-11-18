@@ -25,6 +25,7 @@ struct PathSettings
     double dbPerMetre = 6.0;                  ///< The decrease k of the exponential law, in dB per metre (0..60).
     double minDistance = 1.0;                 ///< Distances shorter than this count as this long, so that the gain never exceeds 1 (metres).
     int micPower = 1;                         ///< The exponent w of the microphone pattern (0..9).
+    int sourcePower = 1;                      ///< The exponent of the source pattern (0..9).
     bool restrictPolarity = true;             ///< Whether the pattern may not give negative (anti-phase) gains.
     double temperatureCelsius = 20.0;         ///< Room temperature, which sets the speed of sound.
     double sourceHeight = 1.5;                ///< Height of every source above the plane of the positions, in metres.
@@ -37,6 +38,21 @@ struct Microphone
     tlos::Vec2 position;       ///< Position in metres.
     double yaw = 0.0;          ///< Direction of its axis in radians, counter-clockwise from the front (+y), like azimuths.
     double pattern = 0.5;      ///< The ratio `a` of its pattern (1 omni, 0.5 cardioid, 0 figure-8).
+};
+
+/** A sound source in the plane. */
+struct Source
+{
+    /** A source at the origin facing the front, radiating equally in every direction. */
+    Source() = default;
+
+    /** A source with a position, a yaw and a pattern (explicit, so that `{ x, y }` is always a position of the omni overloads). */
+    explicit Source (tlos::Vec2 positionInMetres, double yawRadians = 0.0, double patternRatio = 1.0)
+        : position (positionInMetres), yaw (yawRadians), pattern (patternRatio) {}
+
+    tlos::Vec2 position;       ///< Position in metres.
+    double yaw = 0.0;          ///< Direction in which it radiates most, in radians, counter-clockwise from the front (+y).
+    double pattern = 1.0;      ///< The ratio `a` of its radiation pattern: 1 radiates equally in every direction (the default), 0.5 like a cardioid, 0 like a figure-8.
 };
 
 /** Gain and time of flight of one path. */
@@ -54,11 +70,19 @@ double speedOfSound (double temperatureCelsius) noexcept;
     `settings.minDistance` (and that to at least 0.01 m), so with the default minimum of 1 m it is never above 1. */
 double distanceGain (double distance, const PathSettings& settings) noexcept;
 
-/** The direct path from a source to a microphone: the length with the heights, the time of flight, and the gain from the distance law and the
-    microphone's pattern (the angle between its axis and the direction to the source; the axis lies in the plane).
-    @param source    The source position in metres (in the plane; its height is settings.sourceHeight).
+/** @return The gain of a source's radiation pattern for a microphone at the angle phi from its axis (cos(phi) given):
+    `(a + (1 - a) cos(phi)) ^ w` with `a` the source's pattern and `w` = settings.sourcePower, never negative (a source does not radiate in anti-phase). 1 for an omni source. */
+double sourceDirectivity (double pattern, int power, double cosAngle) noexcept;
+
+/** The direct path from a source to a microphone: the length with the heights, the time of flight, and the gain from the distance law, the
+    microphone's pattern (the angle between its axis and the direction to the source; the axes lie in the plane) and the source's radiation pattern
+    (the angle between the source's axis and the direction to the microphone).
+    @param source    The source (in the plane; its height is settings.sourceHeight).
     @param mic       The microphone.
     @param settings  The settings of the model.
     @return          The result; gain 0 if a position is not finite. */
+PathResult computeDirectPath (const Source& source, const Microphone& mic, const PathSettings& settings) noexcept;
+
+/** As above for an omni source at a position. */
 PathResult computeDirectPath (tlos::Vec2 source, const Microphone& mic, const PathSettings& settings) noexcept;
 }

@@ -150,6 +150,47 @@ static void testDirectPath()
     CHECK (computeDirectPath ({ 0.0, 1.0 }, bad, s).gain == 0.0);
 }
 
+/** The source's radiation pattern: omni changes nothing, a cardioid source radiates in its direction only, yaw is counter-clockwise, the exponent sharpens. */
+static void testSourceDirectivity()
+{
+    CHECK (isNear (sourceDirectivity (1.0, 1, -1.0), 1.0) && isNear (sourceDirectivity (0.5, 1, 1.0), 1.0) && isNear (sourceDirectivity (0.5, 1, -1.0), 0.0));
+    CHECK (isNear (sourceDirectivity (0.0, 1, -1.0), 0.0));                      // never negative: no anti-phase radiation
+    CHECK (isNear (sourceDirectivity (0.5, 2, 0.0), 0.25));
+
+    PathSettings s;
+    Microphone mic;
+    mic.position = { 0.0, 0.0 };
+    mic.pattern = 1.0;                                                           // an omni microphone: only the source's pattern shows
+    Source cardioid { { 0.0, 4.0 }, 0.0, 0.5 };                                  // 4 m in front of the microphone, facing the front: away from it
+
+    CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.0));             // the microphone is behind the source
+    cardioid.yaw = std::numbers::pi;                                             // turned round: facing the microphone
+    CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.25));
+    cardioid.yaw = rad (90.0);                                                   // turned to the left: the microphone is at its right side
+    CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.25 * 0.5));
+    cardioid.yaw = rad (-90.0);                                                  // to the right: the microphone at its left side
+    CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.25 * 0.5));
+
+    // A source to the left of the microphone, facing the right (yaw -90 degrees): faces the microphone.
+    Source onLeft { { -4.0, 0.0 }, rad (-90.0), 0.5 };
+    CHECK (isNear (computeDirectPath (onLeft, mic, s).gain, 0.25));
+    onLeft.yaw = rad (90.0);
+    CHECK (isNear (computeDirectPath (onLeft, mic, s).gain, 0.0));
+
+    // The exponent, the heights, and the omni overload.
+    s.sourcePower = 2;
+    cardioid.yaw = rad (90.0);
+    CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.25 * 0.25));
+    s.sourcePower = 1;
+    s.sourceHeight = 4.5;                                                        // 3 m above the microphone: the path is 5 m, the microphone is below and behind
+    cardioid.yaw = std::numbers::pi;                                             // facing the microphone horizontally
+    CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.2 * (0.5 + 0.5 * 4.0 / 5.0)));
+    CHECK (isNear (computeDirectPath (Vec2 { 0.0, 4.0 }, mic, PathSettings {}).gain, computeDirectPath (Source { { 0.0, 4.0 }, 1.234, 1.0 }, mic, PathSettings {}).gain));
+
+    // A source on the microphone (no direction) is not turned down.
+    CHECK (isNear (computeDirectPath (Source { { 0.0, 0.0 }, 1.0, 0.0 }, mic, PathSettings { .minDistance = 0.1 }).gain, 1.0));
+}
+
 /** A reference for the delay line: the same Hermite interpolation of a full history. */
 static double hermiteAt (const std::vector<double>& x, double position)
 {
@@ -339,6 +380,7 @@ int main()
     testDirectivity();
     testDistanceAndSpeed();
     testDirectPath();
+    testSourceDirectivity();
     testDelayLineIntegerAndRamp();
     testDelayLineFractional();
     testDelayLineDoppler();

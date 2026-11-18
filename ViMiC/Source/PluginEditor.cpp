@@ -28,6 +28,7 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
     addSliderRow ("Minimum distance", ids::kMinDistanceId, " m", 2, "Distances shorter than this count as this long, so that a source close to a microphone is never amplified.");
 
     addSliderRow ("Microphone exponent", ids::kMicPowerId, "", 0, "The exponent w of the microphone pattern: more than 1 makes every pattern artificially sharper.");
+    addSliderRow ("Source exponent", ids::kSourcePowerId, "", 0, "The exponent of the sources' radiation pattern: more than 1 makes every source pattern sharper. Only matters for sources whose pattern is below 1 (not omni).");
     polarityButton.setButtonText ("Restrict polarity");
     polarityButton.setTooltip ("Off: microphones with a rear lobe (figure-8, hypercardioid) give anti-phase signals for sound from behind. On: those are removed.");
     polarityAttachment = std::make_unique<juce::ButtonParameterAttachment> (*apvts.getParameter (ids::kMicPolarityId), polarityButton, nullptr);

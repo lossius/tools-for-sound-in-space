@@ -106,10 +106,13 @@ direction (**yaw**, degrees counter-clockwise from the front) and a **pattern**;
   never by a jump. Switching the mode may click. The plugin reports a latency of 2 samples (the shortest delay of the interpolation).
 - **Direct sound gain** and **Output gain** (dB) set the levels. All of this is in the settings window (and is host parameters, so it can be automated); the positions are shown
   in azimuth and distance by default (see *Coordinates*).
+- **Source directivity**: every source has a **Yaw** and a **Pattern** too (1 = omni, the default; 0.5 = cardioid, 0 = figure-8), set in the source table, in the source files (`yaw`, `pattern`) or as host parameters. A source that radiates more in one direction is louder in the microphones it faces: its gain is
+  `(a + (1 - a) cos φ)^w`, where φ is the angle between the source's yaw and the direction to the microphone and `w` the **Source exponent**; a source never radiates in anti-phase (negative values are 0). The default layout turns every source to face the centre.
+  On the pad such a source shows its radiation lobe and an arrow along its yaw. (The manual's "center" and "follow" orientation modes and a free-hand directivity curve are not done.)
 - The pad draws the pickup lobe of every microphone, turned by its yaw. In the microphone table (and in the files, as `yaw` and `pattern`) every microphone has its **Yaw** and **Pattern**. The default
   layout points the microphones outwards. The spread of the sources and the outside rolloff are not used by ViMiC and are hidden.
 - `microphone setups/` has stereo AB, XY, ORTF and NOS, a Decca tree, an IRT cross and rings of 4, 5 and 8 microphones, which can be imported in the microphone table.
-- **Not yet**: source directivity, the room with early reflections and wall absorption, a cross-fade delay mode (see the design note). There is no late reverb: use an external reverb on the outputs.
+- **Not yet**: the room with early reflections and wall absorption, a cross-fade delay mode (see the design note). There is no late reverb: use an external reverb on the outputs.
 - **CPU**: with 64 sources and 64 microphones, 512-sample blocks at 48 kHz: about 0.6 ms with static sources and about 6 ms (57 % of a core) with every source moving, in a Release build.
   Typical setups (a few sources and microphones) cost very little.
 

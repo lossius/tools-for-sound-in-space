@@ -23,7 +23,7 @@ const juce::String* globalIds()
 {
     static const juce::String ids[] { vimic::params::kDistanceLawId, vimic::params::kDistancePowerId, vimic::params::kDistanceDbId,
                                       vimic::params::kMinDistanceId, vimic::params::kMicPowerId, vimic::params::kMicPolarityId,
-                                      vimic::params::kDelayModeId, vimic::params::kTemperatureId, vimic::params::kSourceHeightId,
+                                      vimic::params::kSourcePowerId, vimic::params::kDelayModeId, vimic::params::kTemperatureId, vimic::params::kSourceHeightId,
                                       vimic::params::kMicHeightId, vimic::params::kDirectGainId, vimic::params::kOutputGainId };
     return ids;
 }
@@ -40,6 +40,8 @@ ViMiCAudioProcessor::ViMiCAudioProcessor()
 
     for (int i = 0; i < tlos::kMaxChannels; ++i)
     {
+        srcYawParam[(size_t) i] = apvts.getRawParameterValue (vimic::params::srcYawId (i));
+        srcPatternParam[(size_t) i] = apvts.getRawParameterValue (vimic::params::srcPatternId (i));
         yawParam[(size_t) i] = apvts.getRawParameterValue (vimic::params::micYawId (i));
         patternParam[(size_t) i] = apvts.getRawParameterValue (vimic::params::micPatternId (i));
     }
@@ -50,7 +52,7 @@ ViMiCAudioProcessor::ViMiCAudioProcessor()
 std::vector<tlos::OscParameter> ViMiCAudioProcessor::getOscParameters() const
 {
     const char* addresses[] { "/vimic/law", "/vimic/power", "/vimic/db", "/vimic/mindist", "/vimic/micpower", "/vimic/polarity",
-                              "/vimic/delaymode", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight", "/vimic/directgain", "/vimic/gain" };
+                              "/vimic/sourcepower", "/vimic/delaymode", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight", "/vimic/directgain", "/vimic/gain" };
     std::vector<tlos::OscParameter> out;
     for (size_t i = 0; i < globalParam.size(); ++i)
         out.push_back ({ addresses[i], globalIds()[i] });
@@ -64,26 +66,42 @@ std::vector<tlos::SpeakerColumn> ViMiCAudioProcessor::getSpeakerColumns() const
              tlos::SpeakerColumn { "Pattern", "pattern", [] (int i) { return vimic::params::micPatternId (i); }, 0.0, 1.0, 0.5, 2 } };
 }
 
+std::vector<tlos::SpeakerColumn> ViMiCAudioProcessor::getSourceColumns() const
+{
+    const auto yawTitle = "Yaw (" + juce::String::charToString (0xb0) + ")";
+    return { tlos::SpeakerColumn { yawTitle, "yaw", [] (int i) { return vimic::params::srcYawId (i); }, -180.0, 180.0, 0.0, 1 },
+             tlos::SpeakerColumn { "Pattern", "pattern", [] (int i) { return vimic::params::srcPatternId (i); }, 0.0, 1.0, 1.0, 2 } };
+}
+
+vimic::Source ViMiCAudioProcessor::getSource (int index) const noexcept
+{
+    index = std::clamp (index, 0, tlos::kMaxChannels - 1);
+    return vimic::Source ({ (double) srcX[(size_t) index]->load(), (double) srcY[(size_t) index]->load() },
+                          (double) srcYawParam[(size_t) index]->load() * kDegreesToRadians, (double) srcPatternParam[(size_t) index]->load());
+}
+
 vimic::PathSettings ViMiCAudioProcessor::getPathSettings() const noexcept
 {
+    namespace g = vimic::params;
     const auto v = [this] (size_t i) { return (double) globalParam[i]->load(); };
 
     vimic::PathSettings s;
-    s.law = v (0) >= 0.5 ? vimic::DistanceLaw::Exponential : vimic::DistanceLaw::Inverse;
-    s.power = v (1);
-    s.dbPerMetre = v (2);
-    s.minDistance = v (3);
-    s.micPower = (int) std::lround (v (4));
-    s.restrictPolarity = v (5) >= 0.5;
-    s.temperatureCelsius = v (7);
-    s.sourceHeight = v (8);
-    s.micHeight = v (9);
+    s.law = v (g::Law) >= 0.5 ? vimic::DistanceLaw::Exponential : vimic::DistanceLaw::Inverse;
+    s.power = v (g::Power);
+    s.dbPerMetre = v (g::Db);
+    s.minDistance = v (g::MinDistance);
+    s.micPower = (int) std::lround (v (g::MicPower));
+    s.restrictPolarity = v (g::Polarity) >= 0.5;
+    s.sourcePower = (int) std::lround (v (g::SourcePower));
+    s.temperatureCelsius = v (g::Temperature);
+    s.sourceHeight = v (g::SourceHeight);
+    s.micHeight = v (g::MicHeight);
     return s;
 }
 
 vimic::params::DelayMode ViMiCAudioProcessor::getDelayMode() const noexcept
 {
-    return globalParam[6]->load() >= 0.5f ? vimic::params::DelayMode::Absolute : vimic::params::DelayMode::Relative;
+    return globalParam[vimic::params::DelayModeIndex]->load() >= 0.5f ? vimic::params::DelayMode::Absolute : vimic::params::DelayMode::Relative;
 }
 
 std::vector<vimic::Microphone> ViMiCAudioProcessor::getMicrophones (const tlos::IncludedSpeakers& speakers) const
@@ -101,18 +119,25 @@ std::vector<vimic::Microphone> ViMiCAudioProcessor::getMicrophones (const tlos::
     return out;
 }
 
-void ViMiCAudioProcessor::layoutWasReset (bool, bool speakersReset)
+void ViMiCAudioProcessor::layoutWasReset (bool sourcesReset, bool speakersReset)
 {
-    if (! speakersReset)
-        return;
-
     // Microphones point outwards: the yaw is the azimuth of the position (counter-clockwise from the front).
-    for (int i = 0; i < getActiveSpeakers(); ++i)
-    {
-        const double x = (double) spkX[(size_t) i]->load(), y = (double) spkY[(size_t) i]->load();
-        if (std::hypot (x, y) > 1e-9)
-            setParameterValue (vimic::params::micYawId (i), (float) (std::atan2 (-x, y) / kDegreesToRadians));
-    }
+    if (speakersReset)
+        for (int i = 0; i < getActiveSpeakers(); ++i)
+        {
+            const double x = (double) spkX[(size_t) i]->load(), y = (double) spkY[(size_t) i]->load();
+            if (std::hypot (x, y) > 1e-9)
+                setParameterValue (vimic::params::micYawId (i), (float) (std::atan2 (-x, y) / kDegreesToRadians));
+        }
+
+    // Sources face the centre (the listener, the middle of the microphones): the azimuth of the direction from the source to the origin.
+    if (sourcesReset)
+        for (int i = 0; i < getActiveSources(); ++i)
+        {
+            const double x = (double) srcX[(size_t) i]->load(), y = (double) srcY[(size_t) i]->load();
+            if (std::hypot (x, y) > 1e-9)
+                setParameterValue (vimic::params::srcYawId (i), (float) (std::atan2 (x, -y) / kDegreesToRadians));
+        }
 }
 
 void ViMiCAudioProcessor::refreshLayout()
@@ -226,7 +251,7 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     if (! sameSettings (usedSettings, settings))
     {
-        const bool modeChanged = usedSettings.valid && ! juce::exactlyEqual (usedSettings.globals[6], settings.globals[6]);
+        const bool modeChanged = usedSettings.valid && ! juce::exactlyEqual (usedSettings.globals[vimic::params::DelayModeIndex], settings.globals[vimic::params::DelayModeIndex]);
         usedSettings = settings;
         for (auto& key : pathKeys)
             key.valid = false;
@@ -254,14 +279,17 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
         // A source that has not moved, with unchanged microphones and settings, keeps its paths.
         const float x = srcX[(size_t) s]->load(), y = srcY[(size_t) s]->load();
-        if (key.valid && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y))
+        const float yaw = srcYawParam[(size_t) s]->load(), pattern = srcPatternParam[(size_t) s]->load();
+        if (key.valid && juce::exactlyEqual (key.x, x) && juce::exactlyEqual (key.y, y) && juce::exactlyEqual (key.yaw, yaw) && juce::exactlyEqual (key.pattern, pattern))
             continue;
+
+        const vimic::Source source ({ (double) x, (double) y }, (double) yaw * kDegreesToRadians, (double) pattern);
 
         std::array<vimic::PathResult, tlos::kMaxChannels> paths {};
         double shortest = std::numeric_limits<double>::max();
         for (int k = 0; k < micCount; ++k)
         {
-            paths[(size_t) k] = vimic::computeDirectPath ({ (double) x, (double) y }, micArray[(size_t) k], pathSettings);
+            paths[(size_t) k] = vimic::computeDirectPath (source, micArray[(size_t) k], pathSettings);
             shortest = std::min (shortest, paths[(size_t) k].delaySeconds);
         }
 
@@ -276,14 +304,14 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             delayRow[(size_t) channel] = (float) std::clamp (seconds * sampleRate + minimum, minimum, longest);
         }
 
-        key = { x, y, true };
+        key = { x, y, yaw, pattern, true };
     }
 
     // Trim, mute and solo of the sources and microphones, the gain of the direct sound and the output gain scale the path gains.
     tlos::ChannelGains channelGains;
     getChannelGains (channelGains);
-    const float levelGain = juce::Decibels::decibelsToGain (globalParam[10]->load(), (float) vimic::params::kMinGainDb)
-                          * juce::Decibels::decibelsToGain (globalParam[11]->load(), (float) vimic::params::kMinGainDb);
+    const float levelGain = juce::Decibels::decibelsToGain (globalParam[vimic::params::DirectGain]->load(), (float) vimic::params::kMinGainDb)
+                          * juce::Decibels::decibelsToGain (globalParam[vimic::params::OutputGain]->load(), (float) vimic::params::kMinGainDb);
 
     for (int s = 0; s < n; ++s)
         for (int k = 0; k < tlos::kMaxChannels; ++k)

@@ -32,7 +32,8 @@ protected:
     /** Remembers the microphones in use, for the lobes and the links. */
     void updateOverlay (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
 
-    /** Draws the lobe of every microphone in use. Always shown. */
+    /** Draws the lobe of every microphone in use and, for every source that does not radiate equally in every direction, its radiation lobe and an arrow
+        along its yaw. Always shown. */
     void paintBackdrop (juce::Graphics& g) override;
 
     /** The microphones a source feeds and how much (the direct sound), the strong ones only. */

@@ -57,6 +57,9 @@ public:
     /** @return The yaw and the pattern columns of the microphone table and files. */
     std::vector<tlos::SpeakerColumn> getSpeakerColumns() const override;
 
+    /** @return The yaw and the pattern columns of the source table and files. */
+    std::vector<tlos::SpeakerColumn> getSourceColumns() const override;
+
     /** @return "Microphone". */
     juce::String getOutputNoun() const override { return "Microphone"; }
     /** @return false: ViMiC has no use for the spread of a source. */
@@ -72,6 +75,9 @@ public:
     /** @return The delay mode as it is now. Safe to call from any thread. */
     vimic::params::DelayMode getDelayMode() const noexcept;
 
+    /** @return Source `index` (zero-based) as it is now: position, yaw and radiation pattern. Safe to call from any thread. */
+    vimic::Source getSource (int index) const noexcept;
+
     /** @return The microphones for the speakers in `speakers` (their positions, with the yaw and pattern of each). Safe to call from any thread. */
     std::vector<vimic::Microphone> getMicrophones (const tlos::IncludedSpeakers& speakers) const;
 
@@ -79,7 +85,7 @@ protected:
     /** Starts the next block from the restored positions without a ramp, and republishes the microphones. */
     void stateRestored() override;
 
-    /** Points every microphone outwards: its yaw becomes the azimuth of its position. */
+    /** Points every microphone outwards (its yaw becomes the azimuth of its position) and every source towards the centre. */
     void layoutWasReset (bool sources, bool speakers) override;
 
 private:
@@ -97,7 +103,7 @@ private:
     /** Everything the gains and delays depend on apart from the source positions (compared each block; a change recomputes every source). */
     struct Settings
     {
-        std::array<float, 12> globals {};                        ///< The model parameters.
+        std::array<float, vimic::params::GlobalCount> globals {};   ///< The model parameters.
         std::array<float, tlos::kMaxChannels> yaw {};            ///< Yaw of each microphone in the set (degrees).
         std::array<float, tlos::kMaxChannels> pattern {};        ///< Pattern of each microphone in the set.
         std::uint64_t setId = 0;                                 ///< Id of the microphone set.
@@ -111,7 +117,9 @@ private:
     bool havePublished = false;                ///< Whether anything has been published (message thread only).
     std::uint64_t nextSetId = 1;               ///< Id of the next published set (message thread only).
 
-    std::array<std::atomic<float>*, 12> globalParam {};                   ///< Raw values of the model parameters.
+    std::array<std::atomic<float>*, vimic::params::GlobalCount> globalParam {};   ///< Raw values of the model parameters.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> srcYawParam {};   ///< Raw values of the source yaws.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> srcPatternParam {};   ///< Raw values of the source patterns.
     std::array<std::atomic<float>*, tlos::kMaxChannels> yawParam {};      ///< Raw values of the microphone yaws.
     std::array<std::atomic<float>*, tlos::kMaxChannels> patternParam {};  ///< Raw values of the microphone patterns.
 
@@ -132,6 +140,8 @@ private:
     {
         float x = 0.0f;            ///< Source x.
         float y = 0.0f;            ///< Source y.
+        float yaw = 0.0f;          ///< Source yaw in degrees.
+        float pattern = 1.0f;      ///< Source pattern.
         bool valid = false;        ///< False until computed.
     };
     std::array<PathKey, tlos::kMaxChannels> pathKeys {};   ///< Per source: what its paths were computed from.

@@ -1,6 +1,6 @@
 # ViMiC (Virtual Microphone Control) — design note
 
-Status: **milestone 1 (direct sound) is implemented**; the rest is still a plan. Decisions already taken: positions stay in the family's 2D plane with global
+Status: **milestones 1 (direct sound) and 2 (source directivity) are implemented**; the rest is still a plan. Decisions already taken: positions stay in the family's 2D plane with global
 source and microphone heights (for the room); the first version renders direct sound only, early reflections come second; the late reverb
 tail is left to an external reverb.
 
@@ -219,6 +219,16 @@ changing delay), 4.1 (lobes on the pad; microphone setups; polar coordinates by 
 - A path that is silent starts at its new delay, so unmuting a microphone or bringing a source close does not sweep the delay.
 - Cost, Release, 64 x 64, 512-sample blocks at 48 kHz: 0.6 ms static, about 6 ms with every source moving (a scalar interpolation per path and sample). Milestone 4 has the performance work.
 - The settings window has twelve ViMiC rows, which makes it tall; a better arrangement (sections or tabs) can wait for the room rows.
+
+## 7c. What milestone 2 turned out like
+
+- Per-source parameters, which the shared code did not have, were added (change 2 of section 6): `PluginParameters::perSource`, `getSourceColumns()`, source table columns, file attributes and OSC for sources.
+- The source pattern is the same `(a + (1 - a) cos φ)^w` as the microphones', with `a` per source (`src<N>pattern`, default 1 = omni), the yaw per source (`src<N>yaw`) and one global exponent
+  (`sourcePower`). It is never negative. A free-hand 1-degree directivity curve (j.vimic~'s editor) was not done; the formula covers omni to figure-8.
+- **Orientation modes**: only static (the yaw parameter). "Center" (always facing the origin) and "follow" (facing the direction of movement; not implemented in j.vimic~ either) are left out. The default
+  layout, and "Reset layout", turn every source to face the centre.
+- On the pad: the radiation lobe and an arrow along the yaw for sources with a pattern below 1 (omni sources have no direction).
+- Reflections (milestone 3) will use the direction from the real source to the image of each microphone, as planned in 3.2.
 
 ## 8. Open points for you
 
