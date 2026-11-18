@@ -2,7 +2,7 @@
 
 A collection of free, open-source (AGPLv3) plugins for spatial audio, all with the same pad, tables, source groups and
 import/export, so that they look and work alike. So far: **TriPan** (triangulation panning), **DistPan** (distance-based
-amplitude panning, DBAP) and **VecPan** (2D vector base amplitude panning, VBAP). ViMiC is planned.
+amplitude panning, DBAP) and **VecPan** (2D vector base amplitude panning, VBAP) and **ViMiC** (virtual microphone control, in development).
 
 Status: pre-release, version 0.1.0. TriPan, DistPan and VecPan work and are covered by automated tests and pluginval (strictness 10; the CI workflow runs
 them on macOS and Windows, but has not run yet); they have not yet been tested in every host. AAX is optional and unverified in Pro Tools.
@@ -21,10 +21,12 @@ with constant overall intensity.
 | `shared/ui` | `TlosUI`: the processor base class, host parameters, the XY pad, the editor window, table windows and position import/export |
 | `DistPan/` | DistPan: `core/` (the DBAP gain law, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
 | `VecPan/` | VecPan: `core/` (the 2D VBAP gain law, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
+| `ViMiC/` | ViMiC: `core/` (virtual microphone model and interpolated delay lines, JUCE-free), `Source/`, `tests/`, and `DESIGN.md`, the design note |
+| `microphone setups/` | Ready-made microphone setups (XML) for ViMiC |
 | `TriPan/` | TriPan itself: `core/` (triangulation and gains, JUCE-free), `Source/` (processor, pad and editor on top of `TlosUI`), `tests/` |
 | `speaker layouts/` | Ready-made speaker layouts (XML) that any plugin of the family can import |
 
-More plugins (ViMiC) are planned and will sit next to the others, reusing `shared/`.
+More plugins will sit next to the others, reusing `shared/`.
 The built plug-ins end up in `<build folder>/<plugin>/<plugin>_artefacts/`.
 
 ## DistPan
@@ -87,6 +89,29 @@ from one speaker pair to another. 0 switches the blend off. Positions are shown 
   menu says.
 - The pad can draw a line between every two neighbouring speakers that VBAP pans between (**Show pairs**), and links from each source to the
   one or two speakers it feeds.
+
+## ViMiC
+
+Virtual microphone control (Braasch, Peters; see `ViMiC/DESIGN.md` for the model, credits and plan). The outputs are **virtual microphones** with a position, a
+direction (**yaw**, degrees counter-clockwise from the front) and a **pattern**; the sources are recorded by them. The first version renders the direct sound:
+
+- **Gain** for every source and microphone: the distance law times the microphone's directivity `(a + (1 - a) cos δ)^w`, where δ is the angle between the
+  microphone's axis and the source, `a` the pattern of that microphone (1 omni, 0.7 subcardioid, 0.5 cardioid, 0.33 supercardioid, 0.3 hypercardioid, 0 figure-8) and
+  `w` the **Microphone exponent** (1 gives the pattern as it is; more makes it sharper). With **Restrict polarity** on (default) the anti-phase rear lobe of figure-8 and
+  hypercardioid microphones is removed. The distance law is **Inverse** (1 / d^q, q = 1 is the free field) or **Exponential** (a number of dB per metre); distances
+  shorter than the **Minimum distance** (1 m) count as that. Sources and microphones have one height each (**Source height**, **Microphone height**), so the paths are 3D.
+- **Delay** for every source and microphone: the time of flight at the speed of sound of the **Temperature**. **Relative** (default): only the differences between the delays to
+  the microphones are rendered, so there is no latency to speak of and a moving source gives no pitch change but the inter-channel time differences are intact.
+  **Absolute (Doppler)**: the true time of flight, so a moving source is shifted in pitch. The delay is read with a 4-point interpolation and changes smoothly,
+  never by a jump. Switching the mode may click. The plugin reports a latency of 2 samples (the shortest delay of the interpolation).
+- **Direct sound gain** and **Output gain** (dB) set the levels. All of this is in the settings window (and is host parameters, so it can be automated); the positions are shown
+  in azimuth and distance by default (see *Coordinates*).
+- The pad draws the pickup lobe of every microphone, turned by its yaw. In the microphone table (and in the files, as `yaw` and `pattern`) every microphone has its **Yaw** and **Pattern**. The default
+  layout points the microphones outwards. The spread of the sources and the outside rolloff are not used by ViMiC and are hidden.
+- `microphone setups/` has stereo AB, XY, ORTF and NOS, a Decca tree, an IRT cross and rings of 4, 5 and 8 microphones, which can be imported in the microphone table.
+- **Not yet**: source directivity, the room with early reflections and wall absorption, a cross-fade delay mode (see the design note). There is no late reverb: use an external reverb on the outputs.
+- **CPU**: with 64 sources and 64 microphones, 512-sample blocks at 48 kHz: about 0.6 ms with static sources and about 6 ms (57 % of a core) with every source moving, in a Release build.
+  Typical setups (a few sources and microphones) cost very little.
 
 ## Coordinates: Cartesian or polar
 

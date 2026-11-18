@@ -10,7 +10,7 @@ on:
   pull_request:
 
 # AAX is not built here: the Avid AAX SDK is not redistributable. See README.md.
-# Both plugins are built, tested, validated and packaged here (zips for TriPan, DistPan and VecPan).
+# Both plugins are built, tested, validated and packaged here (zips for TriPan, DistPan, VecPan and ViMiC).
 
 env:
   PLUGINVAL_VERSION: v1.0.4
@@ -32,9 +32,9 @@ jobs:
         run: >
           cmake --build build --config Release
           --target TriPan_VST3 TriPan_AU TriPan_Standalone DistPan_VST3 DistPan_AU DistPan_Standalone
-          VecPan_VST3 VecPan_AU VecPan_Standalone
+          VecPan_VST3 VecPan_AU VecPan_Standalone ViMiC_VST3 ViMiC_AU ViMiC_Standalone
           TlosCoreTests TlosExchangeTests TriPanCoreTests TriPanExchangeTests TriPanProcessorTests TriPanEditorTests
-          DistPanCoreTests DistPanProcessorTests DistPanEditorTests VecPanCoreTests VecPanProcessorTests VecPanEditorTests
+          DistPanCoreTests DistPanProcessorTests DistPanEditorTests VecPanCoreTests VecPanProcessorTests VecPanEditorTests ViMiCCoreTests ViMiCProcessorTests ViMiCEditorTests
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
@@ -49,6 +49,8 @@ jobs:
             build/DistPan/DistPan_artefacts/Release/VST3/DistPan.vst3
           ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --timeout-ms 120000 \
             build/VecPan/VecPan_artefacts/Release/VST3/VecPan.vst3
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 10 --timeout-ms 120000 \
+            build/ViMiC/ViMiC_artefacts/Release/VST3/ViMiC.vst3
 
       # Signing and notarization run only when the repository has the signing secrets
       # (see README.md, "Signing and notarization"). Otherwise unsigned zips are produced.
@@ -72,7 +74,7 @@ jobs:
           rm "$RUNNER_TEMP/cert.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
           security list-keychains -d user -s "$KEYCHAIN" login.keychain
-          for plugin in TriPan DistPan VecPan; do
+          for plugin in TriPan DistPan VecPan ViMiC; do
             PLUGIN=$plugin NO_BUILD=1 BUILD_DIR=build scripts/sign-and-notarize.sh
           done
           security delete-keychain "$KEYCHAIN"
@@ -81,7 +83,7 @@ jobs:
         if: env.HAS_SIGNING != 'true'
         run: |
           mkdir -p dist
-          for plugin in TriPan DistPan VecPan; do
+          for plugin in TriPan DistPan VecPan ViMiC; do
             art="build/$plugin/${plugin}_artefacts/Release"
             ditto -c -k --keepParent "$art/VST3/$plugin.vst3" "dist/$plugin-macOS-VST3.zip"
             ditto -c -k --keepParent "$art/AU/$plugin.component" "dist/$plugin-macOS-AU.zip"
@@ -106,9 +108,9 @@ jobs:
       - name: Build
         run: >
           cmake --build build --config Release --parallel
-          --target TriPan_VST3 TriPan_Standalone DistPan_VST3 DistPan_Standalone VecPan_VST3 VecPan_Standalone
+          --target TriPan_VST3 TriPan_Standalone DistPan_VST3 DistPan_Standalone VecPan_VST3 VecPan_Standalone ViMiC_VST3 ViMiC_Standalone
           TlosCoreTests TlosExchangeTests TriPanCoreTests TriPanExchangeTests TriPanProcessorTests TriPanEditorTests
-          DistPanCoreTests DistPanProcessorTests DistPanEditorTests VecPanCoreTests VecPanProcessorTests VecPanEditorTests
+          DistPanCoreTests DistPanProcessorTests DistPanEditorTests VecPanCoreTests VecPanProcessorTests VecPanEditorTests ViMiCCoreTests ViMiCProcessorTests ViMiCEditorTests
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
@@ -121,12 +123,13 @@ jobs:
           ./pluginval/pluginval.exe --strictness-level 10 --timeout-ms 120000 build/TriPan/TriPan_artefacts/Release/VST3/TriPan.vst3
           ./pluginval/pluginval.exe --strictness-level 10 --timeout-ms 120000 build/DistPan/DistPan_artefacts/Release/VST3/DistPan.vst3
           ./pluginval/pluginval.exe --strictness-level 10 --timeout-ms 120000 build/VecPan/VecPan_artefacts/Release/VST3/VecPan.vst3
+          ./pluginval/pluginval.exe --strictness-level 10 --timeout-ms 120000 build/ViMiC/ViMiC_artefacts/Release/VST3/ViMiC.vst3
 
       - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          foreach ($plugin in "TriPan", "DistPan", "VecPan") {
+          foreach ($plugin in "TriPan", "DistPan", "VecPan", "ViMiC") {
             $art = "build/$plugin/${plugin}_artefacts/Release"
             Compress-Archive -Path "$art/VST3/$plugin.vst3" -DestinationPath "dist/$plugin-Windows-VST3.zip"
             Compress-Archive -Path "$art/Standalone/$plugin.exe" -DestinationPath "dist/$plugin-Windows-Standalone.zip"

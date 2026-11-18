@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<ViMiCSpeakers version="1" count="4">
+  <!-- IRT cross: four cardioids at the corners of a 20 cm square, pointing diagonally outwards -->
+  <Speaker index=" 1" x=" -0.100" y="  0.100" yaw=" 45.000" pattern="0.500"/>
+  <Speaker index=" 2" x="  0.100" y="  0.100" yaw="-45.000" pattern="0.500"/>
+  <Speaker index=" 3" x=" -0.100" y=" -0.100" yaw="135.000" pattern="0.500"/>
+  <Speaker index=" 4" x="  0.100" y=" -0.100" yaw="-135.000" pattern="0.500"/>
+</ViMiCSpeakers>

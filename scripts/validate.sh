@@ -7,7 +7,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 PLUGINVAL="${PLUGINVAL:-/Applications/pluginval.app/Contents/MacOS/pluginval}"
-PLUGIN="${PLUGIN:-TriPan}"   # TriPan, DistPan or VecPan
+PLUGIN="${PLUGIN:-TriPan}"   # TriPan, DistPan, VecPan or ViMiC
 BUILD_DIR="${BUILD_DIR:-build}"   # an Xcode build folder; use another one if build/ was made with a different generator
 
 cmake -B "$BUILD_DIR" -G Xcode >/dev/null

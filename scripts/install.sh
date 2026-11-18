@@ -11,6 +11,6 @@ cd "$(dirname "$0")/.."
 BUILD_DIR="${BUILD_DIR:-build-install}"
 
 cmake -B "$BUILD_DIR" -G Xcode -DTLOS_INSTALL_VST3=ON -DTLOS_INSTALL_AU=ON >/dev/null
-cmake --build "$BUILD_DIR" --config Release --target TriPan_VST3 TriPan_AU DistPan_VST3 DistPan_AU VecPan_VST3 VecPan_AU
+cmake --build "$BUILD_DIR" --config Release --target TriPan_VST3 TriPan_AU DistPan_VST3 DistPan_AU VecPan_VST3 VecPan_AU ViMiC_VST3 ViMiC_AU
 killall -9 AudioComponentRegistrar 2>/dev/null || true   # the system re-reads the installed AudioUnits
-echo "Installed TriPan, DistPan and VecPan (VST3 and AudioUnit) in ~/Library/Audio/Plug-Ins"
+echo "Installed TriPan, DistPan, VecPan and ViMiC (VST3 and AudioUnit) in ~/Library/Audio/Plug-Ins"

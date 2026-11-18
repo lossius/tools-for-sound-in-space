@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<ViMiCSpeakers version="1" count="8">
+  <!-- Ring of 8 cardioids: eight cardioids on a circle of 1.5 m radius, 45 degrees apart, pointing outwards, the first at the front -->
+  <Speaker index=" 1" x="  0.000" y="  1.500" yaw="  0.000" pattern="0.500"/>
+  <Speaker index=" 2" x="  1.061" y="  1.061" yaw="-45.000" pattern="0.500"/>
+  <Speaker index=" 3" x="  1.500" y="  0.000" yaw="-90.000" pattern="0.500"/>
+  <Speaker index=" 4" x="  1.061" y=" -1.061" yaw="-135.000" pattern="0.500"/>
+  <Speaker index=" 5" x="  0.000" y=" -1.500" yaw="180.000" pattern="0.500"/>
+  <Speaker index=" 6" x=" -1.061" y=" -1.061" yaw="135.000" pattern="0.500"/>
+  <Speaker index=" 7" x=" -1.500" y="  0.000" yaw=" 90.000" pattern="0.500"/>
+  <Speaker index=" 8" x=" -1.061" y="  1.061" yaw=" 45.000" pattern="0.500"/>
+</ViMiCSpeakers>

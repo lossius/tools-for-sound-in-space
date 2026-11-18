@@ -91,6 +91,10 @@ struct PluginParameters
     /** Values per speaker (for example DistPan's weight): either empty, or `perSpeakerCount * kMaxChannels` parameters, the
         first `perSpeakerCount` for speaker 1, the next for speaker 2 and so on. They are listed with that speaker's other parameters. */
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> perSpeaker;
+
+    /** What the plugin calls its outputs, singular with a capital, in the names of the host parameters and groups ("Speaker 3 X"; ViMiC: "Microphone 3 X"). The IDs
+        keep saying "spk". See SpatialProcessor::getOutputNoun(). */
+    juce::String outputNoun { "Speaker" };
 };
 
 /** @param withVirtualSpeakers  Whether to include the virtual speaker parameters (for a plugin that has virtual speakers).
@@ -174,10 +178,10 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout createLayout (bool wi
         const size_t perSpeaker = extra.perSpeaker.size() / (size_t) kMaxChannels;
         jassert (extra.perSpeaker.size() == perSpeaker * (size_t) kMaxChannels);
 
-        auto speakers = makeGroup ("speakers", "Speakers");
+        auto speakers = makeGroup ("speakers", extra.outputNoun + "s");
         for (int i = 0; i < kMaxChannels; ++i)
         {
-            const auto name = "Speaker " + juce::String (i + 1);
+            const auto name = extra.outputNoun + " " + juce::String (i + 1);
             auto speaker = makeGroup ("speaker" + juce::String (i + 1), name);
             speaker->addChild (makeCoordinate (speakerId (i, 'x'), name + " X"));
             speaker->addChild (makeCoordinate (speakerId (i, 'y'), name + " Y"));

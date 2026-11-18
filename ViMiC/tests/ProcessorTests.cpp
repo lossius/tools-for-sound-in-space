@@ -1,0 +1,717 @@
+// SPDX-FileCopyrightText: 2026 Trond Lossius
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/** @file ProcessorTests.cpp
+    @brief Offline tests of the ViMiC processor (no DAW): gains and delays of the direct sound against the model, both delay modes, microphone
+    pattern and yaw, exclude/mute, silent unused channels, state round-trip, 64x64, speaker layout files, parameter order. */
+
+#include "../Source/PluginProcessor.h"
+#include "../Source/ViMiCParameters.h"
+#include "tlos/Parameters.h"
+#include "tlos/PositionIO.h"
+#include "vimic/Path.h"
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <numbers>
+#include <random>
+#include <thread>
+
+/** Number of failed checks so far; the exit code of main(). */
+static int failures = 0;
+
+/** Counts and prints a failed condition, and carries on with the next check. */
+#define CHECK(cond)                                                          \
+    do {                                                                     \
+        if (! (cond)) {                                                      \
+            std::printf ("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);     \
+            ++failures;                                                      \
+        }                                                                    \
+    } while (false)
+
+namespace
+{
+/** Sets a parameter to a real value (as a host would). */
+void setParam (ViMiCAudioProcessor& p, const juce::String& id, float value)
+{
+    auto* prm = p.getValueTreeState().getParameter (id);
+    prm->setValueNotifyingHost (prm->convertTo0to1 (value));
+}
+
+/** Current real value of a parameter. */
+float getParam (ViMiCAudioProcessor& p, const juce::String& id)
+{
+    return p.getValueTreeState().getRawParameterValue (id)->load();
+}
+
+/** Configures the processor for n inputs and m outputs and prepares it. @return false if the layout is refused. */
+bool configure (ViMiCAudioProcessor& p, int n, int m, int blockSize)
+{
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (n));
+    layout.outputBuses.add (juce::AudioChannelSet::discreteChannels (m));
+    if (! p.setBusesLayout (layout))
+        return false;
+    p.setPlayConfigDetails (n, m, 48000.0, blockSize);
+    p.prepareToPlay (48000.0, blockSize);
+    return true;
+}
+
+/** Fills only input channel `active` with noise; returns its energy. */
+double fillNoise (juce::AudioBuffer<float>& b, int active, std::mt19937& rng)
+{
+    std::uniform_real_distribution<float> u (-1.0f, 1.0f);
+    b.clear();
+    double e = 0.0;
+    for (int i = 0; i < b.getNumSamples(); ++i)
+    {
+        const float v = u (rng);
+        b.setSample (active, i, v);
+        e += (double) v * v;
+    }
+    return e;
+}
+
+/** Sum of the squared samples of channel `ch`. */
+double channelEnergy (const juce::AudioBuffer<float>& b, int ch)
+{
+    double e = 0.0;
+    for (int i = 0; i < b.getNumSamples(); ++i)
+        e += (double) b.getSample (ch, i) * b.getSample (ch, i);
+    return e;
+}
+
+/** Total energy of the first `channels` channels. */
+double totalEnergy (const juce::AudioBuffer<float>& b, int channels)
+{
+    double e = 0.0;
+    for (int ch = 0; ch < channels; ++ch)
+        e += channelEnergy (b, ch);
+    return e;
+}
+
+/** True if the first `channels` channels contain only finite samples. */
+bool allFinite (const juce::AudioBuffer<float>& b, int channels)
+{
+    for (int ch = 0; ch < channels; ++ch)
+        for (int i = 0; i < b.getNumSamples(); ++i)
+            if (! std::isfinite (b.getSample (ch, i)))
+                return false;
+    return true;
+}
+}
+
+namespace
+{
+/** Puts microphone `index` (zero-based) at a position with a yaw (degrees) and a pattern. */
+void placeMic (ViMiCAudioProcessor& p, int index, float x, float y, float yawDegrees, float pattern)
+{
+    setParam (p, tlos::params::speakerId (index, 'x'), x);
+    setParam (p, tlos::params::speakerId (index, 'y'), y);
+    setParam (p, vimic::params::micYawId (index), yawDegrees);
+    setParam (p, vimic::params::micPatternId (index), pattern);
+}
+
+/** Puts source `index` at a position. */
+void placeSource (ViMiCAudioProcessor& p, int index, float x, float y)
+{
+    setParam (p, tlos::params::sourceId (index, 'x'), x);
+    setParam (p, tlos::params::sourceId (index, 'y'), y);
+}
+
+/** Feeds an impulse on input 0 as the first sample of a long block, after a few silent blocks that settle the ramps, and returns the output
+    channels' samples (block length `length`). */
+juce::AudioBuffer<float> impulseResponse (ViMiCAudioProcessor& p, int inputs, int outputs, int length)
+{
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> buffer (std::max (inputs, outputs), length);
+    for (int block = 0; block < 3; ++block)
+    {
+        buffer.clear();
+        p.processBlock (buffer, midi);
+    }
+
+    buffer.clear();
+    buffer.setSample (0, 0, 1.0f);
+    p.processBlock (buffer, midi);
+    return buffer;
+}
+
+/** The centre of gravity in samples of channel `ch` (0 if it is silent), and its total in `sum`. */
+double centroid (const juce::AudioBuffer<float>& b, int ch, double& sum)
+{
+    double weighted = 0.0;
+    sum = 0.0;
+    for (int i = 0; i < b.getNumSamples(); ++i)
+    {
+        weighted += (double) b.getSample (ch, i) * i;
+        sum += (double) b.getSample (ch, i);
+    }
+    return std::abs (sum) > 1e-12 ? weighted / sum : 0.0;
+}
+}
+
+/** The host lists the global parameters first (counts, outside rolloff, ViMiC's twelve), then each source, then each microphone (with yaw and pattern). */
+static void testParameterOrder()
+{
+    ViMiCAudioProcessor p;
+    const auto& parameters = p.getParameters();
+    const int total = 3 + 12 + 64 * 7 + 64 * 8;
+
+    CHECK (parameters.size() == total);
+
+    const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
+    CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId && idOf (2) == tlos::params::kOutsideRolloffId);
+    CHECK (idOf (3) == vimic::params::kDistanceLawId && idOf (14) == vimic::params::kOutputGainId && idOf (15) == tlos::params::sourceId (0, 'x'));
+    const int speakers = 15 + 64 * 7;
+    CHECK (idOf (speakers) == tlos::params::speakerId (0, 'x'));
+    CHECK (idOf (speakers + 6) == vimic::params::micYawId (0) && idOf (speakers + 7) == vimic::params::micPatternId (0));
+    CHECK (parameters[speakers + 6]->getName (64) == "Microphone 1 Yaw" && parameters[speakers]->getName (64) == "Microphone 1 X");
+    CHECK (idOf (speakers + 8) == tlos::params::speakerId (1, 'x'));
+    CHECK (idOf (total - 1) == vimic::params::micPatternId (63));
+
+    const auto& tree = p.getParameterTree();
+    CHECK (tree.getSubgroups (false).size() == 3 && tree.getSubgroups (false).getFirst()->getName() == "Global");
+    CHECK (tree.getSubgroups (false)[2]->getName() == "Microphones");
+
+    // Defaults.
+    CHECK (std::abs (getParam (p, vimic::params::kTemperatureId) - 20.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kDistancePowerId) - 1.0f) < 1e-4f);
+    CHECK (std::abs (getParam (p, vimic::params::kMinDistanceId) - 1.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kSourceHeightId) - 1.5f) < 1e-4f);
+    CHECK (std::abs (getParam (p, vimic::params::micPatternId (7)) - 0.5f) < 1e-4f && getParam (p, vimic::params::kMicPolarityId) > 0.5f);
+    CHECK (p.getDelayMode() == vimic::params::DelayMode::Relative);
+
+    // What ViMiC tells the shared code.
+    CHECK (p.getOutputNoun() == "Microphone" && ! p.usesSpread() && ! p.usesOutsideRolloff() && ! p.supportsVirtualSpeakers());
+    CHECK (p.getSpeakerColumns().size() == 2 && p.getSpeakerColumns()[0].attribute == "yaw" && p.getSpeakerColumns()[1].attribute == "pattern");
+    CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);
+    CHECK (p.getLatencySamples() == 2 && p.getOscParameters().size() == 12);
+}
+
+/** The default layout points the microphones outwards (yaw = azimuth of the position). */
+static void testDefaultLayout()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 2, 4, 256));
+    for (int i = 0; i < 4; ++i)
+    {
+        const double x = getParam (p, tlos::params::speakerId (i, 'x')), y = getParam (p, tlos::params::speakerId (i, 'y'));
+        const double azimuth = std::atan2 (-x, y) * 180.0 / std::numbers::pi;
+        double difference = std::abs (azimuth - getParam (p, vimic::params::micYawId (i)));
+        difference = std::min (difference, 360.0 - difference);
+        CHECK (difference < 1e-3);
+    }
+
+    // "Reset layout" does it again.
+    setParam (p, vimic::params::micYawId (2), 17.0f);
+    p.resetLayoutToRings();
+    CHECK (std::abs (std::abs (getParam (p, vimic::params::micYawId (2))) - 180.0) < 1e-3);   // speaker 3 is at the back
+}
+
+/** The direct sound of two omni microphones: gains from the distance law, delays from the time of flight, in both delay modes. */
+static void testGainsAndDelays()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 2, 4096));
+    placeMic (p, 0, 2.0f, 0.0f, 0.0f, 1.0f);       // omni, 1 m from the source
+    placeMic (p, 1, -2.0f, 0.0f, 0.0f, 1.0f);      // omni, 5 m from the source
+    placeSource (p, 0, 3.0f, 0.0f);
+    p.refreshLayout();
+
+    const double c = vimic::speedOfSound (20.0);
+
+    // Relative delays: the nearer microphone is the reference (2 samples of latency), the other one is later by the difference of the flights.
+    auto out = impulseResponse (p, 1, 2, 4096);
+    double sum0 = 0.0, sum1 = 0.0;
+    const double c0 = centroid (out, 0, sum0), c1 = centroid (out, 1, sum1);
+    CHECK (std::abs (sum0 - 1.0) < 1e-3 && std::abs (sum1 - 0.2) < 1e-3);                    // gains 1 / 1 m and 1 / 5 m
+    CHECK (std::abs (c0 - 2.0) < 0.02);
+    CHECK (std::abs (c1 - (2.0 + (5.0 - 1.0) / c * 48000.0)) < 0.02);
+
+    // Absolute delays: the full time of flight (and the plugin reports a latency of 2 samples).
+    setParam (p, vimic::params::kDelayModeId, 1.0f);
+    out = impulseResponse (p, 1, 2, 4096);
+    const double d0 = centroid (out, 0, sum0), d1 = centroid (out, 1, sum1);
+    CHECK (std::abs (d0 - (2.0 + 1.0 / c * 48000.0)) < 0.02 && std::abs (d1 - (2.0 + 5.0 / c * 48000.0)) < 0.02);
+    CHECK (std::abs (sum0 - 1.0) < 1e-3 && std::abs (sum1 - 0.2) < 1e-3);
+
+    // The temperature changes the speed of sound, and so the delays.
+    setParam (p, vimic::params::kTemperatureId, 0.0f);
+    out = impulseResponse (p, 1, 2, 4096);
+    CHECK (std::abs (centroid (out, 1, sum1) - (2.0 + 5.0 / vimic::speedOfSound (0.0) * 48000.0)) < 0.02);
+    setParam (p, vimic::params::kTemperatureId, 20.0f);
+
+    // The sample rate scales the delays in samples.
+    setParam (p, vimic::params::kDelayModeId, 0.0f);
+    p.prepareToPlay (96000.0, 4096);
+    out = impulseResponse (p, 1, 2, 4096);
+    CHECK (std::abs (centroid (out, 1, sum1) - (2.0 + 4.0 / c * 96000.0)) < 0.02);
+    p.prepareToPlay (48000.0, 4096);
+
+    // The exponential law, the exponent, the minimum distance and the gains in dB.
+    setParam (p, vimic::params::kDistanceLawId, 1.0f);
+    setParam (p, vimic::params::kDistanceDbId, 6.0f);
+    out = impulseResponse (p, 1, 2, 4096);
+    centroid (out, 1, sum1);
+    CHECK (std::abs (sum1 - std::pow (10.0, -6.0 * 5.0 / 20.0)) < 1e-3);
+    setParam (p, vimic::params::kDistanceLawId, 0.0f);
+    setParam (p, vimic::params::kDistancePowerId, 2.0f);
+    out = impulseResponse (p, 1, 2, 4096);
+    centroid (out, 1, sum1);
+    CHECK (std::abs (sum1 - 1.0 / 25.0) < 1e-3);
+    setParam (p, vimic::params::kDistancePowerId, 1.0f);
+    setParam (p, vimic::params::kDirectGainId, -6.0f);
+    setParam (p, vimic::params::kOutputGainId, -6.0f);
+    out = impulseResponse (p, 1, 2, 4096);
+    centroid (out, 1, sum1);
+    CHECK (std::abs (sum1 - 0.2 * std::pow (10.0, -12.0 / 20.0)) < 1e-3);
+}
+
+/** The microphone's pattern and yaw: a cardioid hears what it points at, and not what is behind it; the pattern follows the host parameters at once. */
+static void testPatternAndYaw()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 1, 2048));
+    placeMic (p, 0, 0.0f, 0.0f, 0.0f, 0.5f);       // a cardioid at the centre pointing to the front
+    p.refreshLayout();
+    juce::AudioBuffer<float> out;
+    double sum = 0.0;
+
+    const auto level = [&] (float sx, float sy)
+    {
+        placeSource (p, 0, sx, sy);
+        out = impulseResponse (p, 1, 1, 2048);
+        centroid (out, 0, sum);
+        return sum;
+    };
+
+    CHECK (std::abs (level (0.0f, 4.0f) - 0.25) < 1e-3);          // on axis: 1 / 4 m
+    CHECK (std::abs (level (-4.0f, 0.0f) - 0.125) < 1e-3);        // 90 degrees to the left: half (cardioid)
+    CHECK (std::abs (level (4.0f, 0.0f) - 0.125) < 1e-3);
+    CHECK (std::abs (level (0.0f, -4.0f)) < 1e-3);                // behind: nothing
+
+    setParam (p, vimic::params::micYawId (0), 90.0f);             // turned to the left
+    CHECK (std::abs (level (-4.0f, 0.0f) - 0.25) < 1e-3 && std::abs (level (4.0f, 0.0f)) < 1e-3);
+
+    setParam (p, vimic::params::micPatternId (0), 0.0f);          // figure-8 turned to the left: the rear lobe is removed while the polarity is restricted
+    CHECK (std::abs (level (-4.0f, 0.0f) - 0.25) < 1e-3 && std::abs (level (4.0f, 0.0f)) < 1e-3 && std::abs (level (0.0f, 4.0f)) < 1e-3);
+    setParam (p, vimic::params::kMicPolarityId, 0.0f);            // free polarity: anti-phase from the right
+    CHECK (std::abs (level (4.0f, 0.0f) + 0.25) < 1e-3);
+
+    setParam (p, vimic::params::kMicPolarityId, 1.0f);
+    setParam (p, vimic::params::micPatternId (0), 0.5f);
+    setParam (p, vimic::params::kMicPowerId, 2.0f);                // the exponent: sharper
+    CHECK (std::abs (level (-4.0f, 0.0f) - 0.25) < 1e-3);
+    setParam (p, vimic::params::micYawId (0), 0.0f);
+    CHECK (std::abs (level (-4.0f, 0.0f) - 0.25 * 0.25) < 1e-3);   // (0.5)^2 at 90 degrees
+}
+
+/** Heights: the paths are longer and the sound arrives off the axis. */
+static void testHeights()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 1, 2048));
+    placeMic (p, 0, 0.0f, 0.0f, 0.0f, 0.5f);
+    placeSource (p, 0, 0.0f, 4.0f);
+    p.refreshLayout();
+    setParam (p, vimic::params::kSourceHeightId, 4.5f);           // 3 m above the microphone (at 1.5 m)
+    auto out = impulseResponse (p, 1, 1, 2048);
+    double sum = 0.0;
+    centroid (out, 0, sum);
+    CHECK (std::abs (sum - 0.2 * 0.5 * (1.0 + 4.0 / 5.0)) < 1e-3);   // distance 5 m, cos = 4 / 5
+}
+
+/** Exclude removes a microphone from the relative delays and silences it; mute silences it; trim scales it; unused microphones and sources are silent. */
+static void testChannelControls()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 2, 3, 2048));
+    placeMic (p, 0, 1.0f, 0.0f, 0.0f, 1.0f);
+    placeMic (p, 1, 5.0f, 0.0f, 0.0f, 1.0f);
+    placeMic (p, 2, 9.0f, 0.0f, 0.0f, 1.0f);
+    placeSource (p, 0, 0.0f, 0.0f);
+    placeSource (p, 1, 0.0f, 20.0f);
+    p.refreshLayout();
+    const double c = vimic::speedOfSound (20.0);
+
+    auto out = impulseResponse (p, 2, 3, 2048);
+    double s0 = 0.0, s1 = 0.0, s2 = 0.0;
+    CHECK (std::abs (centroid (out, 1, s1) - (2.0 + 4.0 / c * 48000.0)) < 0.02);                // relative to microphone 1 (1 m)
+
+    p.setSpeakerExcluded (0, true);                                                            // the nearest one leaves: the reference changes
+    out = impulseResponse (p, 2, 3, 2048);
+    CHECK (std::abs (out.getSample (0, 2)) < 1e-6f && std::abs (centroid (out, 1, s1) - 2.0) < 0.02);
+    CHECK (std::abs (centroid (out, 2, s2) - (2.0 + 4.0 / c * 48000.0)) < 0.02);
+    p.setSpeakerExcluded (0, false);
+
+    setParam (p, tlos::params::speakerMuteId (1), 1.0f);
+    out = impulseResponse (p, 2, 3, 2048);
+    centroid (out, 1, s1);
+    centroid (out, 0, s0);
+    CHECK (std::abs (s1) < 1e-6 && std::abs (s0 - 1.0) < 1e-3);
+    setParam (p, tlos::params::speakerMuteId (1), 0.0f);
+
+    setParam (p, tlos::params::speakerTrimId (2), -6.0f);
+    out = impulseResponse (p, 2, 3, 2048);
+    centroid (out, 2, s2);
+    CHECK (std::abs (s2 - std::pow (10.0, -6.0 / 20.0) / 9.0) < 1e-3);
+    setParam (p, tlos::params::speakerTrimId (2), 0.0f);
+
+    // Microphones and sources beyond the numbers in use are silent.
+    setParam (p, tlos::params::kNumSpeakersId, 2.0f);
+    p.refreshLayout();
+    out = impulseResponse (p, 2, 3, 2048);
+    CHECK (channelEnergy (out, 2) == 0.0);
+    setParam (p, tlos::params::kNumSourcesId, 1.0f);
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> buf (3, 256);
+    for (int block = 0; block < 3; ++block)
+    {
+        buf.clear();
+        buf.setSample (1, 0, 1.0f);                                                            // only input 2 (not in use) has signal
+        p.processBlock (buf, midi);
+    }
+    CHECK (totalEnergy (buf, 3) == 0.0);
+}
+
+/** A source in motion changes its delays smoothly: no discontinuity at the block boundaries, and a Doppler shift in the absolute mode only. */
+static void testMovingSource()
+{
+    const auto run = [] (bool absolute, double& ratio, double& largestStep)
+    {
+        ViMiCAudioProcessor p;
+        CHECK (configure (p, 1, 1, 256));
+        placeMic (p, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+        setParam (p, vimic::params::kDelayModeId, absolute ? 1.0f : 0.0f);
+        juce::MidiBuffer midi;
+        juce::AudioBuffer<float> buf (1, 256);
+
+        const double frequency = 0.02;
+        std::vector<float> all;
+        long t = 0;
+        for (int block = 0; block < 200; ++block)
+        {
+            // Moves away from the microphone at 20 m/s (a block of 256 samples at 48 kHz is 5.3 ms: about 0.107 m).
+            placeSource (p, 0, 0.0f, 3.0f + 0.1067f * (float) block);
+            for (int i = 0; i < 256; ++i, ++t)
+                buf.setSample (0, i, (float) std::sin (2.0 * std::numbers::pi * frequency * (double) t));
+            p.processBlock (buf, midi);
+            for (int i = 0; i < 256; ++i)
+                all.push_back (buf.getSample (0, i));
+        }
+
+        // The pitch from the zero crossings in the second half (the gain falls slowly with the distance, which does not move them).
+        int crossings = 0;
+        long first = -1, last = -1;
+        for (long n = 5000; n < (long) all.size(); ++n)
+            if (all[(size_t) n - 1] < 0.0f && all[(size_t) n] >= 0.0f)
+            {
+                ++crossings;
+                if (first < 0) first = n;
+                last = n;
+            }
+        ratio = ((double) (crossings - 1) / (double) (last - first)) / frequency;
+
+        largestStep = 0.0;
+        for (long n = 1; n < (long) all.size(); ++n)
+            largestStep = std::max (largestStep, (double) std::abs (all[(size_t) n] - all[(size_t) n - 1]));
+    };
+
+    double relativeRatio = 0.0, absoluteRatio = 0.0, stepRelative = 0.0, stepAbsolute = 0.0;
+    run (false, relativeRatio, stepRelative);
+    run (true, absoluteRatio, stepAbsolute);
+    const double v = 0.1067 / (256.0 / 48000.0) / vimic::speedOfSound (20.0);                     // the speed of the source in units of c
+    CHECK (std::abs (absoluteRatio - (1.0 - v)) < 0.004);                                         // Doppler: lower by 1 - v/c
+    CHECK (std::abs (relativeRatio - 1.0) < 0.004);                                               // one microphone: nothing to be relative to, no Doppler
+    CHECK (stepAbsolute < 2.0 * std::numbers::pi * 0.02 * 1.1 && stepRelative < 2.0 * std::numbers::pi * 0.02 * 1.1);   // no jumps (gain ramps are slow)
+}
+
+/** Positions, yaw, pattern, delay mode, the edit modes and the coordinate mode survive a save and a restore. */
+static void testStateRoundTrip()
+{
+    ViMiCAudioProcessor a;
+    CHECK (configure (a, 4, 6, 256));
+    placeMic (a, 3, 1.25f, 2.0f, 33.0f, 0.7f);
+    setParam (a, vimic::params::kDelayModeId, 1.0f);
+    setParam (a, vimic::params::kTemperatureId, 9.0f);
+    a.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Cartesian);
+
+    juce::MemoryBlock state;
+    a.getStateInformation (state);
+
+    ViMiCAudioProcessor b;
+    b.setStateInformation (state.getData(), (int) state.getSize());
+    CHECK (configure (b, 4, 6, 256)); // must not overwrite restored values with the defaults
+    CHECK (std::abs (getParam (b, tlos::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
+    CHECK (std::abs (getParam (b, vimic::params::micYawId (3)) - 33.0f) < 1e-3f && std::abs (getParam (b, vimic::params::micPatternId (3)) - 0.7f) < 1e-4f);
+    CHECK (b.getDelayMode() == vimic::params::DelayMode::Absolute && std::abs (getParam (b, vimic::params::kTemperatureId) - 9.0f) < 1e-3f);
+    CHECK (b.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Cartesian);
+
+    // A VecPan session is not a ViMiC session.
+    juce::XmlElement foreign ("VecPan");
+    juce::MemoryBlock foreignState;
+    juce::AudioProcessor::copyXmlToBinary (foreign, foreignState);
+    ViMiCAudioProcessor c;
+    c.setStateInformation (foreignState.getData(), (int) foreignState.getSize());
+    CHECK (c.getDelayMode() == vimic::params::DelayMode::Relative);
+}
+
+/** The yaw and the pattern are in the files of the microphone layout, and a file without them leaves them alone (the rule of the other columns). */
+static void testFilesAndColumns()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 3, 256));
+    placeMic (p, 0, -1.0f, 2.0f, -30.0f, 0.5f);
+    placeMic (p, 1, 1.0f, 2.0f, 30.0f, 0.5f);
+    placeMic (p, 2, 0.0f, -2.0f, 180.0f, 1.0f);
+
+    const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("tlos-vimic-setup.xml");
+    CHECK (tlos::io::save (p, tlos::io::Kind::Speakers, file).wasOk());
+    const auto text = file.loadFileAsString();
+    CHECK (text.contains ("yaw=\"") && text.contains ("pattern=\"") && text.contains ("<ViMiCSpeakers"));
+    CHECK (! tlos::io::save (p, tlos::io::Kind::Sources, file).failed() && ! file.loadFileAsString().contains ("spread="));   // no spread for ViMiC
+
+    ViMiCAudioProcessor q;
+    CHECK (configure (q, 1, 3, 256));
+    CHECK (tlos::io::save (p, tlos::io::Kind::Speakers, file).wasOk());
+    tlos::io::ImportReport report;
+    CHECK (tlos::io::load (q, tlos::io::Kind::Speakers, file, report).wasOk());
+    CHECK (std::abs (getParam (q, vimic::params::micYawId (0)) + 30.0f) < 0.1f && std::abs (getParam (q, vimic::params::micYawId (2)) - 180.0f) < 0.1f);
+    CHECK (std::abs (getParam (q, vimic::params::micPatternId (2)) - 1.0f) < 0.01f);
+
+    // A file from another plugin has no yaw or pattern: the microphones keep theirs only if no entry has them (here none has: they get the defaults).
+    file.replaceWithText ("<DistPanSpeakers version=\"1\" count=\"2\"><Speaker index=\"1\" x=\"-2\" y=\"1\"/><Speaker index=\"2\" x=\"2\" y=\"1\"/></DistPanSpeakers>");
+    placeMic (q, 0, 0.0f, 0.0f, 77.0f, 0.1f);
+    tlos::io::ImportReport other;
+    CHECK (tlos::io::load (q, tlos::io::Kind::Speakers, file, other).wasOk());
+    CHECK (std::abs (getParam (q, vimic::params::micYawId (0)) - 77.0f) < 0.1f && std::abs (getParam (q, tlos::params::speakerId (0, 'x')) + 2.0f) < 1e-3f);
+    file.deleteFile();
+}
+
+/** 64 sources to 64 speakers: one source at a time keeps its energy, and the output is finite. */
+static void testFullSize64x64()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 64, 64, 512));
+
+    juce::AudioBuffer<float> buf (64, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (5);
+
+    for (int src = 0; src < 64; ++src)
+    {
+        const double inE = fillNoise (buf, src, rng);
+        p.processBlock (buf, midi);
+        CHECK (allFinite (buf, 64));
+        CHECK (inE > 0.0);
+    }
+
+    // Every source at once, with moving sources, for a while: finite, and not louder than the sum of the inputs allows.
+    for (int block = 0; block < 20; ++block)
+    {
+        for (int s = 0; s < 64; ++s)
+        {
+            setParam (p, tlos::params::sourceId (s, 'x'), 8.0f * std::sin (0.1f * (float) (block + s)));
+            setParam (p, tlos::params::sourceId (s, 'y'), 8.0f * std::cos (0.1f * (float) (block + s)));
+        }
+        for (int s = 0; s < 64; ++s)
+        {
+            std::uniform_real_distribution<float> u (-1.0f, 1.0f);
+            for (int i = 0; i < 512; ++i)
+                buf.setSample (s, i, u (rng));
+        }
+        p.processBlock (buf, midi);
+        CHECK (allFinite (buf, 64));
+    }
+}
+
+/** The cost of processBlock alone with 64 sources and 64 speakers (printed, not checked: a Debug build is much slower than the Release one the plugin ships as). */
+static void testFullSizeCost()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 64, 64, 512));
+
+    juce::AudioBuffer<float> buf (64, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (9);
+    std::uniform_real_distribution<float> u (-1.0f, 1.0f);
+    for (int s = 0; s < 64; ++s)
+        for (int i = 0; i < 512; ++i)
+            buf.setSample (s, i, u (rng));
+    const juce::AudioBuffer<float> input (buf);
+
+    // Scenario 0: sources stand still. 1: every source moves every block. 2: the same, with spread.
+    const char* names[] { "static sources", "all 64 sources moving", "all moving, with spread" };
+    for (int scenario = 0; scenario < 3; ++scenario)
+    {
+        double total = 0.0, worst = 0.0;
+        const int blocks = 300;
+        for (int block = -20; block < blocks; ++block)
+        {
+            if (scenario > 0)
+                for (int s = 0; s < 64; ++s)
+                {
+                    const float a = 0.05f * (float) block + (float) s;
+                    setParam (p, tlos::params::sourceId (s, 'x'), 6.0f * std::sin (a));
+                    setParam (p, tlos::params::sourceId (s, 'y'), 6.0f * std::cos (a));
+                    if (scenario == 2)
+                        setParam (p, tlos::params::spreadId (s), 2.0f);
+                }
+            for (int ch = 0; ch < 64; ++ch)
+                buf.copyFrom (ch, 0, input, ch, 0, 512);
+
+            const auto t0 = std::chrono::steady_clock::now();
+            p.processBlock (buf, midi);
+            const double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+            if (block >= 0)
+            {
+                total += ms;
+                worst = std::max (worst, ms);
+            }
+            CHECK (allFinite (buf, 64));
+        }
+        const double budget = 512.0 / 48000.0 * 1000.0;
+        std::printf ("ViMiC 64x64, %-24s: %.3f ms per 512-sample block on average (%.1f %% of the %.1f ms available at 48 kHz), worst %.3f ms\n",
+                     names[scenario], total / blocks, 100.0 * total / blocks / budget, budget, worst);
+    }
+}
+
+/** Parameters change on one thread while another processes audio: no crash, finite output. */
+static void testParameterAutomationWhileProcessing()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 8, 8, 256));
+
+    std::atomic<bool> stop { false };
+    std::thread automation ([&]
+    {
+        std::mt19937 rng (6);
+        std::uniform_real_distribution<float> u (-10.0f, 10.0f);
+        while (! stop.load())
+        {
+            setParam (p, tlos::params::sourceId ((int) (rng() % 8), 'x'), u (rng));
+            setParam (p, tlos::params::speakerId ((int) (rng() % 8), 'y'), u (rng));
+            setParam (p, vimic::params::kTemperatureId, 5.0f + 10.0f * std::abs (u (rng)));
+        }
+    });
+
+    juce::AudioBuffer<float> buf (8, 256);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (7);
+    bool finite = true;
+    for (int block = 0; block < 400; ++block)
+    {
+        fillNoise (buf, block % 8, rng);
+        p.processBlock (buf, midi);
+        finite = finite && allFinite (buf, 8);
+    }
+
+    stop = true;
+    automation.join();
+    CHECK (finite);
+}
+
+
+/** Every speaker layout file of the repository can be imported and then pans with constant power. */
+static void testSpeakerLayouts (const juce::File& dir)
+{
+    int count = 0;
+    for (const auto& file : dir.findChildFiles (juce::File::findFiles, false, "*.xml"))
+    {
+        ViMiCAudioProcessor p;
+        CHECK (configure (p, 2, 64, 256));
+        setParam (p, tlos::params::kOutsideRolloffId, 0.0f); // the source may be outside a layout: this tests the import, not the falloff
+
+        tlos::io::ImportReport report;
+        const auto result = tlos::io::load (p, tlos::io::Kind::Speakers, file, report);
+        CHECK (result.wasOk());
+        p.refreshLayout();
+
+        juce::AudioBuffer<float> buf (64, 256);
+        juce::MidiBuffer midi;
+        std::mt19937 rng (8);
+        double inE = 0.0;
+        for (int block = 0; block < 3; ++block)
+        {
+            inE = fillNoise (buf, 0, rng);
+            p.processBlock (buf, midi);
+        }
+        CHECK (allFinite (buf, 64));
+        CHECK (inE > 0.0 && totalEnergy (buf, 64) > 0.0);
+
+        // The LFE (channel 4) of the 5.1 and 7.1 presets is excluded: silent.
+        if (file.getFileName() == "5.1.xml" || file.getFileName() == "7.1.xml")
+            CHECK (p.isSpeakerExcluded (3) && channelEnergy (buf, 3) == 0.0);
+        ++count;
+    }
+
+    CHECK (count >= 10);
+    std::printf ("speaker layouts: %d files\n", count);
+}
+
+
+/** Every microphone setup of the repository can be imported (with its yaw and pattern) and then renders finite, non-silent output. */
+static void testMicrophoneSetups (const juce::File& dir)
+{
+    int count = 0;
+    for (const auto& file : dir.findChildFiles (juce::File::findFiles, false, "*.xml"))
+    {
+        ViMiCAudioProcessor p;
+        CHECK (configure (p, 2, 16, 512));
+        tlos::io::ImportReport report;
+        CHECK (tlos::io::load (p, tlos::io::Kind::Speakers, file, report).wasOk() && report.skipped == 0);
+        p.refreshLayout();
+
+        juce::AudioBuffer<float> buf (16, 512);
+        juce::MidiBuffer midi;
+        std::mt19937 rng (9);
+        for (int block = 0; block < 3; ++block)
+        {
+            fillNoise (buf, 0, rng);
+            p.processBlock (buf, midi);
+        }
+        CHECK (allFinite (buf, 16) && totalEnergy (buf, 16) > 0.0);
+        CHECK (p.getActiveSpeakers() == report.fileCount);
+        ++count;
+
+        // ORTF: two cardioids 17 cm apart, +-55 degrees (the left one turned to the left, which is positive).
+        if (file.getFileName() == "Stereo-ORTF.xml")
+            CHECK (std::abs (getParam (p, vimic::params::micYawId (0)) - 55.0f) < 0.01f && std::abs (getParam (p, vimic::params::micYawId (1)) + 55.0f) < 0.01f
+                   && std::abs (getParam (p, vimic::params::micPatternId (1)) - 0.5f) < 0.001f && std::abs (getParam (p, tlos::params::speakerId (1, 'x')) - 0.085f) < 1e-3f);
+    }
+
+    CHECK (count >= 8);
+    std::printf ("microphone setups: %d files\n", count);
+}
+
+/** Runs all processor tests. @return 0 if every check passed, otherwise 1. */
+int main (int argc, char** argv)
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    testParameterOrder();
+    testDefaultLayout();
+    testGainsAndDelays();
+    testPatternAndYaw();
+    testHeights();
+    testChannelControls();
+    testMovingSource();
+    testStateRoundTrip();
+    testFilesAndColumns();
+    testFullSize64x64();
+    testFullSizeCost();
+    testParameterAutomationWhileProcessing();
+
+    if (argc > 1)
+        testSpeakerLayouts (juce::File (argv[1]));
+    else
+        std::printf ("(speaker layout tests skipped: pass the speaker layouts folder as argument)\n");
+    if (argc > 2)
+        testMicrophoneSetups (juce::File (argv[2]));
+
+    if (failures == 0)
+        std::printf ("All processor tests passed\n");
+    return failures == 0 ? 0 : 1;
+}

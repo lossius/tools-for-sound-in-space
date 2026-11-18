@@ -1,0 +1,202 @@
+// SPDX-FileCopyrightText: 2026 Trond Lossius
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/** @file EditorTests.cpp
+    @brief Editor tests for ViMiC: the shared controls are present or hidden as intended, the settings follow the parameters, the tables have the
+    yaw and pattern columns and the word "Microphone", the pickup lobes; optional PNG snapshot (pass an output path as argv[1]). */
+
+#include "../Source/PluginEditor.h"
+#include "../Source/ViMiCParameters.h"
+#include "../Source/PluginProcessor.h"
+#include "tlos/Parameters.h"
+
+#include <cmath>
+#include <cstdio>
+#include <numbers>
+
+/** Number of failed checks so far; the exit code of main(). */
+static int failures = 0;
+
+/** Counts and prints a failed condition, and carries on with the next check. */
+#define CHECK(cond)                                                          \
+    do {                                                                     \
+        if (! (cond)) {                                                      \
+            std::printf ("FAIL %s:%d  %s\n", __FILE__, __LINE__, #cond);     \
+            ++failures;                                                      \
+        }                                                                    \
+    } while (false)
+
+/** Current real value of a parameter. */
+static float value (ViMiCAudioProcessor& p, const juce::String& id)
+{
+    return p.getValueTreeState().getRawParameterValue (id)->load();
+}
+
+/** Sets a parameter to a real value. */
+static void setParam (ViMiCAudioProcessor& p, const juce::String& id, float v)
+{
+    auto* prm = p.getValueTreeState().getParameter (id);
+    prm->setValueNotifyingHost (prm->convertTo0to1 (v));
+}
+
+/** The area enclosed by a closed path of points (the lobe), by the shoelace formula. */
+static double areaOf (const juce::Path& path)
+{
+    double area = 0.0;
+    juce::Point<float> previous;
+    bool first = true;
+    juce::PathFlatteningIterator it (path);
+    while (it.next())
+    {
+        area += (double) it.x1 * it.y2 - (double) it.x2 * it.y1;
+        first = false;
+    }
+    (void) previous; (void) first;
+    return std::abs (area) * 0.5;
+}
+
+/** Runs the editor tests; with argv[1] writes a PNG snapshot of the editor there. @return 0 if every check passed. */
+int main (int argc, char** argv)
+{
+    juce::ScopedJuceInitialiser_GUI juceInit;
+
+    ViMiCAudioProcessor p;
+    juce::AudioProcessor::BusesLayout layout;
+    layout.inputBuses.add  (juce::AudioChannelSet::discreteChannels (4));
+    layout.outputBuses.add (juce::AudioChannelSet::discreteChannels (6));
+    CHECK (p.setBusesLayout (layout));
+    p.setPlayConfigDetails (4, 6, 48000.0, 512);
+    p.prepareToPlay (48000.0, 512);
+
+    std::unique_ptr<ViMiCAudioProcessorEditor> editor (static_cast<ViMiCAudioProcessorEditor*> (p.createEditor()));
+    CHECK (editor != nullptr);
+    editor->setSize (tlos::SpatialEditor::kBaseWidth, tlos::SpatialEditor::kBaseHeight);
+    editor->syncControls();
+
+    // The shared controls are there, the overlay toggle is not (the lobes are always drawn), and the outputs are called microphones.
+    CHECK (! editor->getOverlayButton().isVisible());
+    CHECK (editor->getShowLinksButton().isVisible() && editor->getResetButton().isVisible() && editor->getSettingsButton().isVisible());
+    CHECK (editor->getExportSpeakersButton().getButtonText() == "Export microphones..." && editor->getImportSpeakersButton().getButtonText() == "Import microphones...");
+    CHECK ((int) std::lround (editor->getSourceCountSlider().getValue()) == 4 && (int) std::lround (editor->getSpeakerCountSlider().getValue()) == 6);
+
+    // The settings window: ViMiC's rows, no outside rolloff, polar coordinates.
+    {
+        auto& window = editor->showSettingsWindow();
+        CHECK (window.isVisible() && window.getName() == "ViMiC - Settings");
+        CHECK (! editor->getOutsideSlider().isVisible() && ! editor->getVirtualModeBox().isVisible());
+        CHECK (editor->getSettingsContent().getCoordinateBox().getSelectedId() == 2);
+
+        auto& content = editor->getSettingsContent();
+        CHECK (editor->getDistanceLawBox().isVisible() && editor->getDistanceLawBox().getParentComponent() == &content);
+        CHECK (editor->getDelayModeBox().isVisible() && editor->getPolarityButton().isVisible());
+        for (const auto& id : { vimic::params::kDistancePowerId, vimic::params::kDistanceDbId, vimic::params::kMinDistanceId, vimic::params::kMicPowerId,
+                                vimic::params::kTemperatureId, vimic::params::kSourceHeightId, vimic::params::kMicHeightId,
+                                vimic::params::kDirectGainId, vimic::params::kOutputGainId })
+        {
+            auto* slider = editor->getSlider (id);
+            CHECK (slider != nullptr && slider->isVisible() && slider->getWidth() > 50 && slider->getParentComponent() == &content);
+            if (slider != nullptr)
+                CHECK (std::abs (slider->getValue() - (double) value (p, id)) < 1e-3);                   // shows the parameter
+        }
+
+        // The controls write to the parameters, and a host change moves them.
+        editor->getSlider (vimic::params::kTemperatureId)->setValue (5.0, juce::sendNotificationSync);
+        CHECK (std::abs (value (p, vimic::params::kTemperatureId) - 5.0f) < 1e-3f);
+        setParam (p, vimic::params::kMicHeightId, 2.25f);
+        CHECK (std::abs (editor->getSlider (vimic::params::kMicHeightId)->getValue() - 2.25) < 1e-3);
+        editor->getDistanceLawBox().setSelectedId (2, juce::sendNotificationSync);
+        CHECK (value (p, vimic::params::kDistanceLawId) > 0.5f);
+        setParam (p, vimic::params::kDistanceLawId, 0.0f);
+        CHECK (editor->getDistanceLawBox().getSelectedId() == 1);
+        editor->getDelayModeBox().setSelectedId (2, juce::sendNotificationSync);
+        CHECK (p.getDelayMode() == vimic::params::DelayMode::Absolute);
+        editor->getPolarityButton().setToggleState (false, juce::sendNotificationSync);
+        CHECK (value (p, vimic::params::kMicPolarityId) < 0.5f);
+        setParam (p, vimic::params::kMicPolarityId, 1.0f);
+        setParam (p, vimic::params::kDelayModeId, 0.0f);
+        setParam (p, vimic::params::kTemperatureId, 20.0f);
+
+        if (argc > 1)
+        {
+            juce::File out (juce::String (argv[1]).replace (".png", "-settings.png"));
+            out.deleteFile();
+            juce::FileOutputStream stream (out);
+            juce::PNGImageFormat png;
+            CHECK (stream.openedOk() && png.writeImageToStream (content.createComponentSnapshot (content.getLocalBounds(), true, 1.0f), stream));
+            std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+        }
+        window.setVisible (false);
+    }
+
+    // The tables: yaw and pattern for the microphones, no spread for the sources, and the word "Microphones".
+    {
+        auto& sources = editor->showTableWindow (tlos::io::Kind::Sources);
+        auto& speakers = editor->showTableWindow (tlos::io::Kind::Speakers);
+        CHECK (speakers.getName() == "ViMiC - Microphones" && sources.getName() == "ViMiC - Sources");
+        auto& sourceHeader = sources.getContent().getMainTable().getTable().getHeader();
+        auto& micHeader = speakers.getContent().getMainTable().getTable().getHeader();
+        CHECK (sourceHeader.getNumColumns (true) == 7 && micHeader.getNumColumns (true) == 9);        // sources: no Spread; microphones: Yaw and Pattern
+        CHECK (micHeader.getColumnName (tlos::PositionTable::extraColumn).startsWith ("Yaw") && micHeader.getColumnName (tlos::PositionTable::extraColumn + 1) == "Pattern");
+
+        auto& table = speakers.getContent().getMainTable();
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn, "45") == "45.0" && std::abs (value (p, vimic::params::micYawId (1)) - 45.0f) < 1e-3f);
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn, "500") == "180.0");                                    // limited to +-180
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "0.3") == "0.30" && std::abs (value (p, vimic::params::micPatternId (1)) - 0.3f) < 1e-4f);
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "7") == "1.00");                                   // limited to 0..1
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "much") == "1.00");                                // rubbish is rejected
+        setParam (p, vimic::params::micYawId (1), 0.0f);
+        setParam (p, vimic::params::micPatternId (1), 0.5f);
+    }
+
+    // The spread has no use: a spread drag (Option) on a source does nothing, and its circle is never drawn.
+    auto& field = editor->getField();
+    field.refresh();
+    const auto start = field.toView ((double) value (p, tlos::params::sourceId (0, 'x')), (double) value (p, tlos::params::sourceId (0, 'y')));
+    juce::ModifierKeys option (juce::ModifierKeys::altModifier);
+    field.pressAt (start, option);
+    field.dragTo (start + juce::Point<float> (0.0f, -60.0f));
+    field.release();
+    CHECK (value (p, tlos::params::spreadId (0)) < 1e-6f);
+
+    // The pad drags a source through the parameters, as in the other plugins, and shows its position in the polar mode.
+    field.pressAt (start, juce::ModifierKeys());
+    field.dragTo (field.toView (3.0, -4.0));
+    field.release();
+    CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 3.0f) < 0.2f && std::abs (value (p, tlos::params::sourceId (0, 'y')) + 4.0f) < 0.2f);
+    CHECK (field.positionText ({ true, 0 }).startsWith ("azimuth") && field.nameOf ({ false, 2 }) == "Microphone 3");
+
+    // The pickup lobes: the area follows the pattern (omni a circle, cardioid 3/8 of it).
+    const double circle = std::numbers::pi * 100.0 * 100.0;
+    CHECK (std::abs (areaOf (ViMiCField::lobePath (1.0, 1, true, 100.0f)) / circle - 1.0) < 0.01);
+    CHECK (std::abs (areaOf (ViMiCField::lobePath (0.5, 1, true, 100.0f)) / circle - 0.375) < 0.01);          // cardioid: 3/8 of the circle
+    CHECK (areaOf (ViMiCField::lobePath (0.0, 1, true, 100.0f)) < areaOf (ViMiCField::lobePath (0.0, 1, false, 100.0f)) * 0.55);   // a restricted figure-8 has half the lobes
+    CHECK (areaOf (ViMiCField::lobePath (0.5, 3, true, 100.0f)) < areaOf (ViMiCField::lobePath (0.5, 1, true, 100.0f)));          // a larger exponent is sharper
+
+    // The pad paints (lobes, links) in both coordinate modes without a problem.
+    for (auto mode : { tlos::SpatialProcessor::CoordinateMode::Polar, tlos::SpatialProcessor::CoordinateMode::Cartesian })
+    {
+        p.setCoordinateMode (mode);
+        field.refresh();
+        juce::Image image (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+        juce::Graphics g (image);
+        editor->paintEntireComponent (g, true);
+    }
+    p.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Polar);
+
+    if (argc > 1)
+    {
+        field.refresh();
+        juce::File out (argv[1]);
+        out.deleteFile();
+        juce::FileOutputStream stream (out);
+        juce::PNGImageFormat png;
+        CHECK (stream.openedOk() && png.writeImageToStream (editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f), stream));
+        std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+    }
+
+    editor.reset();
+
+    if (failures == 0)
+        std::printf ("All editor tests passed\n");
+    return failures == 0 ? 0 : 1;
+}

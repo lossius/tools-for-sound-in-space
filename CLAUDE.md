@@ -22,12 +22,13 @@ triangle's three speakers using barycentric weights, power-normalised so overall
 - `TriPan/tests/` — tests of `TriPanCore`, the processor and the editor, run through `ctest`.
 - `DistPan/` — the second plugin (DBAP, see below): `core/` (`DistPanCore`, namespace `distpan`, JUCE-free), `Source/`, `tests/`.
 - `VecPan/` — the third plugin (2D VBAP, see below): `core/` (`VecPanCore`, namespace `vecpan`, JUCE-free), `Source/`, `tests/`.
+- `ViMiC/` — the fourth plugin (virtual microphone control, see below and `ViMiC/DESIGN.md`): `core/` (`ViMiCCore`, namespace `vimic`, JUCE-free), `Source/`, `tests/`.
 - `cmake/TlosPlugin.cmake` — what every plugin's CMake needs: `TLOS_PLUGIN_FORMATS`, `tlos_finish_plugin(<target>)` (libraries, JUCE groups, install after build).
 - `JUCE/` — git submodule, pinned to a release tag. Do not edit.
 
 ### Adding a plugin
 Copy the shape of `DistPan/` (the simplest one): its own `core/` (only the panning method), `Source/` and `tests/`; call `juce_add_plugin(... FORMATS ${TLOS_PLUGIN_FORMATS})`, then `tlos_finish_plugin(<target>)`; add the folder
-in the root `CMakeLists.txt`. Choose a new plugin code (TriPan `TrPn`, DistPan `DsPn`, VecPan `VcPn`); the manufacturer code stays `Tlos`.
+in the root `CMakeLists.txt`. Choose a new plugin code (TriPan `TrPn`, DistPan `DsPn`, VecPan `VcPn`, ViMiC `ViMc`); the manufacturer code stays `Tlos`.
 Parameters of the panning method are passed to the `SpatialProcessor` constructor (they follow the shared ones); controls for them
 are added in the editor with `addToContent()` + `layoutExtraControls()` + `relayout()`. The processor derives from `tlos::SpatialProcessor` and implements `processBlock`, `refreshLayout()`
 (called by a 30 Hz timer and after layout changes: build what the audio thread needs and hand it over with `tlos::Exchange<T>`),
@@ -45,7 +46,7 @@ cmake -B build -G Xcode          # or: cmake -B build -G Ninja -DCMAKE_BUILD_TYP
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
-On macOS every build of an AU target (`TriPan_AU`, `DistPan_AU`, `VecPan_AU`) likewise copies the bundle to `~/Library/Audio/Plug-Ins/Components`
+On macOS every build of an AU target (`TriPan_AU`, `DistPan_AU`, `VecPan_AU`, `ViMiC_AU`) likewise copies the bundle to `~/Library/Audio/Plug-Ins/Components`
 (`-DTLOS_INSTALL_AU=OFF`, `-DTLOS_AU_INSTALL_DIR=...`). On macOS every build of a VST3 target also copies the bundle to `~/Library/Audio/Plug-Ins/VST3`
 (`-DTLOS_INSTALL_VST3=OFF` disables it; `-DTLOS_VST3_INSTALL_DIR=...` changes the folder; CI and
 the signing script turn it off).
@@ -93,6 +94,23 @@ warnings; keep it that way when adding code.
   gain cache keyed by position, spread, outside rolloff, centre radius and set id. State tag `VecPan`, plugin code `VcPn`, bundle ID `no.trondlossius.vecpan`; position files `VecPanSources` / `VecPanSpeakers`.
 - Editor: `VecPanField` always draws the reference circle (dashed, `FieldComponent::paintBackdrop`, only if the hull has an area) and a thin line (TriPan's triangulation colour) between every two neighbouring speakers that are not a wide gap (toggle "Show pairs") and links to the speakers a source feeds; two settings rows (Centre radius; a "Place speakers on circle" button = `VecPanAudioProcessor::placeSpeakersOnCircle()`: included speakers to the reference radius, direction kept, via `SpatialProcessor::setSpeakerPositions`, one undo step, independent of Edit/View). Speakers at different distances are deliberately left to a separate gain/delay compensation plugin (not written).
 - Open design questions (nothing decided): distance attenuation or distance-dependent spread inside the layout (deliberately not done; only the centre blend uses distance), a gain/delay compensation plugin for speakers at different distances (separate from VecPan), and a 3D (triplet) VBAP.
+
+## ViMiC (virtual microphone control; milestone 1: direct sound)
+The model, the parameter list and the milestones are in `ViMiC/DESIGN.md` (the C++ of the Jamoma `j.vimic~` and the manual were read as references; nothing is copied, see its section 2).
+- Core (`ViMiC/core`, namespace `vimic`, JUCE-free): `Directivity` (`directivity (a, w, cos, restrictPolarity)` = `(a + (1 - a) cos)^w`, preset ratios), `Path` (`PathSettings`, `Microphone{position, yaw, pattern}`, `distanceGain`, `speedOfSound`
+  = `331.3 + 0.606 T`, `computeDirectPath (source, mic, settings)` -> gain, distance (3D with the global source / mic heights), delay; the gain is clamped to `[0 or -1, 1]`), `DelayLine` (one per source: circular buffer, `write` a block, then
+  `addTap (out, n, delay0, delay1, gain0, gain1)` per microphone: 4-point Hermite (Catmull-Rom) interpolation, delay and gain change linearly across the block (so a moving source gives a Doppler shift), smallest delay 2 samples = the reported latency;
+  a constant delay takes a contiguous, vectorisable path).
+- Processor (`ViMiC/Source`): the DistPan structure. Outputs are microphones (`getOutputNoun()` "Microphone"); `usesSpread()` and `usesOutsideRolloff()` are false (spread column, circle, Option-drag and the outside rolloff slider are hidden; the host parameters stay).
+  Per source and microphone a gain and a delay are cached (key: source position; everything else, the microphone set, yaw, pattern, the 12 global parameters and the sample rate, is compared each block and recomputes all). Delay mode **Relative** (default): `tau - min tau`
+  over the microphones that take part (so no latency to speak of); **Absolute**: the true time of flight (Doppler). Every delay gets `+ kMinDelay` samples; a change of mode restarts the ramps. A path that was silent starts at its new delay, one that becomes silent keeps its last.
+  Host parameters (global, after the shared ones): `distanceLaw` (Inverse/Exponential), `distancePower` q 0..9 (1), `distanceDb` 0..60 dB/m (6), `minDistance` 0.1..10 m (1), `micPower` w 0..9 (1), `micPolarity` (on), `delayMode`, `temperature` (20),
+  `sourceHeight` / `micHeight` (1.5 m), `directGain`, `outputGain` (dB); per microphone `spk<N>yaw` (-180..180 degrees, counter-clockwise from the front; the default layout points every microphone outwards via `layoutWasReset`) and `spk<N>pattern` (a, 0..1, 0.5).
+  OSC: `/vimic/law|power|db|mindist|micpower|polarity|delaymode|temperature|sourceheight|micheight|directgain|gain` and `/speaker/N/yaw|pattern`. Host parameter names say "Microphone N ..." (`PluginParameters::outputNoun`); IDs stay `spk<N>...`.
+- Pad: `ViMiCField::paintBackdrop` draws the pickup lobe of every microphone in use (a polar plot of `|directivity|`, 34 px for a gain of 1, rotated by the yaw, in the speaker-line blue); links = direct-path gains within 20 dB of the strongest.
+- Microphone setups: `microphone setups/*.xml` from `scripts/make_microphone_setups.py` (stereo AB / XY / ORTF / NOS, Decca tree, IRT cross, rings of 4, 5 and 8); the processor test imports each.
+- Cost (Release, 64 sources x 64 microphones, 512-sample blocks at 48 kHz, printed by `ViMiCProcessorTests`): about 0.6 ms with static sources, about 6 ms (57 %) with every source moving (the changing delay is a scalar interpolation per path and sample). Performance work is milestone 4.
+- Not yet (design note, later milestones): source directivity and orientation, the shoebox room with early reflections and wall absorption, the cross-fade delay mode, the room on the pad, pitch of the microphones.
 
 ## Real-time rules (processBlock)
 - No allocation, locks, file/network I/O, or logging.
@@ -181,6 +199,8 @@ warnings; keep it that way when adding code.
 - Falloff region on the pad (all plugins, always shown, whatever the overlay toggle says): `FieldComponent::paintBackdrop()` (drawn just before `paintOverlay()`), with the shared helpers `paintFalloffRegion (g, hull)` (TriPan: hull of the real
   speakers; DistPan: hull of the included speakers) and `paintFalloffCircle (g, radius)` (VecPan: the reference circle). The region inside, where the level of a source does not fall off, is tinted with TriPan's triangulation blue 0xff7aa2c8 at alpha 0.06 and outlined
   dashed (5 on, 4 off, 1.2 px, alpha 0.65); nothing is drawn if the hull has no area (no falloff then). No new colour: the same blue as the speaker lines.
+- Per-speaker columns and wording: `SpatialProcessor::getSpeakerColumns()` (a vector, at most `kMaxSpeakerColumns` = 4; columns `PositionTable::extraColumn + k`; each one has a file attribute, `idFor`, limits and decimals; all follow the "any entry defines it for all" rule; OSC `/speaker/N/<attribute>`),
+  `getOutputNoun()` (editor, tables, pad, host parameter names via `PluginParameters::outputNoun`), `usesSpread()`, `usesOutsideRolloff()`, and `layoutWasReset (sources, speakers)` (called at the end of `resetLayoutToRings`, also at first run). Up to 20 two-part OSC addresses from `getOscParameters()`.
 - Speaker action: `SpatialProcessor::getSpeakerAction()` (default none; `tlos::SpeakerAction{title, tooltip, run}`) is shown as a button next to the room size in the speakers table window (VecPan: "Place speakers on circle", also in its settings window).
 - Coordinates: host parameters, files and the pad are always Cartesian (x, y in metres). `SpatialProcessor::getCoordinateMode()` (Cartesian / Polar, session state `coordinateMode`, not a host parameter; menu "Coordinates" in the Room section of the settings window;
   `defaultCoordinateMode()` is virtual so a plugin such as VBAP can start in Polar) only changes how the tables show and edit positions: the x / y columns become Azimuth (degrees, counter-clockwise from the front, wrapped to -180..180) and Distance (m),
