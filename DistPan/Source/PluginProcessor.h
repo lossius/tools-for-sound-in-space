@@ -53,7 +53,7 @@ public:
     std::vector<tlos::OscParameter> getOscParameters() const override;
 
     /** @return The weight column of the speaker table and files. */
-    std::optional<tlos::SpeakerColumn> getSpeakerColumn() const override;
+    std::vector<tlos::SpeakerColumn> getSpeakerColumns() const override;
 
     /** @return The weight of each speaker in `channelOf` (output channels), in that order. Safe to call from any thread. */
     std::vector<float> getWeights (const std::vector<int>& channelOf) const;

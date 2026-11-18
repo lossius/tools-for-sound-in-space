@@ -122,7 +122,7 @@ void hashCombine (size_t& seed, double value)
 PositionTable::PositionTable (SpatialProcessor& p, Content c)
     : processor (p), content (c), table ("positions", nullptr)
 {
-    caption.setText (content == Content::Sources ? "Sources" : content == Content::Speakers ? "Speakers" : "Virtual speakers (manual)",
+    caption.setText (content == Content::Sources ? "Sources" : content == Content::Speakers ? processor.getOutputNoun() + "s" : "Virtual speakers (manual)",
                      juce::dontSendNotification);
     caption.setFont (juce::FontOptions (14.0f, juce::Font::bold));
     caption.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -147,7 +147,7 @@ PositionTable::PositionTable (SpatialProcessor& p, Content c)
     table.getHeader().addColumn ("#", indexColumn, kIndexColumnWidth, kIndexColumnWidth, kIndexColumnWidth, flags);
     table.getHeader().addColumn ("X (m)", xColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
     table.getHeader().addColumn ("Y (m)", yColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
-    if (content == Content::Sources)
+    if (content == Content::Sources && processor.usesSpread())
         table.getHeader().addColumn ("Spread (m)", spreadColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
     if (content == Content::Sources)
         table.getHeader().addColumn ("Group", groupColumn, kGroupColumnWidth, kGroupColumnWidth, kGroupColumnWidth, flags);
@@ -159,8 +159,9 @@ PositionTable::PositionTable (SpatialProcessor& p, Content c)
     }
     if (content == Content::Speakers)
         table.getHeader().addColumn ("Excl.", excludeColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
-    if (content == Content::Speakers && processor.getSpeakerColumn())
-        table.getHeader().addColumn (processor.getSpeakerColumn()->title, extraColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
+    if (content == Content::Speakers)
+        for (int k = 0; k < (int) processor.getSpeakerColumns().size(); ++k)
+            table.getHeader().addColumn (processor.getSpeakerColumns()[(size_t) k].title, extraColumn + k, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
 
     addAndMakeVisible (table);
 
@@ -175,10 +176,10 @@ PositionTable::~PositionTable()
 
 int PositionTable::getPreferredWidth() const noexcept
 {
-    const int valueColumns = content == Content::Sources ? 4 : content == Content::Speakers ? 3 : 2; // x, y, (spread), (trim)
+    const int valueColumns = content == Content::Sources ? (processor.usesSpread() ? 4 : 3) : content == Content::Speakers ? 3 : 2; // x, y, (spread), (trim)
     const int groupWidth = content == Content::Sources ? kGroupColumnWidth : 0;
     const int switches = content == Content::Sources ? 2 : content == Content::Speakers ? 3 : 0;    // mute, solo, (exclude)
-    const int extra = content == Content::Speakers && processor.getSpeakerColumn() ? kValueColumnWidth : 0;
+    const int extra = content == Content::Speakers ? (int) processor.getSpeakerColumns().size() * kValueColumnWidth : 0;
     return kIndexColumnWidth + valueColumns * kValueColumnWidth + extra + groupWidth + switches * kSwitchColumnWidth + kScrollBarWidth + 2;
 }
 
@@ -249,9 +250,9 @@ double PositionTable::getValue (int row, int column) const
             if (column == muteColumn)   return read (params::speakerMuteId (row)) >= 0.5 ? 1.0 : 0.0;
             if (column == soloColumn)   return read (params::speakerSoloId (row)) >= 0.5 ? 1.0 : 0.0;
             if (column == excludeColumn) return processor.isSpeakerExcluded (row) ? 1.0 : 0.0;
-            if (column == extraColumn)
-                if (const auto extra = processor.getSpeakerColumn())
-                    return read (extra->idFor (row));
+            if (column >= extraColumn)
+                if (const auto columns = processor.getSpeakerColumns(); column - extraColumn < (int) columns.size())
+                    return read (columns[(size_t) (column - extraColumn)].idFor (row));
             break;
 
         case Content::VirtualSpeakers:
@@ -276,8 +277,11 @@ juce::String PositionTable::format (double metres)
 
 juce::String PositionTable::formatCell (int column, double value) const
 {
-    if (column == extraColumn)
-        return juce::String (value, processor.getSpeakerColumn() ? processor.getSpeakerColumn()->decimals : 2);
+    if (column >= extraColumn)
+    {
+        const auto columns = processor.getSpeakerColumns();
+        return juce::String (value, column - extraColumn < (int) columns.size() ? columns[(size_t) (column - extraColumn)].decimals : 2);
+    }
 
     if (column == xColumn && shownMode == SpatialProcessor::CoordinateMode::Polar)
         return juce::String (std::abs (value) < 0.05 ? 0.0 : value, 1);   // degrees: one decimal, no "-0.0"
@@ -341,7 +345,10 @@ juce::String PositionTable::setValueFromText (int row, int column, const juce::S
 
     const bool isSpread = content == Content::Sources && column == spreadColumn;
     const bool isTrim = column == trimColumn && content != Content::VirtualSpeakers;
-    const auto extra = content == Content::Speakers && column == extraColumn ? processor.getSpeakerColumn() : std::nullopt;
+    std::optional<SpeakerColumn> extra;
+    if (content == Content::Speakers && column >= extraColumn)
+        if (const auto columns = processor.getSpeakerColumns(); column - extraColumn < (int) columns.size())
+            extra = columns[(size_t) (column - extraColumn)];
     const float limit = params::kCoordRange;
     const double value = isSpread ? juce::jlimit (0.0, (double) params::kMaxSpread, typed)
                        : isTrim   ? juce::jlimit ((double) params::kMinTrimDb, (double) params::kMaxTrimDb, typed)
@@ -383,8 +390,12 @@ size_t PositionTable::signature() const
     size_t seed = (size_t) rows + (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 1000003u : 0u);
 
     for (int row = 0; row < rows; ++row)
-        for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn, (int) trimColumn, (int) muteColumn, (int) soloColumn, (int) excludeColumn, (int) extraColumn })
+    {
+        for (int column : { (int) xColumn, (int) yColumn, (int) spreadColumn, (int) trimColumn, (int) muteColumn, (int) soloColumn, (int) excludeColumn })
             hashCombine (seed, getValue (row, column));
+        for (int k = 0; k < SpatialProcessor::kMaxSpeakerColumns; ++k)
+            hashCombine (seed, getValue (row, extraColumn + k));
+    }
 
     if (content == Content::Sources)
     {
@@ -496,7 +507,7 @@ PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
 {
     const bool sources = kind == io::Kind::Sources;
 
-    countLabel.setText (sources ? "Number of sources" : "Number of speakers", juce::dontSendNotification);
+    countLabel.setText (sources ? juce::String ("Number of sources") : "Number of " + processor.getOutputNoun().toLowerCase() + "s", juce::dontSendNotification);
     countLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
     addAndMakeVisible (countLabel);
 
@@ -743,7 +754,7 @@ void PositionTableContent::paint (juce::Graphics& g)
 
 //==============================================================================
 PositionTableWindow::PositionTableWindow (SpatialProcessor& processor, io::Kind kind)
-    : juce::DocumentWindow (processor.getName() + (kind == io::Kind::Sources ? " - Sources" : " - Speakers"),
+    : juce::DocumentWindow (processor.getName() + (kind == io::Kind::Sources ? juce::String (" - Sources") : " - " + processor.getOutputNoun() + "s"),
                             juce::Colour (0xff23272e), juce::DocumentWindow::closeButton)
 {
     setUsingNativeTitleBar (true);

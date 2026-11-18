@@ -526,8 +526,8 @@ static void testCalibrationInterface (const char* snapshotPath)
         auto& pad = editor->getField();
         const tlos::FieldComponent::Handle first { true, 0 };
         CHECK (pad.positionText (first).startsWith ("azimuth 90.0") && pad.positionText (first).endsWith ("distance 3.00 m"));
-        CHECK (tlos::FieldComponent::nameOf (first) == "Source 1" && tlos::FieldComponent::nameOf ({ false, 1 }) == "Speaker 2"
-               && tlos::FieldComponent::nameOf ({ false, 0, true }) == "Virtual speaker 1");
+        CHECK (pad.nameOf (first) == "Source 1" && pad.nameOf ({ false, 1 }) == "Speaker 2"
+               && pad.nameOf ({ false, 0, true }) == "Virtual speaker 1");
         p.setCoordinateMode (Mode::Cartesian);
         CHECK (pad.positionText (first) == "x -3.00 m, y 0.00 m");
         p.setCoordinateMode (Mode::Polar);

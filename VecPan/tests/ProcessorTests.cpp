@@ -153,7 +153,7 @@ static void testParameterOrder()
     CHECK (tree.getSubgroups (false).size() == 3 && tree.getSubgroups (false).getFirst()->getName() == "Global");
 
     CHECK (! p.supportsVirtualSpeakers() && p.getVirtualMode() == tlos::VirtualMode::Off);
-    CHECK (! p.getSpeakerColumn().has_value() && p.getOscParameters().size() == 1);
+    CHECK (p.getSpeakerColumns().empty() && p.getOscParameters().size() == 1);
     CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);   // VBAP positions are directions
 }
 

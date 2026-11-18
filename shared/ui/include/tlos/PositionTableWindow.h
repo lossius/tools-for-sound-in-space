@@ -47,7 +47,7 @@ public:
         muteColumn,       ///< Mute switch, a check box (sources and speakers).
         soloColumn,       ///< Solo switch, a check box (sources and speakers).
         excludeColumn,    ///< Exclude from panning, a check box (speakers only).
-        extraColumn       ///< The plugin's own per-speaker parameter (SpatialProcessor::getSpeakerColumn()), speakers only.
+        extraColumn       ///< The plugin's own per-speaker parameters (SpatialProcessor::getSpeakerColumns()), speakers only: extraColumn + k is the k-th (zero-based).
     };
 
     static constexpr int kRowHeight = 24;       ///< Height of a row in pixels.

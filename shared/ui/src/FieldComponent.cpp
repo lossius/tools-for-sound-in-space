@@ -256,7 +256,7 @@ bool FieldComponent::isSpreadModifier (const juce::ModifierKeys& mods) noexcept
 
 double FieldComponent::getSpread (int source) const
 {
-    if (source < 0 || source >= tlos::kMaxChannels)
+    if (source < 0 || source >= tlos::kMaxChannels || ! processor.usesSpread())
         return 0.0;
 
     auto* prm = srcSpreadP[(size_t) source];
@@ -380,9 +380,9 @@ bool FieldComponent::keyPressed (const juce::KeyPress& key)
     return false;
 }
 
-juce::String FieldComponent::nameOf (const Handle& h)
+juce::String FieldComponent::nameOf (const Handle& h) const
 {
-    return (h.isSource ? "Source " : h.isVirtual ? "Virtual speaker " : "Speaker ") + juce::String (h.index + 1);
+    return (h.isSource ? juce::String ("Source ") : h.isVirtual ? juce::String ("Virtual speaker ") : processor.getOutputNoun() + " ") + juce::String (h.index + 1);
 }
 
 juce::String FieldComponent::positionText (const Handle& h) const
@@ -1141,6 +1141,13 @@ void FieldComponent::pressAt (juce::Point<float> p, const juce::ModifierKeys& mo
         dragMode = dragModeFor (mods);
         draggingSpread = dragMode == DragMode::SpreadGroup || dragMode == DragMode::SpreadOne;
 
+        if (draggingSpread && ! processor.usesSpread())   // the plugin has no use for the spread: nothing to drag
+        {
+            draggingSpread = false;
+            dragging.reset();
+            return;
+        }
+
         if (dragMode == DragMode::Move)
         {
             const auto members = groups.membersOf (s, activeSources());
@@ -1343,7 +1350,7 @@ void FieldComponent::release()
 void FieldComponent::doubleClickAt (juce::Point<float> p, const juce::ModifierKeys& mods)
 {
     // Option + double-click on a source: reset its spread.
-    if (isSpreadModifier (mods))
+    if (isSpreadModifier (mods) && processor.usesSpread())
     {
         const auto h = findHandleAt (p);
         if (h && h->isSource)
@@ -1414,7 +1421,7 @@ void FieldComponent::showHandleMenu (const Handle& h)
     const bool soloed = (h.isSource ? srcSoloRaw : spkSoloRaw)[(size_t) h.index]->load() >= 0.5f;
 
     juce::PopupMenu menu;
-    menu.addSectionHeader ((h.isSource ? "Source " : "Speaker ") + juce::String (h.index + 1));
+    menu.addSectionHeader ((h.isSource ? juce::String ("Source ") : processor.getOutputNoun() + " ") + juce::String (h.index + 1));
     menu.addItem (1, "Mute", true, muted);
     menu.addItem (2, "Solo", true, soloed);
     if (! h.isSource)

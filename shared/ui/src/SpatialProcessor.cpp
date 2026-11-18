@@ -339,8 +339,11 @@ void SpatialProcessor::resetLayoutToRings (bool resetSources, bool resetSpeakers
         }
 
     apvts.state.setProperty (kLayoutInitialised, true, nullptr);
+    layoutWasReset (resetSources, resetSpeakers);
     refreshLayout();
 }
+
+void SpatialProcessor::layoutWasReset (bool, bool) {}
 
 void SpatialProcessor::initialiseLayoutIfFirstRun()
 {

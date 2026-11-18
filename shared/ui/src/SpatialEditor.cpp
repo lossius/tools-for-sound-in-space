@@ -110,10 +110,16 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
         content.addAndMakeVisible (b);
     };
     using io::Kind;
+    // What the plugin calls its outputs ("speaker", or for example "microphone").
+    const auto noun = p.getOutputNoun().toLowerCase();
+    speakersLabel.setText (p.getOutputNoun() + "s", juce::dontSendNotification);
+    exportSpeakersButton.setButtonText ("Export " + noun + "s...");
+    importSpeakersButton.setButtonText ("Import " + noun + "s...");
+
     setUpFileButton (exportSourcesButton,  Kind::Sources,  true,  "Save the source positions in use to an XML file");
     setUpFileButton (importSourcesButton,  Kind::Sources,  false, "Load source positions from an XML file");
-    setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the speaker positions in use to an XML file");
-    setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load speaker positions from an XML file");
+    setUpFileButton (exportSpeakersButton, Kind::Speakers, true,  "Save the " + noun + " positions in use to an XML file");
+    setUpFileButton (importSpeakersButton, Kind::Speakers, false, "Load " + noun + " positions from an XML file");
 
     sourcesTableButton.setTooltip ("Open or close a table with the x, y and spread of every source, where the values can be typed in");
     sourcesTableButton.onClick = [this] { toggleTableWindow (Kind::Sources); };

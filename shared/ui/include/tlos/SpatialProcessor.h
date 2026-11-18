@@ -212,6 +212,12 @@ public:
         5 m in the default room; sources on a quarter of it; first speaker at front). */
     void resetLayoutToRings (bool resetSources = true, bool resetSpeakers = true);
 
+    /** Message thread. Called at the end of resetLayoutToRings(), also for the first-run layout, so that a plugin can set what belongs to its own
+        defaults (ViMiC: the microphones point outwards). The default does nothing.
+        @param sources   Whether the sources were reset.
+        @param speakers  Whether the speakers were reset. */
+    virtual void layoutWasReset (bool sources, bool speakers);
+
     /** Message thread. Whether the editor lets the user change the source / speaker positions
         (otherwise they are in view mode). Saved with the state. Defaults: sources can be edited,
         speakers are view only. */
@@ -241,13 +247,29 @@ public:
     /** The most virtual speakers in the manual list. */
     static constexpr int kMaxVirtualSpeakers = params::kMaxVirtualSpeakers;
 
-    /** @return The per-speaker parameter of the panning method, if the plugin has one (the default is none). */
-    virtual std::optional<SpeakerColumn> getSpeakerColumn() const { return std::nullopt; }
+    /** Most per-speaker columns a plugin can have. */
+    static constexpr int kMaxSpeakerColumns = 4;
+
+    /** @return The per-speaker parameters of the panning method, in column order (DistPan: the weight; ViMiC: the yaw and the pattern of the
+        microphone), at most kMaxSpeakerColumns; the default is none. */
+    virtual std::vector<SpeakerColumn> getSpeakerColumns() const { return {}; }
+
+    /** @return What the plugin calls its outputs, singular and with a capital: "Speaker" (the default) or for example "Microphone". Used in the
+        editor, the table windows, the pad and messages; code, files and parameter IDs keep saying "speaker". */
+    virtual juce::String getOutputNoun() const { return "Speaker"; }
+
+    /** @return Whether the sources' spread means something to the plugin (the default). If not, the spread column, circle and the Option-drag
+        are hidden (the host parameters stay, so that parameter lists and IDs do not change). */
+    virtual bool usesSpread() const { return true; }
+
+    /** @return Whether the level outside the speakers (the shared outside rolloff) means something to the plugin (the default). If not, its slider is
+        not shown in the settings window (the host parameter stays). */
+    virtual bool usesOutsideRolloff() const { return true; }
 
     /** @return An action on all speakers that the speakers table window offers as a button, if the plugin has one (the default is none). */
     virtual std::optional<SpeakerAction> getSpeakerAction() { return std::nullopt; }
 
-    /** @return The plugin's own parameters that can be set over OSC, with their addresses (at most 4; the default is
+    /** @return The plugin's own parameters that can be set over OSC, with their addresses (two-part addresses such as "/vimic/temperature", at most 20; the default is
         none). DistPan: /dbap/rolloff and /dbap/blur. */
     virtual std::vector<OscParameter> getOscParameters() const { return {}; }
 

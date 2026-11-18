@@ -131,7 +131,7 @@ static void testParameterOrder()
     CHECK (std::abs (getParam (p, distpan::params::kBlurId) - distpan::params::kDefaultBlur) < 1e-6f);
     CHECK (std::abs (getParam (p, distpan::params::speakerWeightId (5)) - 1.0f) < 1e-6f);
     CHECK (! p.supportsVirtualSpeakers() && p.getVirtualMode() == tlos::VirtualMode::Off);
-    CHECK (p.getSpeakerColumn() && p.getSpeakerColumn()->title == "Weight" && p.getSpeakerColumn()->attribute == "weight");
+    CHECK (p.getSpeakerColumns().size() == 1 && p.getSpeakerColumns()[0].title == "Weight" && p.getSpeakerColumns()[0].attribute == "weight");
 }
 
 /** A stationary source keeps its energy, every speaker gets some of it, and the nearest one gets the most. */

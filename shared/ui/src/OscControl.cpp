@@ -181,7 +181,9 @@ bool OscControl::changed (Slot& slot, float a, float b, float c)
 
 void OscControl::sendEverything()
 {
-    for (auto* group : { &srcXY, &srcSpread, &srcTrim, &srcMute, &srcSolo, &spkXY, &spkTrim, &spkMute, &spkSolo, &spkExclude, &spkExtra, &admXYZ, &admGain, &admMute })
+    for (auto& column : spkExtra)
+        column.fill (Slot {});
+    for (auto* group : { &srcXY, &srcSpread, &srcTrim, &srcMute, &srcSolo, &spkXY, &spkTrim, &spkMute, &spkSolo, &spkExclude, &admXYZ, &admGain, &admMute })
         group->fill (Slot {});
     globals.fill (Slot {});
 }
@@ -194,7 +196,7 @@ void OscControl::sendChanges()
     const bool own = settings.format != OscFormat::Adm, adm = settings.format != OscFormat::Own;
     const int n = processor.getActiveSources(), m = processor.getActiveSpeakers();
     const double room = processor.getRoomHalfExtent();
-    const auto extra = processor.getSpeakerColumn();
+    const auto columns = processor.getSpeakerColumns();
 
     for (int i = 0; i < n; ++i)
     {
@@ -246,9 +248,9 @@ void OscControl::sendChanges()
                 emit ({ juce::OSCAddressPattern (base + "/solo"), (juce::int32) v });
             if (const float v = processor.isSpeakerExcluded (i) ? 1.0f : 0.0f; changed (spkExclude[(size_t) i], v))
                 emit ({ juce::OSCAddressPattern (base + "/exclude"), (juce::int32) v });
-            if (extra)
-                if (const float v = readParameter (processor, extra->idFor (i)); changed (spkExtra[(size_t) i], v))
-                    emit ({ juce::OSCAddressPattern (base + "/" + extra->attribute), v });
+            for (size_t k = 0; k < columns.size() && k < spkExtra.size(); ++k)
+                if (const float v = readParameter (processor, columns[k].idFor (i)); changed (spkExtra[k][(size_t) i], v))
+                    emit ({ juce::OSCAddressPattern (base + "/" + columns[k].attribute), v });
         }
 
         if (changed (globals[0], (float) room))
@@ -261,7 +263,7 @@ void OscControl::sendChanges()
             emit ({ juce::OSCAddressPattern ("/speakers/count"), (juce::int32) m });
 
         const auto pluginParameters = processor.getOscParameters();
-        for (size_t k = 0; k < pluginParameters.size() && k < 4; ++k)
+        for (size_t k = 0; k < pluginParameters.size() && k < 20; ++k)
             if (const float v = readParameter (processor, pluginParameters[k].parameterId); changed (globals[4 + k], v))
                 emit ({ juce::OSCAddressPattern (pluginParameters[k].address), v });
     }
@@ -383,12 +385,13 @@ bool OscControl::handleMessage (const juce::OSCMessage& message)
         }
         else if (! source)
         {
-            if (const auto extra = processor.getSpeakerColumn(); extra && name == extra->attribute)
-                if (const auto v = number (0))
-                {
-                    setParameter (processor, extra->idFor (i), *v);
-                    understood = true;
-                }
+            for (const auto& column : processor.getSpeakerColumns())
+                if (name == column.attribute)
+                    if (const auto v = number (0))
+                    {
+                        setParameter (processor, column.idFor (i), *v);
+                        understood = true;
+                    }
         }
     }
     else if (tokens.size() == 4 && tokens[0] == "adm" && tokens[1] == "obj" && channelNumber (tokens[2]) > 0)

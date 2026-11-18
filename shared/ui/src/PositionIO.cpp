@@ -106,8 +106,8 @@ struct Entry
     int mute = -1;          ///< 1 = muted, 0 = not; negative if the file has none.
     int solo = -1;          ///< 1 = soloed, 0 = not; negative if the file has none.
     int excluded = -1;      ///< Speakers: 1 = excluded from the panning, 0 = not; negative if the file has none.
-    bool hasExtra = false;  ///< Speakers: whether the file gives the plugin's own per-speaker value (SpatialProcessor::getSpeakerColumn()).
-    float extra = 0.0f;     ///< That value, if hasExtra.
+    std::array<bool, SpatialProcessor::kMaxSpeakerColumns> hasExtra {};   ///< Speakers: whether the file gives the plugin's own per-speaker value of each column (SpatialProcessor::getSpeakerColumns()).
+    std::array<float, SpatialProcessor::kMaxSpeakerColumns> extra {};     ///< Those values, where hasExtra.
 };
 
 /** Formats a trim in dB for a file (one decimal, padded like the coordinates). */
@@ -172,10 +172,11 @@ std::unique_ptr<juce::XmlElement> toXml (const SpatialProcessor& p, Kind kind)
         anySolo = anySolo || readParam (p, idSolo (i)) >= 0.5f;
         anyExcluded = anyExcluded || (kind == Kind::Speakers && excluded[(size_t) i]);
     }
-    const auto column = kind == Kind::Speakers ? p.getSpeakerColumn() : std::nullopt;
-    bool anyExtra = false;
-    for (int i = 0; column && i < count; ++i)
-        anyExtra = anyExtra || std::abs (readParam (p, column->idFor (i)) - (float) column->defaultValue) > 0.0005f;
+    const auto columns = kind == Kind::Speakers ? p.getSpeakerColumns() : std::vector<SpeakerColumn>();
+    std::array<bool, SpatialProcessor::kMaxSpeakerColumns> anyExtra {};
+    for (size_t k = 0; k < columns.size() && k < anyExtra.size(); ++k)
+        for (int i = 0; i < count; ++i)
+            anyExtra[k] = anyExtra[k] || std::abs (readParam (p, columns[k].idFor (i)) - (float) columns[k].defaultValue) > 0.0005f;
 
     for (int i = 0; i < count; ++i)
     {
@@ -183,7 +184,7 @@ std::unique_ptr<juce::XmlElement> toXml (const SpatialProcessor& p, Kind kind)
         e->setAttribute ("index", juce::String (i + 1).paddedLeft (' ', 2)); // padded like the coordinates
         e->setAttribute ("x", formatCoordinate (readParam (p, idFor (kind, i, 'x'))));
         e->setAttribute ("y", formatCoordinate (readParam (p, idFor (kind, i, 'y'))));
-        if (kind == Kind::Sources)
+        if (kind == Kind::Sources && p.usesSpread())
             e->setAttribute ("spread", formatCoordinate (readParam (p, params::spreadId (i))));
         if (groups.any())
             e->setAttribute ("group", groups.groupOf (i));
@@ -195,8 +196,9 @@ std::unique_ptr<juce::XmlElement> toXml (const SpatialProcessor& p, Kind kind)
             e->setAttribute ("solo", readParam (p, idSolo (i)) >= 0.5f ? 1 : 0);
         if (anyExcluded)
             e->setAttribute ("excluded", excluded[(size_t) i] ? 1 : 0);
-        if (anyExtra)
-            e->setAttribute (column->attribute, juce::String (readParam (p, column->idFor (i)), 3).paddedLeft (' ', 6));
+        for (size_t k = 0; k < columns.size() && k < anyExtra.size(); ++k)
+            if (anyExtra[k])
+                e->setAttribute (columns[k].attribute, juce::String (readParam (p, columns[k].idFor (i)), 3).paddedLeft (' ', 6));
     }
 
     // The user's own virtual speakers belong to the layout. (Automatic ones are recomputed on import.)
@@ -305,18 +307,23 @@ juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, Impor
                 ++report.skipped;
         }
 
-        if (const auto column = kind == Kind::Speakers ? p.getSpeakerColumn() : std::nullopt; column && e->hasAttribute (column->attribute))
+        if (kind == Kind::Speakers)
         {
-            double v = 0.0;
-            if (readNumber (*e, column->attribute.toRawUTF8(), v))
-            {
-                entry.hasExtra = true;
-                entry.extra = (float) juce::jlimit (column->minimum, column->maximum, v);
-                if (! juce::approximatelyEqual (entry.extra, (float) v))
-                    ++report.clamped;
-            }
-            else
-                ++report.skipped;
+            const auto columns = p.getSpeakerColumns();
+            for (size_t k = 0; k < columns.size() && k < entry.extra.size(); ++k)
+                if (e->hasAttribute (columns[k].attribute))
+                {
+                    double v = 0.0;
+                    if (readNumber (*e, columns[k].attribute.toRawUTF8(), v))
+                    {
+                        entry.hasExtra[k] = true;
+                        entry.extra[k] = (float) juce::jlimit (columns[k].minimum, columns[k].maximum, v);
+                        if (! juce::approximatelyEqual (entry.extra[k], (float) v))
+                            ++report.clamped;
+                    }
+                    else
+                        ++report.skipped;
+                }
         }
 
         if (! readSwitch (*e, "mute", entry.mute) || ! readSwitch (*e, "solo", entry.solo)
@@ -412,13 +419,14 @@ juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, Impor
             if (anySolo) writeParam (p, idSolo (i), entry != nullptr && entry->solo == 1 ? 1.0f : 0.0f);
         }
 
-        const auto column = kind == Kind::Speakers ? p.getSpeakerColumn() : std::nullopt;
-        if (column && any ([] (const Entry& x) { return x.hasExtra; }))
-            for (int i = 0; i < kMaxChannels; ++i)
-            {
-                const auto found = entries.find (i + 1);
-                writeParam (p, column->idFor (i), found != entries.end() && found->second.hasExtra ? found->second.extra : (float) column->defaultValue);
-            }
+        const auto columns = kind == Kind::Speakers ? p.getSpeakerColumns() : std::vector<SpeakerColumn>();
+        for (size_t k = 0; k < columns.size() && k < Entry().extra.size(); ++k)
+            if (any ([k] (const Entry& x) { return x.hasExtra[k]; }))
+                for (int i = 0; i < kMaxChannels; ++i)
+                {
+                    const auto found = entries.find (i + 1);
+                    writeParam (p, columns[k].idFor (i), found != entries.end() && found->second.hasExtra[k] ? found->second.extra[k] : (float) columns[k].defaultValue);
+                }
 
         if (anyExcluded)
         {
@@ -429,7 +437,7 @@ juce::Result load (SpatialProcessor& p, Kind kind, const juce::File& file, Impor
         }
 
         for (const auto& [index, entry] : entries)
-            if (entry.hasTrim || entry.mute >= 0 || entry.solo >= 0 || entry.excluded >= 0 || entry.hasExtra)
+            if (entry.hasTrim || entry.mute >= 0 || entry.solo >= 0 || entry.excluded >= 0 || std::any_of (entry.hasExtra.begin(), entry.hasExtra.end(), [] (bool b) { return b; }))
                 ++report.calibrationApplied;
     }
 

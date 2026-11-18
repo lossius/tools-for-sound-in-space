@@ -191,8 +191,8 @@ public:
     /** Current position of a handle in metres. */
     juce::Point<double> position (const Handle& handle) const;
 
-    /** @return The name of a handle for readouts: "Source 3", "Speaker 2" or "Virtual speaker 1" (one-based). */
-    static juce::String nameOf (const Handle& handle);
+    /** @return The name of a handle for readouts: "Source 3", "Speaker 2" (or what the plugin calls its outputs, SpatialProcessor::getOutputNoun()) or "Virtual speaker 1" (one-based). */
+    juce::String nameOf (const Handle& handle) const;
 
     /** @return The position of a handle as text in the processor's coordinate mode: "x 1.20 m, y 3.40 m", or
         "azimuth 20.0 deg, distance 3.60 m" in polar mode (with the degree sign; a handle at the origin shows

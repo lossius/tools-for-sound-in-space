@@ -85,6 +85,8 @@ SettingsContent::SettingsContent (SpatialProcessor& p) : processor (p), oscPanel
     outsideSlider.setTooltip ("Level drop in dB for each doubling of (1 + the distance in metres outside the edge of the speaker layout). "
                               "6 dB is the free-field value. 0 = the level stays constant outside the layout.");
     addAndMakeVisible (outsideSlider);
+    outsideLabel.setVisible (processor.usesOutsideRolloff());
+    outsideSlider.setVisible (processor.usesOutsideRolloff());
     if (auto* parameter = processor.getValueTreeState().getParameter (params::kOutsideRolloffId))
     {
         outsideAttachment = std::make_unique<juce::SliderParameterAttachment> (*parameter, outsideSlider, nullptr);
@@ -135,7 +137,7 @@ void SettingsContent::addRow (const juce::String& caption, juce::Component& cont
 
 void SettingsContent::updateLayoutData()
 {
-    const int panningRows = 1 + (processor.supportsVirtualSpeakers() ? 1 : 0) + (int) pluginRows.size();
+    const int panningRows = (processor.usesOutsideRolloff() ? 1 : 0) + (processor.supportsVirtualSpeakers() ? 1 : 0) + (int) pluginRows.size();
     const int height = 12 + (kRowHeight + 4 + 2 * kRowHeight)                      // Room: header and two rows
                      + 10 + (kRowHeight + 4 + panningRows * kRowHeight)           // Panning: header and rows
                      + 10 + (kRowHeight + 4 + OscSettingsPanel::kHeight) + 12;    // OSC: header and the panel
@@ -195,7 +197,8 @@ void SettingsContent::resized()
     area.removeFromTop (10);
 
     section (panningHeader);
-    row (outsideLabel, outsideSlider);
+    if (processor.usesOutsideRolloff())
+        row (outsideLabel, outsideSlider);
     if (processor.supportsVirtualSpeakers())
     {
         auto r = area.removeFromTop (kRowHeight);
