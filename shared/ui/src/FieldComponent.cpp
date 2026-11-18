@@ -555,6 +555,7 @@ void FieldComponent::timerCallback()
         viewCentre = {};
     }
     mix (lastRoomHalf);
+    mix (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar ? 1.0 : 0.0);   // the grid follows the mode
 
     excludedSpeakers = processor.getExcludedSpeakers();
 
@@ -691,8 +692,78 @@ void FieldComponent::paint (juce::Graphics& g)
             }
         }
     };
-    drawLines (true);
-    drawLines (false);
+    // Polar mode: rings of equal distance and spokes of equal azimuth around the listener instead of the x / y lines.
+    const auto drawPolarGrid = [&]
+    {
+        const auto origin = toView (0.0, 0.0);
+        const double scale = (double) plane.getWidth() / (2.0 * viewHalf);              // pixels per metre
+        const double reach = std::hypot (std::abs (viewCentre.x) + viewHalf, std::abs (viewCentre.y) + viewHalf);   // farthest visible distance
+
+        // Rings, labelled in metres.
+        for (long n = 1; (double) n * minorStep <= reach + 1e-9; ++n)
+        {
+            const double r = (double) n * minorStep;
+            const bool major = std::abs (std::remainder (r, majorStep)) < 1e-9;
+            g.setColour (juce::Colours::white.withAlpha (major ? 0.16f : 0.06f));
+            const float radius = (float) (r * scale);
+            g.drawEllipse (origin.x - radius, origin.y - radius, 2.0f * radius, 2.0f * radius, 1.0f);
+
+            // Labelled on the 45 degree diagonal to the front right: speakers and sources often sit on the axes.
+            const auto label = toView (r * 0.70710678, r * 0.70710678);
+            if (major && plane.contains (label) && label.x < plane.getRight() - 50.0f && label.y > plane.getY() + 16.0f)
+            {
+                g.setColour (juce::Colours::white.withAlpha (0.45f));
+                g.setFont (juce::FontOptions (11.0f));
+                g.drawText (formatMetres (r), juce::Rectangle<float> (label.x + 3.0f, label.y - 14.0f, 50.0f, 13.0f), juce::Justification::left);
+            }
+        }
+
+        // Spokes every 15 degrees, stronger every 30, strongest on the axes. Azimuth is counter-clockwise from the front.
+        for (int deg = 0; deg < 360; deg += 15)
+        {
+            const bool axis = deg % 90 == 0, major = deg % 30 == 0;
+            const double a = deg * juce::MathConstants<double>::pi / 180.0;
+            const double dx = -std::sin (a), dy = std::cos (a);   // plane direction (x right, y front)
+            const auto end = toView (dx * reach, dy * reach);
+            g.setColour (juce::Colours::white.withAlpha (axis ? 0.35f : major ? 0.16f : 0.06f));
+            g.drawLine (origin.x, origin.y, end.x, end.y, axis ? 1.5f : 1.0f);
+
+            // Label where the spoke leaves the visible plane (slab method on the view rectangle).
+            if (major)
+            {
+                const double vx = dx, vy = -dy;   // view direction (y grows downwards)
+                double tMax = 1e9;
+                if (std::abs (vx) > 1e-9)
+                    tMax = std::min (tMax, std::max (((double) plane.getX() - origin.x) / vx, ((double) plane.getRight() - origin.x) / vx));
+                if (std::abs (vy) > 1e-9)
+                    tMax = std::min (tMax, std::max (((double) plane.getY() - origin.y) / vy, ((double) plane.getBottom() - origin.y) / vy));
+
+                if (tMax > 0.0 && tMax < 1e8)
+                {
+                    const double t = tMax - 16.0;
+                    const juce::Point<float> at ((float) (origin.x + vx * t), (float) (origin.y + vy * t));
+                    if (plane.contains (at))
+                    {
+                        const int shown = (int) wrapAzimuth ((double) deg);
+                        g.setColour (juce::Colours::white.withAlpha (0.45f));
+                        g.setFont (juce::FontOptions (11.0f));
+                        g.drawText (juce::String (shown) + juce::String (juce::CharPointer_UTF8 ("\xc2\xb0")),
+                                    juce::Rectangle<float> (34.0f, 13.0f).withCentre (at), juce::Justification::centred);
+                    }
+                }
+            }
+        }
+    };
+
+    if (processor.getCoordinateMode() == SpatialProcessor::CoordinateMode::Polar)
+    {
+        drawPolarGrid();
+    }
+    else
+    {
+        drawLines (true);
+        drawLines (false);
+    }
 
     g.restoreState();
 
