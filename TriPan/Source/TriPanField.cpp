@@ -38,6 +38,12 @@ void TriPanField::updateOverlay (const tlos::IncludedSpeakers& speakers, const s
     }
 }
 
+void TriPanField::paintBackdrop (juce::Graphics& g)
+{
+    if (triangulation != nullptr)
+        paintFalloffRegion (g, triangulation->hull());
+}
+
 void TriPanField::paintOverlay (juce::Graphics& g)
 {
     if (triangulation == nullptr)

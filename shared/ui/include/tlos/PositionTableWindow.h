@@ -138,7 +138,8 @@ private:
 };
 
 /** The content of a table window: the controls on top (first row: the number of sources or speakers and, for
-    speakers, the virtual speaker mode, and the coordinate mode; second row: the room size) and the table or tables below.
+    speakers, the virtual speaker mode, and the coordinate mode; second row: the room size and, in the speakers window, the plugin's action
+    on all speakers if it has one) and the table or tables below.
 
     The speakers window shows a second table, to the right, with the manual virtual speakers while they
     can be edited by hand (mode Manual and the speakers set to Edit). Message thread only. */
@@ -149,6 +150,7 @@ public:
     static constexpr int kMargin = 12;      ///< Space around the content in pixels.
     static constexpr int kTopBarHeight = 32; ///< Height of the row of controls in pixels.
     static constexpr int kCoordinateBoxWidth = 100;   ///< Width of the coordinates menu in pixels.
+    static constexpr int kActionButtonWidth = 170;    ///< Width of the speaker action button in pixels.
     static constexpr int kMinVisibleRows = 4; ///< The window can not be made smaller than this many rows.
 
     /** Creates the content and starts a 10 Hz timer that follows the parameters.
@@ -184,6 +186,7 @@ public:
     juce::Slider& getCountSlider() noexcept { return countSlider; }                  ///< Number of sources or speakers.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }          ///< Auto / Manual / Off (speakers window).
     juce::Slider& getRoomSlider() noexcept { return roomSlider; }                    ///< Room size (the same setting as in the settings window).
+    juce::TextButton* getActionButton() noexcept { return actionButton.get(); }      ///< The plugin's speaker action (speakers window), or nullptr.
     juce::ComboBox& getCoordinateBox() noexcept { return coordinateBox; }            ///< Cartesian / Polar (the same setting as in the settings window).
     /// @}
 
@@ -212,6 +215,7 @@ private:
     juce::Label virtualLabel { {}, "Virtual speakers" };   ///< Caption of the virtual speaker menu (speakers window).
     juce::ComboBox virtualModeBox;     ///< Auto / Manual / Off (speakers window).
     juce::ComboBox coordinateBox;      ///< Cartesian / Polar (SpatialProcessor::getCoordinateMode()).
+    std::unique_ptr<juce::TextButton> actionButton;   ///< The plugin's action on all speakers (SpatialProcessor::getSpeakerAction()), speakers window only.
     juce::Label roomLabel { {}, "Room size" };   ///< Caption of the room size slider.
     juce::Slider roomSlider;           ///< Half the width of the room in metres (SpatialProcessor::getRoomHalfExtent()).
 

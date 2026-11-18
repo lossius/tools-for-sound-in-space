@@ -53,6 +53,15 @@ struct SpeakerColumn
     int decimals = 2;                             ///< Decimals shown in the table.
 };
 
+/** An action of the panning method that works on all speakers (VecPan: "Place speakers on circle"). The speakers window shows it
+    as a button next to the room size; the plugin's own editor may offer it as well. */
+struct SpeakerAction
+{
+    juce::String title;             ///< Text of the button.
+    juce::String tooltip;           ///< Tooltip of the button.
+    std::function<void()> run;      ///< What the button does (called on the message thread).
+};
+
 /** What every plugin in this repository has in common, so that they all look and behave alike.
 
     Sources are the plugin's input channels and speakers its output channels, both placed in one plane.
@@ -234,6 +243,9 @@ public:
 
     /** @return The per-speaker parameter of the panning method, if the plugin has one (the default is none). */
     virtual std::optional<SpeakerColumn> getSpeakerColumn() const { return std::nullopt; }
+
+    /** @return An action on all speakers that the speakers table window offers as a button, if the plugin has one (the default is none). */
+    virtual std::optional<SpeakerAction> getSpeakerAction() { return std::nullopt; }
 
     /** @return The plugin's own parameters that can be set over OSC, with their addresses (at most 4; the default is
         none). DistPan: /dbap/rolloff and /dbap/blur. */

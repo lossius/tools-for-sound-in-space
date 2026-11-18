@@ -8,6 +8,7 @@
 
 #include "tlos/SpatialProcessor.h"
 #include "tlos/Parameters.h"
+#include "tlos/Hull.h"
 #include "tlos/SourceGains.h"
 
 #include <array>
@@ -265,6 +266,15 @@ protected:
         outside the speakers). Drawn just before the overlay, under the group bands and spread circles. Clipped to the plane; use toView() for
         coordinates. The default draws nothing. */
     virtual void paintBackdrop (juce::Graphics& g);
+
+    /** For paintBackdrop(): marks the region inside which the level of a source does not fall off, in every plugin the same way: a faint
+        tint in the colour of the speaker lines and a dashed outline. Nothing is drawn if the hull has no area (then there is no falloff).
+        @param g     The graphics context (clipped to the plane).
+        @param hull  The convex hull of the speakers that take part in the panning. */
+    void paintFalloffRegion (juce::Graphics& g, const Hull& hull) const;
+
+    /** As above for a circle around the listener. @param g  The graphics context. @param radius  Its radius in metres (nothing is drawn if it is 0 or less). */
+    void paintFalloffCircle (juce::Graphics& g, double radius) const;
 
     /** Hook: the speakers a source at `position` with the given spread feeds and their gains (indexed by output
         channel), drawn as links when "Show links" is on. The default returns no speakers (no links). */

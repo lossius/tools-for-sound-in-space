@@ -18,10 +18,10 @@ VecPanAudioProcessorEditor::VecPanAudioProcessorEditor (VecPanAudioProcessor& p)
                              "0 = off: only a source exactly at the listener is shared equally.");
     addSettingsRow ("Centre radius", centreSlider);
 
-    circleButton.setTooltip ("VBAP uses only the direction of a speaker. This moves every speaker that takes part to the reference circle (the distance "
-                             "of the farthest one, dashed on the pad), keeping its direction, so that all speakers are at the same distance. "
-                             "One undo step. Beyond that circle the level of a source falls off (Outside rolloff).");
-    circleButton.onClick = [&p] { p.placeSpeakersOnCircle(); };
+    const auto action = p.getSpeakerAction();
+    circleButton.setButtonText (action->title);
+    circleButton.setTooltip (action->tooltip);
+    circleButton.onClick = action->run;
     addSettingsRow ("Speakers", circleButton);
 
     auto* parameter = p.getValueTreeState().getParameter (vecpan::params::kCentreRadiusId);

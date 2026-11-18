@@ -95,6 +95,55 @@ void FieldComponent::paintOverlay (juce::Graphics&) {}
 
 void FieldComponent::paintBackdrop (juce::Graphics&) {}
 
+namespace
+{
+/** Tints a region and draws its outline dashed, in the colour of the speaker lines (TriPan's triangulation, VecPan's pairs). */
+void paintRegion (juce::Graphics& g, const juce::Path& region)
+{
+    const auto blue = juce::Colour (0xff7aa2c8);
+    g.setColour (blue.withAlpha (0.06f));
+    g.fillPath (region);
+
+    juce::Path dashed;
+    const float dashes[] { 5.0f, 4.0f };
+    juce::PathStrokeType (1.2f).createDashedStroke (dashed, region, dashes, 2);
+    g.setColour (blue.withAlpha (0.65f));
+    g.fillPath (dashed);
+}
+}
+
+void FieldComponent::paintFalloffRegion (juce::Graphics& g, const Hull& hull) const
+{
+    if (! hull.hasArea())
+        return;
+
+    juce::Path region;
+    bool first = true;
+    for (const auto& corner : hull.getCorners())
+    {
+        const auto p = toView (corner.x, corner.y);
+        if (first)
+            region.startNewSubPath (p);
+        else
+            region.lineTo (p);
+        first = false;
+    }
+    region.closeSubPath();
+    paintRegion (g, region);
+}
+
+void FieldComponent::paintFalloffCircle (juce::Graphics& g, double radius) const
+{
+    if (! (radius > 0.0))
+        return;
+
+    const auto centre = toView (0.0, 0.0);
+    const float r = std::abs (toView (radius, 0.0).x - centre.x);
+    juce::Path region;
+    region.addEllipse (centre.x - r, centre.y - r, 2.0f * r, 2.0f * r);
+    paintRegion (g, region);
+}
+
 SourceGains FieldComponent::getLinkGains (int, Vec2, double) const { return {}; }
 
 void FieldComponent::setShowLevels (bool shouldShow)

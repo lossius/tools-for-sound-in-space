@@ -20,22 +20,9 @@ void VecPanField::updateOverlay (const tlos::IncludedSpeakers& speakers, const s
 
 void VecPanField::paintBackdrop (juce::Graphics& g)
 {
-    const double radius = layout.referenceRadius();
-    if (! (radius > 0.0) || ! layout.hull().hasArea())
-        return;
-
-    // Dashed, in the colour of the speaker pairs: inside it the level does not depend on the distance, beyond it the outside rolloff applies.
-    juce::Path circle;
-    const auto centre = toView (0.0, 0.0);
-    const auto edge = toView (radius, 0.0);
-    const float r = std::abs (edge.x - centre.x);
-    circle.addEllipse (centre.x - r, centre.y - r, 2.0f * r, 2.0f * r);
-
-    juce::Path dashed;
-    const float dashes[] { 5.0f, 4.0f };
-    juce::PathStrokeType (1.2f).createDashedStroke (dashed, circle, dashes, 2);
-    g.setColour (juce::Colour (0xff7aa2c8).withAlpha (0.65f));
-    g.fillPath (dashed);
+    // The reference circle, where the level of a source starts to fall off (only if the speakers surround an area, as the falloff needs).
+    if (layout.hull().hasArea())
+        paintFalloffCircle (g, layout.referenceRadius());
 }
 
 void VecPanField::paintOverlay (juce::Graphics& g)

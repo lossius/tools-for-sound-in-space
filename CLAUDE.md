@@ -78,7 +78,7 @@ warnings; keep it that way when adding code.
   which also carries them in speaker files (`weight` attribute, same "any entry defines it for all" rule as trim). IDs and the state tag `DistPan` are part of saved sessions.
 - Processor: `refreshLayout()` publishes the speaker positions (`SpeakerSet` with an id) through `tlos::Exchange`; `processBlock` computes dense per-source gain rows
   (cache key: position, spread, rolloff, blur, set id), ramps linearly per block, fades speakers that leave "Number of Speakers". No virtual speakers (`supportsVirtualSpeakers()` is false).
-- Editor: `DistPanField` always draws the convex hull of the included speakers as its overlay (`paintOverlay`: 1 px lines in TriPan's triangulation colour 0xff7aa2c8 at alpha 0.55, no fill, no toggle) and links only for gains within 20 dB of the strongest; two sliders (DBAP rolloff, DBAP blur) are in the settings window.
+- Editor: `DistPanField` always marks the convex hull of the included speakers (`paintBackdrop` -> `FieldComponent::paintFalloffRegion`, see below; no toggle) and links only for gains within 20 dB of the strongest; two sliders (DBAP rolloff, DBAP blur) are in the settings window.
 
 ## VecPan (2D VBAP)
 - Gain law (`VecPan/core/src/Vbap.cpp`, namespace `vecpan`): `vecpan::Layout` (built off the audio thread when the speakers change; directions sorted by azimuth, for every neighbouring pair the inverse of the 2x2 matrix of the two
@@ -178,6 +178,10 @@ warnings; keep it that way when adding code.
   the minimum window size) and scaled uniformly by a transform; the window has a fixed aspect ratio and
   grows up to 3x. Layout code (`layoutContent`) therefore works in base-size pixels. The window width is
   saved in the state (`editorWidth`) and restored. Tests check the mapping through the transform.
+- Falloff region on the pad (all plugins, always shown, whatever the overlay toggle says): `FieldComponent::paintBackdrop()` (drawn just before `paintOverlay()`), with the shared helpers `paintFalloffRegion (g, hull)` (TriPan: hull of the real
+  speakers; DistPan: hull of the included speakers) and `paintFalloffCircle (g, radius)` (VecPan: the reference circle). The region inside, where the level of a source does not fall off, is tinted with TriPan's triangulation blue 0xff7aa2c8 at alpha 0.06 and outlined
+  dashed (5 on, 4 off, 1.2 px, alpha 0.65); nothing is drawn if the hull has no area (no falloff then). No new colour: the same blue as the speaker lines.
+- Speaker action: `SpatialProcessor::getSpeakerAction()` (default none; `tlos::SpeakerAction{title, tooltip, run}`) is shown as a button next to the room size in the speakers table window (VecPan: "Place speakers on circle", also in its settings window).
 - Coordinates: host parameters, files and the pad are always Cartesian (x, y in metres). `SpatialProcessor::getCoordinateMode()` (Cartesian / Polar, session state `coordinateMode`, not a host parameter; menu "Coordinates" in the Room section of the settings window;
   `defaultCoordinateMode()` is virtual so a plugin such as VBAP can start in Polar) only changes how the tables show and edit positions: the x / y columns become Azimuth (degrees, counter-clockwise from the front, wrapped to -180..180) and Distance (m),
   and an edit replaces that part of the current position and writes x and y in one gesture (a point at the origin has no azimuth: the table keeps the last one shown). The maths is `shared/core/.../Polar.h` (`toPolar`, `fromPolar`, `wrapAzimuth`; same convention as ADM-OSC).

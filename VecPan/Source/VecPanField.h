@@ -14,8 +14,8 @@
 
 /** The pad of VecPan. Everything that every plugin's pad does comes from tlos::FieldComponent; this class draws, under the
     sources, a line between every two neighbouring speakers (as seen from the listener) that VBAP can pan between (pairs less than
-    180 degrees apart), and adds the links from each source to the one or two speakers it feeds (more with a spread). It always draws a dashed circle at the distance of the farthest speaker: the
-    reference circle beyond which the level of a source falls off. */
+    180 degrees apart), and adds the links from each source to the one or two speakers it feeds (more with a spread). It always marks the reference circle (the distance of the farthest speaker) beyond
+    which the level of a source falls off, as a dashed outline with a faint tint. */
 class VecPanField final : public tlos::FieldComponent
 {
 public:
@@ -26,8 +26,8 @@ protected:
     /** Rebuilds the drawn layout when the speakers changed. */
     void updateOverlay (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
 
-    /** Draws the reference circle: a dashed circle at the distance of the farthest speaker, where the level of a source starts to fall off
-        (only if the speakers surround an area, as the falloff needs). Always shown, whether or not "Show pairs" is on. */
+    /** Draws the reference circle, where the level of a source starts to fall off: a dashed outline and a faint tint inside, like the
+        hull in the other plugins (only if the speakers surround an area, as the falloff needs). Always shown, whether or not "Show pairs" is on. */
     void paintBackdrop (juce::Graphics& g) override;
 
     /** Draws a thin line between every pair of neighbouring speakers that VBAP pans between. */

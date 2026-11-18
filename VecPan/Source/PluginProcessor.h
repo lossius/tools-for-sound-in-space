@@ -58,6 +58,9 @@ public:
         @return Whether any speaker moved. */
     bool placeSpeakersOnCircle();
 
+    /** @return "Place speakers on circle" (see placeSpeakersOnCircle()), for the speakers table window. */
+    std::optional<tlos::SpeakerAction> getSpeakerAction() override;
+
     /** @return /vbap/centre: the centre radius. */
     std::vector<tlos::OscParameter> getOscParameters() const override;
 

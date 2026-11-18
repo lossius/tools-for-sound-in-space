@@ -573,6 +573,20 @@ PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
     };
     addAndMakeVisible (coordinateBox);
 
+    // The plugin's action on all speakers (VecPan: place them on the reference circle), in the speakers window.
+    if (! sources)
+        if (const auto action = processor.getSpeakerAction())
+        {
+            actionButton = std::make_unique<juce::TextButton> (action->title);
+            actionButton->setTooltip (action->tooltip);
+            actionButton->onClick = [this, run = action->run]
+            {
+                run();
+                refresh();
+            };
+            addAndMakeVisible (*actionButton);
+        }
+
     // The room size, the same setting as in the settings window.
     roomLabel.setJustificationType (juce::Justification::centredRight);
     roomLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -613,7 +627,7 @@ int PositionTableContent::getPreferredWidth() const
 {
     const int firstRow = (kind == io::Kind::Sources ? 130 + 110 : 130 + 110 + 16 + 110 + 90)   // count, (virtual speaker menu)
                        + 16 + kCoordinateBoxWidth;                                              // coordinates
-    const int secondRow = 76 + 190;                                                             // room size
+    const int secondRow = 76 + 190 + (actionButton != nullptr ? 16 + kActionButtonWidth : 0);   // room size, (action)
     const int topBar = std::max (firstRow, secondRow);
     int tables = mainTable->getPreferredWidth();
     if (virtualTable != nullptr)
@@ -707,6 +721,11 @@ void PositionTableContent::resized()
     bar = area.removeFromTop (kTopBarHeight);
     roomLabel.setBounds (bar.removeFromLeft (76));
     roomSlider.setBounds (bar.removeFromLeft (190).reduced (0, 4));
+    if (actionButton != nullptr)
+    {
+        bar.removeFromLeft (16);
+        actionButton->setBounds (bar.removeFromLeft (kActionButtonWidth).reduced (0, 4));
+    }
 
     area.removeFromTop (8);
     mainTable->setBounds (area.removeFromLeft (mainTable->getPreferredWidth()));

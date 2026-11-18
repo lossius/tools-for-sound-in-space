@@ -27,6 +27,10 @@ protected:
     /** Rebuilds the drawn layout when the speakers or the virtual speakers changed. */
     void updateOverlay (const tlos::IncludedSpeakers& speakers, const std::vector<tlos::VirtualSpeaker>& virtualSpeakers) override;
 
+    /** Draws the convex hull of the speakers (where the level starts to fall off for a source outside it): a dashed outline and a faint tint
+        inside, the same in every plugin. Always shown, whether or not the triangulation is. */
+    void paintBackdrop (juce::Graphics& g) override;
+
     /** Draws the triangles of the triangulation (including those of the virtual speakers). */
     void paintOverlay (juce::Graphics& g) override;
 

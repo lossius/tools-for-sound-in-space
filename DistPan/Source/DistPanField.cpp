@@ -21,29 +21,10 @@ void DistPanField::updateOverlay (const tlos::IncludedSpeakers& speakers, const 
     speakerHull = tlos::Hull (speakers.positions);
 }
 
-void DistPanField::paintOverlay (juce::Graphics& g)
+void DistPanField::paintBackdrop (juce::Graphics& g)
 {
-    const auto corners = speakerHull.getCorners();
-    if (corners.size() < 2)
-        return;
-
-    juce::Path outline;
-    for (size_t i = 0; i < corners.size(); ++i)
-    {
-        const auto p = toView (corners[i].x, corners[i].y);
-        if (i == 0)
-            outline.startNewSubPath (p);
-        else
-            outline.lineTo (p);
-    }
-
-    if (speakerHull.hasArea())
-        outline.closeSubPath();
-
-    // Thin lines in the colour of TriPan's triangulation: the edge of the layout, where the level starts to fall off
-    // for a source outside it. No fill.
-    g.setColour (juce::Colour (0xff7aa2c8).withAlpha (0.55f));
-    g.strokePath (outline, juce::PathStrokeType (1.0f));
+    // The edge of the layout, where the level starts to fall off for a source outside it: dashed, with a faint tint inside.
+    paintFalloffRegion (g, speakerHull);
 }
 
 tlos::SourceGains DistPanField::getLinkGains (int, tlos::Vec2 position, double spread) const

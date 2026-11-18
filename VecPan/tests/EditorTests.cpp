@@ -140,6 +140,22 @@ int main (int argc, char** argv)
     // The table windows are named after the plugin, and show azimuth and distance.
     auto& table = editor->showTableWindow (tlos::io::Kind::Sources);
     CHECK (table.getName().startsWith ("VecPan"));
+
+    // The speakers table window has the same "Place speakers on circle" button.
+    {
+        auto& speakersWindow = editor->showTableWindow (tlos::io::Kind::Speakers);
+        auto& content = speakersWindow.getContent();
+        auto* button = content.getActionButton();
+        CHECK (button != nullptr && button->getButtonText() == "Place speakers on circle" && button->isVisible());
+        CHECK (table.getContent().getActionButton() == nullptr);                      // not in the sources window
+        CHECK (content.getWidth() >= content.getPreferredWidth() - 1 && button->getRight() <= content.getWidth());
+        setParam (p, tlos::params::speakerId (1, 'x'), 2.0f);
+        setParam (p, tlos::params::speakerId (1, 'y'), 0.0f);
+        const auto before = std::hypot (value (p, tlos::params::speakerId (1, 'x')), value (p, tlos::params::speakerId (1, 'y')));
+        CHECK (std::abs (before - 2.0) < 1e-3);
+        button->onClick();
+        CHECK (std::abs (std::hypot (value (p, tlos::params::speakerId (1, 'x')), value (p, tlos::params::speakerId (1, 'y'))) - 5.0) < 1e-3);
+    }
     CHECK (table.getContent().getMainTable().getTable().getHeader().getColumnName (tlos::PositionTable::xColumn).startsWith ("Azimuth"));
 
     if (argc > 1)

@@ -31,6 +31,15 @@ vecpan::VbapSettings VecPanAudioProcessor::getSettings() const noexcept
     return { getOutsideRolloff(), (double) centreRadiusParam->load() };
 }
 
+std::optional<tlos::SpeakerAction> VecPanAudioProcessor::getSpeakerAction()
+{
+    return tlos::SpeakerAction { "Place speakers on circle",
+                                 "VBAP uses only the direction of a speaker. This moves every speaker that takes part to the reference circle (the distance "
+                                 "of the farthest one, dashed on the pad), keeping its direction, so that all speakers are at the same distance. "
+                                 "One undo step. Beyond that circle the level of a source falls off (Outside rolloff).",
+                                 [this] { placeSpeakersOnCircle(); } };
+}
+
 bool VecPanAudioProcessor::placeSpeakersOnCircle()
 {
     const auto speakers = getIncludedSpeakers();
