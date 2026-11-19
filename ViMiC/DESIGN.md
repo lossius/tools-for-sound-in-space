@@ -218,7 +218,7 @@ changing delay), 4.1 (lobes on the pad; microphone setups; the coordinates start
 - A path that is silent starts at its new delay, so unmuting a microphone or bringing a source close does not sweep the delay.
 - Cost, Release, 64 x 64, 512-sample blocks at 48 kHz: 0.6 ms static, about 6 ms with every source moving (a scalar interpolation per path and sample). Milestone 4 has the performance work.
 - The shared "Room size" slider (the extent of the pad) is called "Pad size" in ViMiC, in a section "Pad", so that it is not mistaken for the room of the reflections (width, depth and height are set under Room and early reflections).
-- The settings window has twelve ViMiC rows, which makes it tall; a better arrangement (sections or tabs) can wait for the room rows.
+- The settings window has many ViMiC rows; it first scrolled (milestone 3), and now has **tabs** (Pad, Sound, Delay, Room, Walls, OSC), so that it is about 330 pixels tall and nothing is hidden behind a scroll bar. Tabs were chosen over collapsible sections because the themes are independent and a tab keeps the window the same size.
 
 ## 7c. What milestone 2 turned out like
 

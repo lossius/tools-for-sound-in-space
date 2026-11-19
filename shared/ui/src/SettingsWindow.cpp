@@ -152,8 +152,163 @@ void SettingsContent::addSection (const juce::String& title)
     updateLayoutData();
 }
 
+bool SettingsContent::hasTabs() const noexcept
+{
+    for (const auto& row : pluginRows)
+        if (row.control == nullptr)
+            return true;
+
+    return false;
+}
+
+void SettingsContent::buildTabs()
+{
+    const bool tabbed = hasTabs();
+
+    // The section headings of the single column are not used with tabs, and the plugin's own headings only name the tabs.
+    for (auto* header : { &roomHeader, &panningHeader, &oscHeader })
+        header->setVisible (! tabbed);
+    for (auto& row : pluginRows)
+        if (row.control == nullptr)
+            row.caption->setVisible (false);
+
+    if (! tabbed)
+    {
+        tabs.clear();
+        tabButtons.clear();
+        activeTab = 0;
+        return;
+    }
+
+    const auto oldTitles = [this]
+    {
+        juce::StringArray titles;
+        for (const auto& tab : tabs)
+            titles.add (tab.title);
+        return titles;
+    }();
+
+    tabs.clear();
+
+    // The first tab: the pad size and the coordinates, the outside rolloff and the virtual speakers (if there are any).
+    Tab display;
+    display.title = processor.getDisplaySectionTitle();
+    display.items.push_back ({ &roomLabel, &roomSlider, kRowHeight, 0 });
+    display.items.push_back ({ &coordinateLabel, &coordinateBox, kRowHeight, 200 });
+    if (processor.usesOutsideRolloff())
+        display.items.push_back ({ &outsideLabel, &outsideSlider, kRowHeight, 0 });
+    if (processor.supportsVirtualSpeakers())
+        display.items.push_back ({ &virtualLabel, &virtualModeBox, kRowHeight, 120 });
+    tabs.push_back (std::move (display));
+
+    // Rows before the first section go to the first tab; every section of the plugin is a tab.
+    for (const auto& row : pluginRows)
+    {
+        if (row.control == nullptr)
+        {
+            Tab tab;
+            tab.title = row.caption->getText();
+            tabs.push_back (std::move (tab));
+        }
+        else
+        {
+            tabs.back().items.push_back ({ row.caption, row.control, row.height, 0 });
+        }
+    }
+
+    Tab osc;
+    osc.title = "OSC";
+    osc.items.push_back ({ nullptr, &oscPanel, OscSettingsPanel::kHeight, OscSettingsPanel::kWidth });
+    tabs.push_back (std::move (osc));
+
+    for (auto& tab : tabs)
+    {
+        tab.height = 0;
+        for (const auto& item : tab.items)
+            tab.height += item.height;
+    }
+
+    activeTab = std::clamp (activeTab, 0, (int) tabs.size() - 1);
+
+    juce::StringArray titles;
+    for (const auto& tab : tabs)
+        titles.add (tab.title);
+
+    if (titles != oldTitles || tabButtons.size() != tabs.size())
+    {
+        tabButtons.clear();
+        for (int i = 0; i < (int) tabs.size(); ++i)
+        {
+            auto button = std::make_unique<juce::TextButton> (tabs[(size_t) i].title);
+            button->setClickingTogglesState (true);
+            button->setRadioGroupId (4711);
+            button->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff3a5f80));
+            button->onClick = [this, i] { setActiveTab (i); };
+            addAndMakeVisible (*button);
+            tabButtons.push_back (std::move (button));
+        }
+    }
+
+    showActiveTab();
+}
+
+void SettingsContent::showActiveTab()
+{
+    for (int i = 0; i < (int) tabs.size(); ++i)
+        for (const auto& item : tabs[(size_t) i].items)
+        {
+            if (item.caption != nullptr)
+                item.caption->setVisible (i == activeTab);
+            item.control->setVisible (i == activeTab);
+        }
+
+    for (int i = 0; i < (int) tabButtons.size(); ++i)
+        tabButtons[(size_t) i]->setToggleState (i == activeTab, juce::dontSendNotification);
+}
+
+void SettingsContent::setActiveTab (int index)
+{
+    if (tabs.empty())
+        return;
+
+    activeTab = std::clamp (index, 0, (int) tabs.size() - 1);
+    showActiveTab();
+    resized();
+}
+
+int SettingsContent::tabOf (const juce::Component* component) const noexcept
+{
+    for (int i = 0; i < (int) tabs.size(); ++i)
+        for (const auto& item : tabs[(size_t) i].items)
+            if (item.control == component || item.caption == component)
+                return i;
+
+    return -1;
+}
+
 void SettingsContent::updateLayoutData()
 {
+    buildTabs();
+
+    if (! tabs.empty())
+    {
+        int tallest = 0;
+        for (const auto& tab : tabs)
+            tallest = std::max (tallest, tab.height);
+
+        const int height = 12 + kTabBarHeight + 10 + tallest + 12;
+        if (height != preferredHeight)
+        {
+            preferredHeight = height;
+            if (onSizeChanged)
+                onSizeChanged();
+        }
+
+        setSize (kWidth, preferredHeight);
+        resized();
+        return;
+    }
+
     int panningRows = (processor.usesOutsideRolloff() ? kRowHeight : 0) + (processor.supportsVirtualSpeakers() ? kRowHeight : 0);
     for (const auto& pluginRow : pluginRows)
         panningRows += pluginRow.height;
@@ -194,6 +349,33 @@ void SettingsContent::paint (juce::Graphics& g)
 
 void SettingsContent::resized()
 {
+    if (! tabs.empty())
+    {
+        auto page = getLocalBounds().reduced (12, 12);
+
+        auto bar = page.removeFromTop (kTabBarHeight);
+        const int buttonWidth = bar.getWidth() / std::max ((int) tabButtons.size(), 1);
+        for (auto& button : tabButtons)
+            button->setBounds (bar.removeFromLeft (buttonWidth).reduced (1, 0));
+
+        page.removeFromTop (10);
+        for (const auto& item : tabs[(size_t) activeTab].items)
+        {
+            auto r = page.removeFromTop (item.height);
+            if (item.caption == nullptr)
+            {
+                item.control->setBounds (item.controlWidth > 0 ? r.withWidth (item.controlWidth) : r);   // a control that takes the whole row
+            }
+            else
+            {
+                item.caption->setBounds (r.removeFromLeft (kLabelWidth));
+                item.control->setBounds ((item.controlWidth > 0 ? r.removeFromLeft (item.controlWidth) : r).reduced (0, 2));
+            }
+        }
+
+        return;
+    }
+
     auto area = getLocalBounds().reduced (12, 12);
     const auto section = [&] (juce::Label& header)
     {

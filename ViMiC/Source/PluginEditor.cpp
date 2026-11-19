@@ -15,7 +15,8 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
     namespace ids = vimic::params;
     auto& apvts = p.getValueTreeState();
 
-    addSettingsSection ("Direct sound");
+    // The settings are in tabs (a section of the plugin is a tab): Sound, Delay, Room and Walls (after the shared Pad, before OSC).
+    addSettingsSection ("Sound");
 
     // Distance law.
     lawBox.addItem ("Inverse", 1);
@@ -35,8 +36,11 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
     polarityButton.setTooltip ("Off: microphones with a rear lobe (figure-8, hypercardioid) give anti-phase signals for sound from behind. On: those are removed.");
     polarityAttachment = std::make_unique<juce::ButtonParameterAttachment> (*apvts.getParameter (ids::kMicPolarityId), polarityButton, nullptr);
     addSettingsRow ("Polarity", polarityButton);
+    addSliderRow ("Direct sound gain", ids::kDirectGainId, " dB", 1, "The gain of the direct sound.");
+    addSliderRow ("Output gain", ids::kOutputGainId, " dB", 1, "The gain of all the microphone signals.");
 
     // Delay.
+    addSettingsSection ("Delay");
     delayBox.addItem ("Relative, smooth", 1);
     delayBox.addItem ("Relative, cross-fade", 2);
     delayBox.addItem ("Absolute, Doppler", 3);
@@ -59,11 +63,9 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
 
     addSliderRow ("Source height", ids::kSourceHeightId, " m", 2, "The height of every source. It lengthens the paths to the microphones.");
     addSliderRow ("Microphone height", ids::kMicHeightId, " m", 2, "The height of every microphone.");
-    addSliderRow ("Direct sound gain", ids::kDirectGainId, " dB", 1, "The gain of the direct sound.");
-    addSliderRow ("Output gain", ids::kOutputGainId, " dB", 1, "The gain of all the microphone signals.");
 
     // The room: size, the reflections and what the walls do to them.
-    addSettingsSection ("Room and early reflections");
+    addSettingsSection ("Room");
     reflectionBox.addItem ("Off", 1);
     reflectionBox.addItem ("1st order (6 reflections)", 2);
     reflectionBox.addItem ("2nd order (24 reflections)", 3);
@@ -84,7 +86,7 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
     }
     addSliderRow ("Air absorption", ids::kAirCutoffId, " Hz", 0, "The cut-off of the 2nd-order low-pass that gives every reflection the damping of the air.");
 
-    addSettingsSection ("Wall absorption");
+    addSettingsSection ("Walls");
     addSliderRow ("Low / mid crossover", ids::kLowMidId, " Hz", 0, "Where the low and the middle absorption band meet.");
     addSliderRow ("Mid / high crossover", ids::kMidHighId, " Hz", 0, "Where the middle and the high absorption band meet.");
     addSettingsRow ({}, absorptionPanel, AbsorptionPanel::kHeight);

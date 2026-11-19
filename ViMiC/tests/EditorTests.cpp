@@ -89,13 +89,39 @@ int main (int argc, char** argv)
         CHECK (editor->getSettingsContent().getRoomLabel().getText() == "Pad size" && editor->getSettingsContent().getRoomHeader().getText() == "Pad");     // the room of the reflections is further down
 
         auto& content = editor->getSettingsContent();
+
+        // The settings are in tabs, one for each theme, and the window is as tall as the tallest one: no scrolling, and far shorter than the old single column.
+        CHECK (content.getTabCount() == 6 && content.getTabTitle (0) == "Pad" && content.getTabTitle (1) == "Sound" && content.getTabTitle (2) == "Delay"
+               && content.getTabTitle (3) == "Room" && content.getTabTitle (4) == "Walls" && content.getTabTitle (5) == "OSC");
+        CHECK (content.getActiveTab() == 0 && content.getPreferredHeight() < 600 && ! window.isScrolling());
+        CHECK (content.tabOf (&editor->getDistanceLawBox()) == 1 && content.tabOf (&editor->getDelayModeBox()) == 2 && content.tabOf (&editor->getReflectionBox()) == 3
+               && content.tabOf (&editor->getAbsorptionPanel()) == 4 && content.tabOf (&content.getRoomSlider()) == 0 && content.tabOf (&content.getOscPanel()) == 5);
+        CHECK (content.tabOf (editor->getSlider (vimic::params::kTemperatureId)) == 2 && content.tabOf (editor->getSlider (vimic::params::kRoomWidthId)) == 3
+               && content.tabOf (editor->getSlider (vimic::params::kDirectGainId)) == 1 && content.tabOf (editor->getSlider (vimic::params::kMidHighId)) == 4);
+        CHECK (content.tabOf (&content.getOutsideSlider()) == -1);                                   // not in any tab: ViMiC does not use it
+
+        // Only the controls of the tab that shows are visible; a click on a tab button (setActiveTab) changes that.
+        const auto show = [&] (juce::Component& c) { content.setActiveTab (content.tabOf (&c)); };
+        show (content.getRoomSlider());
+        CHECK (content.getRoomSlider().isVisible() && ! editor->getDistanceLawBox().isVisible() && ! editor->getAbsorptionPanel().isVisible());
+        show (editor->getDistanceLawBox());
+        CHECK (editor->getDistanceLawBox().isVisible() && ! content.getRoomSlider().isVisible() && content.getActiveTab() == 1);
+        content.setActiveTab (99);                                                                  // limited to the last tab
+        CHECK (content.getActiveTab() == 5 && content.getOscPanel().isVisible());
+        show (editor->getDistanceLawBox());
+
         CHECK (editor->getDistanceLawBox().isVisible() && editor->getDistanceLawBox().getParentComponent() == &content);
-        CHECK (editor->getDelayModeBox().isVisible() && editor->getPolarityButton().isVisible());
+        show (editor->getDelayModeBox());
+        CHECK (editor->getDelayModeBox().isVisible());
+        show (editor->getPolarityButton());
+        CHECK (editor->getPolarityButton().isVisible());
         for (const auto& id : { vimic::params::kDistancePowerId, vimic::params::kDistanceDbId, vimic::params::kMinDistanceId, vimic::params::kMicPowerId, vimic::params::kSourcePowerId,
                                 vimic::params::kTemperatureId, vimic::params::kSourceHeightId, vimic::params::kMicHeightId,
                                 vimic::params::kDirectGainId, vimic::params::kOutputGainId })
         {
             auto* slider = editor->getSlider (id);
+            if (slider != nullptr)
+                show (*slider);
             CHECK (slider != nullptr && slider->isVisible() && slider->getWidth() > 50 && slider->getParentComponent() == &content);
             if (slider != nullptr)
                 CHECK (std::abs (slider->getValue() - (double) value (p, id)) < 1e-3);                   // shows the parameter
@@ -106,6 +132,8 @@ int main (int argc, char** argv)
         for (const auto& id : { vimic::params::kFadeThresholdId, vimic::params::kFadeTimeId })
         {
             auto* slider = editor->getSlider (id);
+            if (slider != nullptr)
+                show (*slider);
             CHECK (slider != nullptr && slider->isVisible() && slider->getWidth() > 50 && std::abs (slider->getValue() - (double) value (p, id)) < 0.01);
             CHECK (slider != nullptr && ! slider->isEnabled());
         }
@@ -128,10 +156,13 @@ int main (int argc, char** argv)
                                 vimic::params::kThresholdId, vimic::params::kAirCutoffId, vimic::params::kLowMidId, vimic::params::kMidHighId })
         {
             auto* slider = editor->getSlider (id);
+            if (slider != nullptr)
+                show (*slider);
             CHECK (slider != nullptr && slider->isVisible() && slider->getWidth() > 50 && slider->getParentComponent() == &content);
             if (slider != nullptr)
                 CHECK (std::abs (slider->getValue() - (double) value (p, id)) < 1e-2 * std::max (1.0, std::abs ((double) value (p, id))));
         }
+        show (editor->getReflectionBox());
         CHECK (editor->getReflectionBox().isVisible() && editor->getReflectionBox().getSelectedId() == 1);                       // Off
         editor->getReflectionBox().setSelectedId (3, juce::sendNotificationSync);
         CHECK (p.getRoomSettings().order == 2);
@@ -143,6 +174,7 @@ int main (int argc, char** argv)
 
         // The absorption panel: sliders attached to the parameters; a preset writes three parameters; any other values show "custom".
         auto& panel = editor->getAbsorptionPanel();
+        show (panel);
         CHECK (panel.isVisible() && panel.getParentComponent() == &content && panel.getHeight() == AbsorptionPanel::kHeight && panel.getWidth() >= 400);
         CHECK (std::abs (panel.getSlider (vimic::Floor, 2).getValue() - 8.0) < 0.05);
         panel.getSlider (vimic::Left, 0).setValue (33.0, juce::sendNotificationSync);
@@ -184,14 +216,17 @@ int main (int argc, char** argv)
         setParam (p, vimic::params::kTemperatureId, 20.0f);
 
         if (argc > 1)
-        {
-            juce::File out (juce::String (argv[1]).replace (".png", "-settings.png"));
-            out.deleteFile();
-            juce::FileOutputStream stream (out);
-            juce::PNGImageFormat png;
-            CHECK (stream.openedOk() && png.writeImageToStream (content.createComponentSnapshot (content.getLocalBounds(), true, 1.0f), stream));
-            std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
-        }
+            for (int tab = 0; tab < content.getTabCount(); ++tab)
+            {
+                content.setActiveTab (tab);
+                juce::File out (juce::String (argv[1]).replace (".png", "-settings-" + content.getTabTitle (tab).toLowerCase() + ".png"));
+                out.deleteFile();
+                juce::FileOutputStream stream (out);
+                juce::PNGImageFormat png;
+                CHECK (stream.openedOk() && png.writeImageToStream (content.createComponentSnapshot (content.getLocalBounds(), true, 1.0f), stream));
+                std::printf ("wrote %s\n", out.getFullPathName().toRawUTF8());
+            }
+        content.setActiveTab (0);
         window.setVisible (false);
     }
 

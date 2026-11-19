@@ -20,13 +20,17 @@ namespace tlos
     @param around  The plug-in window or a component in it. */
 void placeBeside (juce::TopLevelWindow& window, juce::Component* around);
 
-/** What the settings window shows: sections of labelled controls, from the top
+/** What the settings window shows: labelled controls in sections, from the top
 
     - **Room**: the room size slider (see SpatialProcessor::getRoomHalfExtent()) and the coordinates menu
       (Cartesian or Polar, see SpatialProcessor::getCoordinateMode()).
     - **Panning**: the outside rolloff slider, the virtual speaker menu (only for a plugin that has virtual
       speakers) and the rows the plugin adds with addRow() (DistPan: rolloff and blur).
     - **OSC**: the OscSettingsPanel.
+
+    A plugin with many settings (ViMiC) divides its own rows into themes with addSection(): the window then shows **tabs** instead of one long column, one for the
+    first section (the pad size and the coordinates, with the outside rolloff and the virtual speakers if the plugin has them), one for each section of the plugin and
+    one for OSC; its height is that of the tallest tab. A plugin that does not add sections gets the single column.
 
     It follows the parameters and settings while it is showing (10 Hz). Message thread only. */
 class SettingsContent final : public juce::Component,
@@ -50,8 +54,20 @@ public:
         @param height   The height of the row in pixels (0: kRowHeight). */
     void addRow (const juce::String& caption, juce::Component& control, int height = 0);
 
-    /** Adds a heading of the plugin's own to the Panning section, above the rows that follow (for a plugin with many settings). */
+    /** Starts a section of the plugin's own: the rows added after it belong to it. The first section turns the window into tabs (see the class description), and each section
+        is a tab named `title`. @param title  The name of the section (short: it is on a tab). */
     void addSection (const juce::String& title);
+
+    /** @return The number of tabs (0 in the single column). */
+    int getTabCount() const noexcept { return (int) tabs.size(); }
+    /** @return The title of tab `index`. */
+    juce::String getTabTitle (int index) const { return tabs[(size_t) index].title; }
+    /** @return The tab that is showing (0 in the single column). */
+    int getActiveTab() const noexcept { return activeTab; }
+    /** Shows a tab. @param index  The tab (limited to the existing ones). */
+    void setActiveTab (int index);
+    /** @return The tab that holds a control or caption, or -1 if none does (or in the single column). @param component  The control. */
+    int tabOf (const juce::Component* component) const noexcept;
 
     /** @return The height in pixels that shows everything. */
     int getPreferredHeight() const noexcept { return preferredHeight; }
@@ -88,11 +104,37 @@ private:
         int height;                 ///< The height of the row in pixels.
     };
 
+    /** What a tab shows in one row. */
+    struct Item
+    {
+        juce::Label* caption = nullptr;        ///< The caption, or nullptr for a control that takes the whole row.
+        juce::Component* control = nullptr;    ///< The control.
+        int height = 0;                        ///< The height of the row in pixels.
+        int controlWidth = 0;                  ///< The width of the control (0: the rest of the row).
+    };
+
+    /** A tab: a title and its rows. */
+    struct Tab
+    {
+        juce::String title;                    ///< The name on the tab.
+        std::vector<Item> items;               ///< The rows.
+        int height = 0;                        ///< The height of the rows in pixels.
+    };
+
     /** Timer callback. */
     void timerCallback() override { if (isShowing()) refresh(); }
 
     /** Works out the rows and the height (and tells the owner if the height changed). */
     void updateLayoutData();
+
+    /** @return Whether the window has tabs: the plugin has added a section. */
+    bool hasTabs() const noexcept;
+
+    /** Divides the rows into tabs (does nothing in the single column), makes the tab buttons and shows the active tab. */
+    void buildTabs();
+
+    /** Shows the components of the active tab and hides those of the others. */
+    void showActiveTab();
 
     SpatialProcessor& processor;           ///< The processor whose settings are shown.
 
@@ -112,6 +154,10 @@ private:
 
     std::vector<std::unique_ptr<juce::Label>> pluginCaptions;  ///< Captions of the plugin's own rows.
     std::vector<Row> pluginRows;                           ///< The plugin's own rows.
+    std::vector<Tab> tabs;                                 ///< The tabs (empty in the single column).
+    std::vector<std::unique_ptr<juce::TextButton>> tabButtons;   ///< The buttons of the tab bar.
+    int activeTab = 0;                                     ///< The tab that is showing.
+    static constexpr int kTabBarHeight = 30;               ///< Height of the tab bar in pixels.
     int preferredHeight = 0;                               ///< See getPreferredHeight().
     bool syncing = false;                                  ///< True while the controls are updated from the settings.
 
