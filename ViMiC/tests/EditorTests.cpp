@@ -7,6 +7,7 @@
 
 #include "../Source/PluginEditor.h"
 #include "../Source/ViMiCParameters.h"
+#include "vimic/Absorption.h"
 #include "../Source/PluginProcessor.h"
 #include "tlos/Parameters.h"
 
@@ -98,6 +99,49 @@ int main (int argc, char** argv)
             if (slider != nullptr)
                 CHECK (std::abs (slider->getValue() - (double) value (p, id)) < 1e-3);                   // shows the parameter
         }
+
+        // The room, the reflections and the walls.
+        for (const auto& id : { vimic::params::kRoomWidthId, vimic::params::kRoomDepthId, vimic::params::kRoomHeightId, vimic::params::kRefl1GainId, vimic::params::kRefl2GainId,
+                                vimic::params::kThresholdId, vimic::params::kAirCutoffId, vimic::params::kLowMidId, vimic::params::kMidHighId })
+        {
+            auto* slider = editor->getSlider (id);
+            CHECK (slider != nullptr && slider->isVisible() && slider->getWidth() > 50 && slider->getParentComponent() == &content);
+            if (slider != nullptr)
+                CHECK (std::abs (slider->getValue() - (double) value (p, id)) < 1e-2 * std::max (1.0, std::abs ((double) value (p, id))));
+        }
+        CHECK (editor->getReflectionBox().isVisible() && editor->getReflectionBox().getSelectedId() == 1);                       // Off
+        editor->getReflectionBox().setSelectedId (3, juce::sendNotificationSync);
+        CHECK (p.getRoomSettings().order == 2);
+        setParam (p, vimic::params::kReflOrderId, 1.0f);
+        CHECK (editor->getReflectionBox().getSelectedId() == 2);
+        CHECK (editor->getSlider (vimic::params::kThresholdId)->getTextFromValue (vimic::params::kThresholdOff) == "off");
+        editor->getSlider (vimic::params::kRoomWidthId)->setValue (14.0, juce::sendNotificationSync);
+        CHECK (std::abs (p.getRoomSettings().room.width - 14.0) < 1e-3);
+
+        // The absorption panel: sliders attached to the parameters; a preset writes three parameters; any other values show "custom".
+        auto& panel = editor->getAbsorptionPanel();
+        CHECK (panel.isVisible() && panel.getParentComponent() == &content && panel.getHeight() == AbsorptionPanel::kHeight && panel.getWidth() >= 400);
+        CHECK (std::abs (panel.getSlider (vimic::Floor, 2).getValue() - 8.0) < 0.05);
+        panel.getSlider (vimic::Left, 0).setValue (33.0, juce::sendNotificationSync);
+        CHECK (std::abs (value (p, vimic::params::absorptionId (vimic::Left, 0)) - 33.0f) < 0.05f);
+        panel.refresh();
+        CHECK (panel.getPresetBox (vimic::Left).getSelectedId() == 1 && panel.getPresetBox (vimic::Right).getSelectedId() > 1);   // custom; drywall
+        const auto* carpet = vimic::findSurfacePreset ("carpet");
+        int carpetId = 0;
+        for (int id = 2; id < 2 + (int) vimic::surfacePresets().size(); ++id)
+            if (panel.getPresetBox (vimic::Left).getItemText (panel.getPresetBox (vimic::Left).indexOfItemId (id)) == "carpet")
+                carpetId = id;
+        CHECK (carpet != nullptr && carpetId > 0);
+        panel.getPresetBox (vimic::Rear).setSelectedId (carpetId, juce::sendNotificationSync);
+        CHECK (std::abs (value (p, vimic::params::absorptionId (vimic::Rear, 0)) - 6.0f) < 0.05f && std::abs (value (p, vimic::params::absorptionId (vimic::Rear, 2)) - 63.0f) < 0.05f);
+        CHECK (std::abs (panel.getSlider (vimic::Rear, 1).getValue() - 37.0) < 0.05);                                  // the slider follows
+        panel.getAllBox().setSelectedId (carpetId, juce::sendNotificationSync);                                        // all walls
+        for (int wall = 0; wall < vimic::WallCount; ++wall)
+            CHECK (std::abs (value (p, vimic::params::absorptionId (wall, 1)) - 37.0f) < 0.05f && panel.getPresetBox (wall).getSelectedId() == carpetId);
+        for (int wall = 0; wall < vimic::WallCount; ++wall)
+            panel.applyPreset (wall, *vimic::findSurfacePreset (wall < 4 ? "drywall" : wall == 4 ? "wood" : "plaster"));    // the defaults again
+        setParam (p, vimic::params::kRoomWidthId, 10.0f);
+        setParam (p, vimic::params::kReflOrderId, 0.0f);
 
         // The controls write to the parameters, and a host change moves them.
         editor->getSlider (vimic::params::kTemperatureId)->setValue (5.0, juce::sendNotificationSync);
@@ -195,6 +239,21 @@ int main (int argc, char** argv)
     CHECK (areaOf (ViMiCField::lobePath (0.5, 3, true, 100.0f)) < areaOf (ViMiCField::lobePath (0.5, 1, true, 100.0f)));          // a larger exponent is sharper
 
     // The pad paints (lobes, links) in both coordinate modes without a problem.
+    for (auto mode : { tlos::SpatialProcessor::CoordinateMode::Polar, tlos::SpatialProcessor::CoordinateMode::Cartesian })
+    {
+        p.setCoordinateMode (mode);
+        field.refresh();
+        juce::Image image (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+        juce::Graphics g (image);
+        editor->paintEntireComponent (g, true);
+    }
+    p.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Polar);
+
+    // The room is drawn on the pad while the reflections are on (paints without a problem, in both coordinate modes).
+    setParam (p, vimic::params::kReflOrderId, 1.0f);
+    setParam (p, vimic::params::kRoomWidthId, 14.0f);
+    setParam (p, vimic::params::kRoomDepthId, 9.0f);
+    field.refresh();
     for (auto mode : { tlos::SpatialProcessor::CoordinateMode::Polar, tlos::SpatialProcessor::CoordinateMode::Cartesian })
     {
         p.setCoordinateMode (mode);

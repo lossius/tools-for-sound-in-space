@@ -10,10 +10,12 @@
 #include <cmath>
 
 ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
-    : SpatialEditor (p, std::make_unique<ViMiCField> (p), {}), vimicProcessor (p)
+    : SpatialEditor (p, std::make_unique<ViMiCField> (p), {}), vimicProcessor (p), absorptionPanel (p)
 {
     namespace ids = vimic::params;
     auto& apvts = p.getValueTreeState();
+
+    addSettingsSection ("Direct sound");
 
     // Distance law.
     lawBox.addItem ("Inverse", 1);
@@ -47,6 +49,33 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
     addSliderRow ("Microphone height", ids::kMicHeightId, " m", 2, "The height of every microphone.");
     addSliderRow ("Direct sound gain", ids::kDirectGainId, " dB", 1, "The gain of the direct sound.");
     addSliderRow ("Output gain", ids::kOutputGainId, " dB", 1, "The gain of all the microphone signals.");
+
+    // The room: size, the reflections and what the walls do to them.
+    addSettingsSection ("Room and early reflections");
+    reflectionBox.addItem ("Off", 1);
+    reflectionBox.addItem ("1st order (6 reflections)", 2);
+    reflectionBox.addItem ("2nd order (24 reflections)", 3);
+    reflectionBox.setTooltip ("The early reflections of the shoebox room, as the paths of the images of every source in the walls. Each one is rendered for every microphone, so the cost "
+                              "grows with the order. There is no late reverb: use an external reverb on the outputs.");
+    reflectionAttachment = std::make_unique<juce::ComboBoxParameterAttachment> (*apvts.getParameter (ids::kReflOrderId), reflectionBox, nullptr);
+    addSettingsRow ("Reflections", reflectionBox);
+    addSliderRow ("Room width", ids::kRoomWidthId, " m", 1, "The size of the room along x. The room is centred on the listener (the origin) and is drawn on the pad while the reflections are on.");
+    addSliderRow ("Room depth", ids::kRoomDepthId, " m", 1, "The size of the room along y (front to back).");
+    addSliderRow ("Room height", ids::kRoomHeightId, " m", 1, "The height of the room, from the floor to the ceiling. Sources and microphones are at their own heights between them.");
+    addSliderRow ("1st order gain", ids::kRefl1GainId, " dB", 1, "The gain of the reflections that have hit one wall.");
+    addSliderRow ("2nd order gain", ids::kRefl2GainId, " dB", 1, "The gain of the reflections that have hit two walls.");
+    addSliderRow ("Render threshold", ids::kThresholdId, " dB", 0, "Reflections weaker than this are left out, which saves processing time. The lowest value keeps them all.");
+    if (auto* threshold = getSlider (ids::kThresholdId))
+    {
+        threshold->textFromValueFunction = [] (double v) { return v <= (double) ids::kThresholdOff + 0.05 ? juce::String ("off") : juce::String (juce::roundToInt (v)) + " dB"; };
+        threshold->updateText();
+    }
+    addSliderRow ("Air absorption", ids::kAirCutoffId, " Hz", 0, "The cut-off of the 2nd-order low-pass that gives every reflection the damping of the air.");
+
+    addSettingsSection ("Wall absorption");
+    addSliderRow ("Low / mid crossover", ids::kLowMidId, " Hz", 0, "Where the low and the middle absorption band meet.");
+    addSliderRow ("Mid / high crossover", ids::kMidHighId, " Hz", 0, "Where the middle and the high absorption band meet.");
+    addSettingsRow ({}, absorptionPanel, AbsorptionPanel::kHeight);
 }
 
 void ViMiCAudioProcessorEditor::addSliderRow (const juce::String& caption, const juce::String& parameterId, const juce::String& suffix, int decimals, const juce::String& tooltip)

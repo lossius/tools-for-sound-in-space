@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 
 # ViMiCCore: ViMiC's pure C++ model (virtual microphones: directivity, distance law, delays, interpolated delay lines). Must never depend on JUCE.
-add_library(ViMiCCore STATIC src/Directivity.cpp src/Path.cpp src/DelayLine.cpp)
+add_library(ViMiCCore STATIC src/Directivity.cpp src/Path.cpp src/DelayLine.cpp src/Room.cpp src/Absorption.cpp src/Filter.cpp src/Reflections.cpp)
 
 # Headers are listed so that they show up in the IDE's project navigator.
 file(GLOB VIMIC_CORE_HEADERS CONFIGURE_DEPENDS include/vimic/*.h)

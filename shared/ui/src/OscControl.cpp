@@ -266,7 +266,7 @@ void OscControl::sendChanges()
             emit ({ juce::OSCAddressPattern ("/speakers/count"), (juce::int32) m });
 
         const auto pluginParameters = processor.getOscParameters();
-        for (size_t k = 0; k < pluginParameters.size() && k < 20; ++k)
+        for (size_t k = 0; k < pluginParameters.size() && k < 64; ++k)
             if (const float v = readParameter (processor, pluginParameters[k].parameterId); changed (globals[4 + k], v))
                 emit ({ juce::OSCAddressPattern (pluginParameters[k].address), v });
     }

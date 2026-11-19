@@ -9,7 +9,9 @@
 #include "../Source/ViMiCParameters.h"
 #include "tlos/Parameters.h"
 #include "tlos/PositionIO.h"
+#include "vimic/Absorption.h"
 #include "vimic/Path.h"
+#include "vimic/Reflections.h"
 
 #include <algorithm>
 #include <atomic>
@@ -159,17 +161,22 @@ static void testParameterOrder()
 {
     ViMiCAudioProcessor p;
     const auto& parameters = p.getParameters();
-    const int total = 3 + 13 + 64 * 9 + 64 * 8;
+    const int total = 3 + (int) vimic::params::GlobalCount + 64 * 9 + 64 * 8;
 
     CHECK (parameters.size() == total);
 
     const auto idOf = [&] (int i) { return dynamic_cast<juce::AudioProcessorParameterWithID*> (parameters[i])->paramID; };
     CHECK (idOf (0) == tlos::params::kNumSourcesId && idOf (1) == tlos::params::kNumSpeakersId && idOf (2) == tlos::params::kOutsideRolloffId);
-    CHECK (idOf (3) == vimic::params::kDistanceLawId && idOf (15) == vimic::params::kOutputGainId && idOf (16) == tlos::params::sourceId (0, 'x'));
+    const int globalsEnd = 3 + (int) vimic::params::GlobalCount;                                // the first source parameter is at this index
+    CHECK (idOf (3) == vimic::params::kDistanceLawId && idOf (3 + vimic::params::OutputGain) == vimic::params::kOutputGainId && idOf (globalsEnd) == tlos::params::sourceId (0, 'x'));
+    CHECK (idOf (3 + vimic::params::RoomWidth) == vimic::params::kRoomWidthId && idOf (3 + vimic::params::ReflOrder) == vimic::params::kReflOrderId && idOf (3 + vimic::params::AirCutoff) == vimic::params::kAirCutoffId);
+    CHECK (idOf (3 + vimic::params::AbsorptionFirst) == vimic::params::absorptionId (vimic::Left, 0) && idOf (globalsEnd - 1) == vimic::params::absorptionId (vimic::Ceiling, 2));
+    CHECK (std::abs (getParam (p, vimic::params::kRoomWidthId) - 10.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kRoomHeightId) - 3.0f) < 1e-4f && p.getRoomSettings().order == 0);
+    CHECK (std::abs (getParam (p, vimic::params::absorptionId (vimic::Left, 1)) - 50.0f) < 1e-3f && std::abs (getParam (p, vimic::params::absorptionId (vimic::Floor, 2)) - 8.0f) < 1e-3f);     // drywall, wood
     CHECK (idOf (3 + vimic::params::SourcePower) == vimic::params::kSourcePowerId && idOf (3 + vimic::params::DelayModeIndex) == vimic::params::kDelayModeId);
-    CHECK (idOf (16 + 7) == vimic::params::srcYawId (0) && idOf (16 + 8) == vimic::params::srcPatternId (0) && idOf (16 + 9) == tlos::params::sourceId (1, 'x'));
-    CHECK (parameters[16 + 7]->getName (64) == "Source 1 Yaw" && std::abs (getParam (p, vimic::params::srcPatternId (3)) - 1.0f) < 1e-4f);
-    const int speakers = 16 + 64 * 9;
+    CHECK (idOf (globalsEnd + 7) == vimic::params::srcYawId (0) && idOf (globalsEnd + 8) == vimic::params::srcPatternId (0) && idOf (globalsEnd + 9) == tlos::params::sourceId (1, 'x'));
+    CHECK (parameters[globalsEnd + 7]->getName (64) == "Source 1 Yaw" && std::abs (getParam (p, vimic::params::srcPatternId (3)) - 1.0f) < 1e-4f);
+    const int speakers = globalsEnd + 64 * 9;
     CHECK (idOf (speakers) == tlos::params::speakerId (0, 'x'));
     CHECK (idOf (speakers + 6) == vimic::params::micYawId (0) && idOf (speakers + 7) == vimic::params::micPatternId (0));
     CHECK (parameters[speakers + 6]->getName (64) == "Microphone 1 Yaw" && parameters[speakers]->getName (64) == "Microphone 1 X");
@@ -191,7 +198,8 @@ static void testParameterOrder()
     CHECK (p.getSpeakerColumns().size() == 2 && p.getSpeakerColumns()[0].attribute == "yaw" && p.getSpeakerColumns()[1].attribute == "pattern");
     CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);
     CHECK (p.getSourceColumns().size() == 2 && p.getSourceColumns()[0].attribute == "yaw" && p.getSourceColumns()[1].attribute == "pattern" && p.getSourceColumns()[1].defaultValue == 1.0);
-    CHECK (p.getLatencySamples() == 2 && p.getOscParameters().size() == 13);
+    CHECK (p.getLatencySamples() == 2 && p.getOscParameters().size() == vimic::params::GlobalCount);
+    CHECK (p.getOscParameters()[vimic::params::RoomWidth].address == "/vimic/roomwidth" && p.getOscParameters()[vimic::params::AbsorptionFirst].address == "/vimic/absorbleftlow");
 }
 
 /** The default layout points the microphones outwards (yaw = azimuth of the position). */
@@ -381,6 +389,167 @@ static void testSourceDirectivity()
     CHECK (osc.handleMessage (juce::OSCMessage (juce::OSCAddressPattern ("/vimic/sourcepower"), 3.0f)) && getParam (q, vimic::params::kSourcePowerId) == 3.0f);
 }
 
+/** The room: the impulse response with the reflections on has every path of the images, in the right places, with the filter of its walls; the totals (DC gain)
+    follow the sum over the images of the path gain and the low-band gain of the walls the path hits. */
+static void testReflections()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 1, 16384));
+    placeMic (p, 0, 0.0f, 0.0f, 0.0f, 1.0f);                       // an omni microphone at the centre
+    placeSource (p, 0, 2.0f, 0.0f);                                 // an omni source 2 m to the right of it
+    setParam (p, vimic::params::kAirCutoffId, 19000.0f);
+    for (int wall = 0; wall < vimic::WallCount; ++wall)
+        for (int band = 0; band < 3; ++band)
+            setParam (p, vimic::params::absorptionId (wall, band), 0.1f);
+    p.refreshLayout();
+
+    const auto totalOf = [&] (int order)
+    {
+        setParam (p, vimic::params::kReflOrderId, (float) order);
+        p.refreshLayout();                                          // makes the reflection bank (the timer does it in a host)
+        auto out = impulseResponse (p, 1, 1, 16384);
+        double sum = 0.0;
+        centroid (out, 0, sum);
+        return std::pair { sum, out };
+    };
+
+    // The direct sound alone, then with the first-order reflections.
+    const auto direct = totalOf (0);
+    CHECK (std::abs (direct.first - 0.5) < 1e-3);                   // 1 / 2 m
+    CHECK (p.getReflectionBankSize() == 0);                         // no bank before it is needed
+
+    const auto first = totalOf (1);
+    CHECK (p.getReflectionBankSize() > 0);
+
+    // The expected sum: the direct path and the six first-order images (the reflection factor of 0.1 % is 0.9995 for every wall).
+    const auto pathSettings = p.getPathSettings();
+    auto room = p.getRoomSettings();
+    const auto walls = p.getWalls();
+    const vimic::Microphone mic { { 0.0, 0.0 }, 0.0, 1.0 };
+    const vimic::Source source ({ 2.0, 0.0 }, 0.0, 1.0);
+
+    const auto expectedTotal = [&] (int order)
+    {
+        room.order = order;
+        double total = 0.0;
+        for (const auto& image : vimic::images (order))
+            total += vimic::computeImagePath (source, mic, image, pathSettings, room).gain * vimic::bandGains (image.hits, walls).low;
+        return total;
+    };
+    CHECK (std::abs (first.first - expectedTotal (1)) < 2e-3 && expectedTotal (1) > expectedTotal (0) + 0.2);
+
+    // Arrival times (relative delays: the direct sound is at 2 samples, the rest later by the difference of the path lengths) of the first-order paths.
+    const auto arrivalWindow = [&] (const juce::AudioBuffer<float>& out, double seconds, double reference)
+    {
+        const double position = 2.0 + (seconds - reference) * 48000.0;
+        double sum = 0.0;
+        for (int i = std::max (0, (int) std::floor (position) - 3); i <= (int) std::ceil (position) + 3 && i < out.getNumSamples(); ++i)
+            sum += (double) out.getSample (0, i);
+        return sum;
+    };
+    const double directTime = vimic::computeDirectPath (source, mic, pathSettings).delaySeconds;
+    room.order = 1;
+    for (const auto& image : vimic::images (1))
+    {
+        const auto path = vimic::computeImagePath (source, mic, image, pathSettings, room);
+        // Skip the ones that arrive within a few samples of another path (the floor and the ceiling do).
+        int near = 0;
+        for (const auto& other : vimic::images (1))
+            if (std::abs (vimic::computeImagePath (source, mic, other, pathSettings, room).delaySeconds - path.delaySeconds) * 48000.0 < 8.0)
+                ++near;
+        if (image.order == 1 && near == 1)
+            CHECK (std::abs (arrivalWindow (first.second, path.delaySeconds, directTime) - path.gain * vimic::bandGains (image.hits, walls).low) < 2e-3);
+    }
+
+    // The second order adds the 18 images; the totals agree.
+    const auto second = totalOf (2);
+    CHECK (std::abs (second.first - expectedTotal (2)) < 3e-3 && expectedTotal (2) > expectedTotal (1) + 0.01);
+    CHECK (std::abs (second.first - first.first) > 0.01);
+
+    // The gains of the orders and the threshold: 1st order off (-60 dB), and a threshold that removes the weakest paths.
+    setParam (p, vimic::params::kRefl1GainId, -60.0f);
+    setParam (p, vimic::params::kRefl2GainId, -60.0f);
+    const auto muted = totalOf (2);
+    CHECK (std::abs (muted.first - 0.5) < 5e-3);
+    setParam (p, vimic::params::kRefl1GainId, 0.0f);
+    setParam (p, vimic::params::kRefl2GainId, 0.0f);
+    setParam (p, vimic::params::kThresholdId, -20.0f);               // 0.1: only paths stronger than that remain
+    const auto thresholded = totalOf (2);
+    room = p.getRoomSettings();
+    CHECK (room.threshold > 0.09 && room.threshold < 0.11);
+    double expectedThresholded = 0.0;
+    for (const auto& image : vimic::images (2))
+        expectedThresholded += vimic::computeImagePath (source, mic, image, pathSettings, room).gain * vimic::bandGains (image.hits, walls).low;
+    CHECK (std::abs (thresholded.first - expectedThresholded) < 3e-3 && thresholded.first < second.first);
+    setParam (p, vimic::params::kThresholdId, vimic::params::kThresholdOff);
+
+    // The walls colour the reflections: absorbing the right wall's low band all but removes its reflection at low frequencies (its DC gain), and the high band
+    // (the Nyquist gain) is left alone; the other walls are unchanged.
+    for (int band = 0; band < 3; ++band)
+        setParam (p, vimic::params::absorptionId (vimic::Right, band), band == 0 ? 99.9f : 0.1f);
+    const auto absorbing = totalOf (1);
+    const auto rightImage = std::find_if (vimic::images (1).begin(), vimic::images (1).end(), [] (const vimic::Image& i) { return i.order == 1 && i.hits[vimic::Right] == 1; });
+    room.order = 1;
+    const double rightGain = vimic::computeImagePath (source, mic, *rightImage, pathSettings, room).gain;
+    CHECK (std::abs ((first.first - absorbing.first) - rightGain * (1.0 - std::sqrt (0.001))) < 3e-3);
+    // (A low shelf of -30 dB makes the reflection an impulse with a long negative tail, of which a part is inside the window: what is left near the arrival is the high band.)
+    const double right = arrivalWindow (absorbing.second, vimic::computeImagePath (source, mic, *rightImage, pathSettings, room).delaySeconds, directTime);
+    CHECK (right > 0.25 * rightGain && right < rightGain);                      // far above what the low band alone (3 % of the gain) would leave
+
+    // Switching the reflections off again: the bank stays, the direct sound is as before and the reflections have faded out.
+    const auto off = totalOf (0);
+    CHECK (std::abs (off.first - 0.5) < 1e-3);
+}
+
+/** A bigger room needs a bigger reflection bank, made on the message thread; a smaller one keeps the one it has; reflections do not need a bank for the direct sound. */
+static void testReflectionBank()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 3, 4, 512));
+    setParam (p, vimic::params::kReflOrderId, 1.0f);
+    p.refreshLayout();
+    const auto small = p.getReflectionBankSize();
+    CHECK (small > 0);
+
+    p.refreshLayout();
+    CHECK (p.getReflectionBankSize() == small);                      // the same bank: nothing new is made
+
+    setParam (p, vimic::params::kRoomWidthId, 40.0f);
+    setParam (p, vimic::params::kRoomDepthId, 40.0f);
+    p.refreshLayout();
+    const auto big = p.getReflectionBankSize();
+    CHECK (big > small * 2);
+
+    setParam (p, vimic::params::kRoomWidthId, 5.0f);
+    p.refreshLayout();
+    CHECK (p.getReflectionBankSize() == big);                         // a smaller room fits in the bank that exists
+
+    setParam (p, vimic::params::kReflOrderId, 2.0f);                  // more wall sequences: a new bank
+    p.refreshLayout();
+    CHECK (p.getReflectionBankSize() > big);
+
+    // The output is finite while all this changes.
+    juce::AudioBuffer<float> buf (4, 512);
+    juce::MidiBuffer midi;
+    std::mt19937 rng (70);
+    for (int block = 0; block < 20; ++block)
+    {
+        fillNoise (buf, block % 3, rng);
+        if (block == 10)
+        {
+            setParam (p, vimic::params::kRoomHeightId, 30.0f);
+            p.refreshLayout();
+        }
+        p.processBlock (buf, midi);
+        CHECK (allFinite (buf, 4));
+    }
+
+    // A new prepareToPlay makes a new bank (the sample rate or the block size may have changed).
+    p.prepareToPlay (96000.0, 256);
+    p.refreshLayout();
+    CHECK (p.getReflectionBankSize() > 0);
+}
+
 /** Heights: the paths are longer and the sound arrives off the axis. */
 static void testHeights()
 {
@@ -510,6 +679,9 @@ static void testStateRoundTrip()
     setParam (a, vimic::params::srcYawId (2), -70.0f);
     setParam (a, vimic::params::srcPatternId (2), 0.4f);
     setParam (a, vimic::params::kSourcePowerId, 4.0f);
+    setParam (a, vimic::params::kRoomWidthId, 12.5f);
+    setParam (a, vimic::params::kReflOrderId, 2.0f);
+    setParam (a, vimic::params::absorptionId (vimic::Rear, 2), 77.0f);
     setParam (a, vimic::params::kDelayModeId, 1.0f);
     setParam (a, vimic::params::kTemperatureId, 9.0f);
     a.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Cartesian);
@@ -523,6 +695,7 @@ static void testStateRoundTrip()
     CHECK (std::abs (getParam (b, tlos::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
     CHECK (std::abs (getParam (b, vimic::params::micYawId (3)) - 33.0f) < 1e-3f && std::abs (getParam (b, vimic::params::micPatternId (3)) - 0.7f) < 1e-4f);
     CHECK (b.getDelayMode() == vimic::params::DelayMode::Absolute && std::abs (getParam (b, vimic::params::kTemperatureId) - 9.0f) < 1e-3f);
+    CHECK (std::abs (getParam (b, vimic::params::kRoomWidthId) - 12.5f) < 1e-3f && b.getRoomSettings().order == 2 && std::abs (getParam (b, vimic::params::absorptionId (vimic::Rear, 2)) - 77.0f) < 1e-2f);
     CHECK (std::abs (getParam (b, vimic::params::srcYawId (2)) + 70.0f) < 1e-3f && std::abs (getParam (b, vimic::params::srcPatternId (2)) - 0.4f) < 1e-4f && getParam (b, vimic::params::kSourcePowerId) == 4.0f);
     CHECK (b.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Cartesian);
 
@@ -669,6 +842,58 @@ static void testFullSizeCost()
     }
 }
 
+/** The cost of the reflections: 8 sources and 8 microphones, and 16 and 16, with the first and the second order, static and moving (printed, not checked). */
+static void testReflectionCost()
+{
+    struct Case { int channels; int order; bool moving; int outputs = 0; };
+    for (const Case c : { Case { 8, 1, false }, Case { 8, 1, true }, Case { 8, 2, false }, Case { 8, 2, true }, Case { 16, 2, false }, Case { 16, 2, true }, Case { 8, 2, false, 1 } })
+    {
+        ViMiCAudioProcessor p;
+        const int outputs = c.outputs > 0 ? c.outputs : c.channels;
+        CHECK (configure (p, c.channels, outputs, 512));
+        setParam (p, vimic::params::kReflOrderId, (float) c.order);
+        p.refreshLayout();
+
+        juce::AudioBuffer<float> buf (std::max (c.channels, outputs), 512);
+        juce::MidiBuffer midi;
+        std::mt19937 rng (11);
+        std::uniform_real_distribution<float> u (-1.0f, 1.0f);
+        for (int ch = 0; ch < c.channels; ++ch)
+            for (int i = 0; i < 512; ++i)
+                buf.setSample (ch, i, u (rng));
+        const juce::AudioBuffer<float> input (buf);
+
+        double total = 0.0, worst = 0.0;
+        const int blocks = 200;
+        for (int block = -20; block < blocks; ++block)
+        {
+            if (c.moving)
+                for (int s = 0; s < c.channels; ++s)
+                {
+                    const float a = 0.05f * (float) block + (float) s;
+                    setParam (p, tlos::params::sourceId (s, 'x'), 3.0f * std::sin (a));
+                    setParam (p, tlos::params::sourceId (s, 'y'), 3.0f * std::cos (a));
+                }
+            for (int ch = 0; ch < c.channels; ++ch)
+                buf.copyFrom (ch, 0, input, ch, 0, 512);
+
+            const auto t0 = std::chrono::steady_clock::now();
+            p.processBlock (buf, midi);
+            const double ms = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now() - t0).count();
+            if (block >= 0)
+            {
+                total += ms;
+                worst = std::max (worst, ms);
+            }
+            CHECK (allFinite (buf, outputs));
+        }
+
+        const double budget = 512.0 / 48000.0 * 1000.0;
+        std::printf ("ViMiC %2dx%-2d, %d order reflections, %-8s: %.3f ms per 512-sample block on average (%.1f %% of the %.1f ms available at 48 kHz), worst %.3f ms\n",
+                     c.channels, outputs, c.order, c.moving ? "moving" : "static", total / blocks, 100.0 * total / blocks / budget, budget, worst);
+    }
+}
+
 /** Parameters change on one thread while another processes audio: no crash, finite output. */
 static void testParameterAutomationWhileProcessing()
 {
@@ -685,6 +910,10 @@ static void testParameterAutomationWhileProcessing()
             setParam (p, tlos::params::sourceId ((int) (rng() % 8), 'x'), u (rng));
             setParam (p, tlos::params::speakerId ((int) (rng() % 8), 'y'), u (rng));
             setParam (p, vimic::params::kTemperatureId, 5.0f + 10.0f * std::abs (u (rng)));
+            setParam (p, vimic::params::kReflOrderId, (float) (rng() % 3));
+            setParam (p, vimic::params::kRoomWidthId, 4.0f + 30.0f * std::abs (u (rng)) / 10.0f);
+            setParam (p, vimic::params::absorptionId ((int) (rng() % vimic::WallCount), (int) (rng() % 3)), 1.0f + 90.0f * std::abs (u (rng)) / 10.0f);
+            p.refreshLayout();                                      // what the timer does: publishes microphones and makes reflection banks
         }
     });
 
@@ -788,12 +1017,15 @@ int main (int argc, char** argv)
     testPatternAndYaw();
     testSourceDirectivity();
     testHeights();
+    testReflections();
+    testReflectionBank();
     testChannelControls();
     testMovingSource();
     testStateRoundTrip();
     testFilesAndColumns();
     testFullSize64x64();
     testFullSizeCost();
+    testReflectionCost();
     testParameterAutomationWhileProcessing();
 
     if (argc > 1)

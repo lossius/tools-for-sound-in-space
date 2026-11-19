@@ -118,9 +118,13 @@ public:
 protected:
     /** Adds a row of the plugin's own to the settings window (for example a slider), under Panning. The control
         belongs to the plugin's editor, which must keep it alive as long as the editor exists.
-        @param caption  The text to the left of the control.
-        @param control  The control. */
-    void addSettingsRow (const juce::String& caption, juce::Component& control) { settingsContent.addRow (caption, control); }
+        @param caption  The text to the left of the control (empty: the control takes the whole row).
+        @param control  The control.
+        @param height   The height of the row in pixels (0: the usual height). */
+    void addSettingsRow (const juce::String& caption, juce::Component& control, int height = 0) { settingsContent.addRow (caption, control, height); }
+
+    /** Adds a heading to the settings window, under Panning, above the rows that follow. @param title  The heading. */
+    void addSettingsSection (const juce::String& title) { settingsContent.addSection (title); }
 
 private:
     /** Timer callback: keeps the controls in step with the parameters. */

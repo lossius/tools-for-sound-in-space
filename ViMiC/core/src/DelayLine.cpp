@@ -59,6 +59,24 @@ void DelayLine::write (const float* input, int count) noexcept
     lastCount = count;
 }
 
+void DelayLine::writeMix (const float* low, const float* mid, const float* high, const float* gains, const float* gainsEnd, int count) noexcept
+{
+    if (buffer.empty())
+        return;
+
+    count = std::clamp (count, 0, maxBlock);
+    const float stepLow = (gainsEnd[0] - gains[0]) / (float) std::max (count, 1);
+    const float stepMid = (gainsEnd[1] - gains[1]) / (float) std::max (count, 1);
+    const float stepHigh = (gainsEnd[2] - gains[2]) / (float) std::max (count, 1);
+
+    for (int i = 0; i < count; ++i)
+        buffer[(std::uint32_t) (written + i) & mask] = (gains[0] + stepLow * (float) i) * low[i] + (gains[1] + stepMid * (float) i) * mid[i]
+                                                       + (gains[2] + stepHigh * (float) i) * high[i];
+
+    written += count;
+    lastCount = count;
+}
+
 void DelayLine::addTap (float* output, int count, double delayStart, double delayEnd, float gainStart, float gainEnd) const noexcept
 {
     if (buffer.empty() || count <= 0 || count != lastCount)

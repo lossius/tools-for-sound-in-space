@@ -754,7 +754,7 @@ static void testSettingsWindow (const char* snapshotPath)
     CHECK (! editor->getRoomSlider().isShowing() && ! editor->getOutsideSlider().isShowing() && ! editor->getVirtualModeBox().isShowing());
     auto& window = editor->showSettingsWindow();
     CHECK (window.isVisible() && window.getName() == "TriPan - Settings" && editor->getSettingsWindow() == &window);
-    CHECK (window.getContentComponent() == &editor->getSettingsContent());
+    CHECK (window.getContentComponent()->isParentOf (&editor->getSettingsContent()));
     editor->toggleSettingsWindow();
     CHECK (! window.isVisible());
     editor->toggleSettingsWindow();

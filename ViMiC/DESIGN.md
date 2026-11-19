@@ -1,6 +1,6 @@
 # ViMiC (Virtual Microphone Control) — design note
 
-Status: **milestones 1 (direct sound) and 2 (source directivity) are implemented**; the rest is still a plan. Decisions already taken: positions stay in the family's 2D plane with global
+Status: **milestones 1 (direct sound), 2 (source directivity) and 3 (early reflections) are implemented**; the rest is still a plan. Decisions already taken: positions stay in the family's 2D plane with global
 source and microphone heights (for the room); the first version renders direct sound only, early reflections come second; the late reverb
 tail is left to an external reverb.
 
@@ -91,17 +91,16 @@ the buffer is 1 s and longer paths are clamped). A gain that changes is ramped l
 
 ### 3.4 Early reflections (milestone 2)
 
-- **Image sources** in the box. Order 1: 6 images (one per wall). Order 2: 18 images (two reflections in the same direction on an axis: 6; one
-  reflection on each of two different axes: 12). With the direct path: 1, 7 or 19 paths per source–microphone pair.
+- **Image sources** in the box. Order 1: 6 images (one per wall). Order 2: 18 images (two reflections between two parallel walls: 6; one
+  reflection on each of two different axes: 12). With the direct path: 1, 7 or 25 paths per source–microphone pair. (j.vimic~ renders only the 12 cross-axis images of the second order, 19 paths in all; see section 7d.)
 - **Wall absorption** per wall (left, right, front, rear, floor, ceiling) in three bands, low, mid and high, `α` in percent (0.1..99.9), with two
-  shared crossover frequencies (default about 450 Hz and 3.5 kHz in j.vimic~). The pressure factor of a wall in a band is taken as `β = 1 − α/100`
-  (to be checked against j.vimic~'s `percentToGain` before milestone 3). A path that hits several walls multiplies their factors per band.
+  shared crossover frequencies (default about 450 Hz and 3.5 kHz in j.vimic~). The pressure factor of a wall in a band is `β = sqrt (1 − α/100)` (the amplitude that is left of the energy; j.vimic~'s `percentToGain` does the same). A path that hits several walls multiplies their factors per band.
   Presets (zero, full, acoustic tiles, audience, brick, carpet, drywall, metal, ...) come from a small table of absorption coefficients
   based on `VimicSurfaceProperties.txt` (12 entries, with the crossover frequencies) and textbook values for other surfaces such as glass and
   wood, with attribution.
-- **Filtering a path** is a low shelf and a high shelf around the mid-band gain (so three biquad sections at most). The filter depends only on
-  *which walls* the path hits, not on the microphone. So it is applied **once per source and wall sequence**, before the delay taps: 1 + 6 + 18
-  filtered copies per source, each read at every microphone's delay. This is what keeps the cost manageable.
+- **Filtering a path**: the path's colour is `gl low + gm mid + gh high` of three band signals of the source (the bands add up to the input exactly: a 2nd-order Butterworth low-pass at the lower crossover, the difference between that and
+  the low-pass at the upper crossover, and the rest), where `gl, gm, gh` are the band gains of the walls the path hits. The band signals are computed **once per source**, and each wall sequence is only three gains, written into a delay line of its own
+  (**per source and wall sequence**, before the delay of every microphone): 22 classes (1 + 6 + 15) for the second order. This replaced the plan with shelving biquads per class, which cost ten times as much.
 - **Air absorption**: a 2nd-order Butterworth low-pass on all reflections with one adjustable cut-off (500..19000 Hz), as in j.vimic~; applied in the same
   per-source chain.
 - A source or microphone outside the room is allowed (positions go to ±100 m) but not physical: its reflections are faded out over
@@ -230,11 +229,20 @@ changing delay), 4.1 (lobes on the pad; microphone setups; polar coordinates by 
 - On the pad: the radiation lobe and an arrow along the yaw for sources with a pattern below 1 (omni sources have no direction).
 - Reflections (milestone 3) will use the direction from the real source to the image of each microphone, as planned in 3.2.
 
+## 7d. What milestone 3 turned out like
+
+- All of 3.4 as designed: images and the filter classes (the image table is checked against a brute-force enumeration by reflecting the source in the walls), per-wall absorption in three bands with presets, air absorption, the order gains, the render threshold, the fade outside the walls, the
+  room on the pad. The reflection bank (the memory for the filtered copies) is made on the message thread, sized for the room, and handed over with `tlos::Exchange`.
+- **Second order has 18 images**, not j.vimic~'s 12: the six images between two parallel walls (flutter echoes) are included. The total of reflections is 24 for the second order (j.vimic~: 18).
+- **Absorption**: `β = sqrt (1 − α/100)`, as in j.vimic~. The crossovers are two shared settings, not one pair per wall. The surface presets are j.vimic~'s twelve (with attribution) and four textbook ones (concrete, glass, wood, plaster).
+- **Source directivity of a reflection** uses the direction from the real source towards the image of the microphone in the same walls in the reverse order.
+- The settings window got a scroll bar (the window is as tall as fits on the screen), headings and whole-width rows; it is long (about 1400 pixels) and wants a better arrangement.
+- Cost (Release, 512-sample blocks at 48 kHz): 8 x 8 with the second order 0.44 ms static / 2.6 ms moving; 16 x 16: 1.4 ms / 10 ms. Moving sources cost most; milestone 4.
+
 ## 8. Open points for you
 
 - **Plugin code**: `ViMc` (and bundle ID `no.trondlossius.vimic`, state tag `ViMiC`); folder `ViMiC/`.
 - **`d_min`**: the manual says 1 m, the code clamps at 0.1 m. I propose a parameter, default 1 m.
-- **Absorption convention**: `β = 1 − α/100`; I have not read the body of `percentToGain`. It will be checked before milestone 3.
 - **Pitch** of microphones and sources (vertical orientation): not in the first version; with all heights equal it matters little.
 - **Spread** for sources is unused. A possible use later is the apparent source size (blending the directivity); not planned.
 - **Outside rolloff** is hidden for ViMiC. Positions beyond the room are allowed but unphysical (reflections fade out).

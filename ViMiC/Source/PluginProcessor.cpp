@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /** @file PluginProcessor.cpp
-    @brief Microphone publishing and the real-time rendering loop of ViMiC. */
+    @brief Microphone and reflection bank publishing and the real-time rendering loop of ViMiC. */
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
@@ -18,13 +18,25 @@ namespace
 /** Degrees to radians. */
 constexpr double kDegreesToRadians = std::numbers::pi / 180.0;
 
-/** The IDs of the model parameters, in the order of ViMiCAudioProcessor::Settings::globals. */
-const juce::String* globalIds()
+/** The slowest speed of sound the delay lines have to allow for (at -20 degrees Celsius), in m/s. */
+constexpr double kSlowestSound = 331.3 + 0.606 * -20.0;
+
+/** @return The IDs of the model parameters, in the order of vimic::params::Global. */
+const std::vector<juce::String>& globalIds()
 {
-    static const juce::String ids[] { vimic::params::kDistanceLawId, vimic::params::kDistancePowerId, vimic::params::kDistanceDbId,
-                                      vimic::params::kMinDistanceId, vimic::params::kMicPowerId, vimic::params::kMicPolarityId,
-                                      vimic::params::kSourcePowerId, vimic::params::kDelayModeId, vimic::params::kTemperatureId, vimic::params::kSourceHeightId,
-                                      vimic::params::kMicHeightId, vimic::params::kDirectGainId, vimic::params::kOutputGainId };
+    static const std::vector<juce::String> ids = []
+    {
+        namespace p = vimic::params;
+        std::vector<juce::String> v { p::kDistanceLawId, p::kDistancePowerId, p::kDistanceDbId, p::kMinDistanceId, p::kMicPowerId, p::kMicPolarityId,
+                                      p::kSourcePowerId, p::kDelayModeId, p::kTemperatureId, p::kSourceHeightId, p::kMicHeightId, p::kDirectGainId,
+                                      p::kOutputGainId, p::kRoomWidthId, p::kRoomDepthId, p::kRoomHeightId, p::kReflOrderId, p::kRefl1GainId,
+                                      p::kRefl2GainId, p::kThresholdId, p::kAirCutoffId, p::kLowMidId, p::kMidHighId };
+        for (int wall = 0; wall < vimic::WallCount; ++wall)
+            for (int band = 0; band < 3; ++band)
+                v.push_back (p::absorptionId (wall, band));
+        jassert (v.size() == p::GlobalCount);
+        return v;
+    }();
     return ids;
 }
 }
@@ -46,13 +58,24 @@ ViMiCAudioProcessor::ViMiCAudioProcessor()
         patternParam[(size_t) i] = apvts.getRawParameterValue (vimic::params::micPatternId (i));
     }
 
+    const std::size_t paths = (std::size_t) tlos::kMaxChannels * tlos::kMaxChannels * kMaxImages;
+    for (auto* v : { &prevGains, &panGains, &targetGains, &prevDelays, &delays, &targetDelays })
+        v->assign (paths, 0.0f);
+
     setLatencySamples ((int) vimic::DelayLine::kMinDelay);
 }
 
 std::vector<tlos::OscParameter> ViMiCAudioProcessor::getOscParameters() const
 {
-    const char* addresses[] { "/vimic/law", "/vimic/power", "/vimic/db", "/vimic/mindist", "/vimic/micpower", "/vimic/polarity",
-                              "/vimic/sourcepower", "/vimic/delaymode", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight", "/vimic/directgain", "/vimic/gain" };
+    std::vector<juce::String> addresses { "/vimic/law", "/vimic/power", "/vimic/db", "/vimic/mindist", "/vimic/micpower", "/vimic/polarity",
+                                          "/vimic/sourcepower", "/vimic/delaymode", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight",
+                                          "/vimic/directgain", "/vimic/gain", "/vimic/roomwidth", "/vimic/roomdepth", "/vimic/roomheight",
+                                          "/vimic/reflorder", "/vimic/refl1gain", "/vimic/refl2gain", "/vimic/threshold", "/vimic/aircutoff",
+                                          "/vimic/lowmid", "/vimic/midhigh" };
+    for (int wall = 0; wall < vimic::WallCount; ++wall)
+        for (int band = 0; band < 3; ++band)
+            addresses.push_back ("/vimic/" + vimic::params::absorptionId (wall, band).toLowerCase());
+
     std::vector<tlos::OscParameter> out;
     for (size_t i = 0; i < globalParam.size(); ++i)
         out.push_back ({ addresses[i], globalIds()[i] });
@@ -97,6 +120,38 @@ vimic::PathSettings ViMiCAudioProcessor::getPathSettings() const noexcept
     s.sourceHeight = v (g::SourceHeight);
     s.micHeight = v (g::MicHeight);
     return s;
+}
+
+vimic::RoomSettings ViMiCAudioProcessor::getRoomSettings() const noexcept
+{
+    namespace g = vimic::params;
+    const auto v = [this] (size_t i) { return globalParam[i]->load(); };
+
+    vimic::RoomSettings r;
+    r.room = { (double) v (g::RoomWidth), (double) v (g::RoomDepth), (double) v (g::RoomHeight) };
+    r.order = std::clamp ((int) std::lround (v (g::ReflOrder)), 0, vimic::kMaxOrder);
+    r.gainFirst = (double) juce::Decibels::decibelsToGain (v (g::Refl1Gain), g::kMinGainDb);
+    r.gainSecond = (double) juce::Decibels::decibelsToGain (v (g::Refl2Gain), g::kMinGainDb);
+    r.threshold = v (g::RenderThreshold) <= g::kThresholdOff + 0.05f ? 0.0 : (double) juce::Decibels::decibelsToGain (v (g::RenderThreshold));
+    return r;
+}
+
+vimic::Walls ViMiCAudioProcessor::getWalls() const noexcept
+{
+    namespace g = vimic::params;
+    vimic::Walls walls;
+    for (int wall = 0; wall < vimic::WallCount; ++wall)
+        walls.surface[(size_t) wall] = { (double) globalParam[g::AbsorptionFirst + (size_t) (3 * wall)]->load(),
+                                         (double) globalParam[g::AbsorptionFirst + (size_t) (3 * wall + 1)]->load(),
+                                         (double) globalParam[g::AbsorptionFirst + (size_t) (3 * wall + 2)]->load() };
+    walls.lowMidHz = (double) globalParam[g::LowMid]->load();
+    walls.midHighHz = (double) globalParam[g::MidHigh]->load();
+    return walls;
+}
+
+double ViMiCAudioProcessor::getAirCutoff() const noexcept
+{
+    return (double) globalParam[vimic::params::AirCutoff]->load();
 }
 
 vimic::params::DelayMode ViMiCAudioProcessor::getDelayMode() const noexcept
@@ -146,19 +201,58 @@ void ViMiCAudioProcessor::refreshLayout()
 
     const auto same = [] (const tlos::Vec2& a, const tlos::Vec2& b) { return juce::exactlyEqual (a.x, b.x) && juce::exactlyEqual (a.y, b.y); };
 
-    if (havePublished && mics.channelOf == publishedMics.channelOf
-        && mics.positions.size() == publishedMics.positions.size()
-        && std::equal (mics.positions.begin(), mics.positions.end(), publishedMics.positions.begin(), same))
+    if (! (havePublished && mics.channelOf == publishedMics.channelOf
+           && mics.positions.size() == publishedMics.positions.size()
+           && std::equal (mics.positions.begin(), mics.positions.end(), publishedMics.positions.begin(), same)))
+    {
+        auto set = std::make_unique<MicSet>();
+        set->positions = mics.positions;
+        set->channelOf = mics.channelOf;
+        set->id = nextSetId++;
+        exchange.publish (std::move (set));
+
+        publishedMics = mics;
+        havePublished = true;
+    }
+
+    refreshBank();
+}
+
+void ViMiCAudioProcessor::refreshBank()
+{
+    const auto room = getRoomSettings();
+    const double rate = preparedSampleRate.load();
+    const int block = preparedBlock.load();
+    if (room.order == 0 || rate <= 0.0 || block <= 0)
         return;
 
-    auto set = std::make_unique<MicSet>();
-    set->positions = mics.positions;
-    set->channelOf = mics.channelOf;
-    set->id = nextSetId++;
-    exchange.publish (std::move (set));
+    const int sources = std::min (getTotalNumInputChannels(), tlos::kMaxChannels);
+    const int classes = vimic::filterClassCount (room.order) - 1;
 
-    publishedMics = mics;
-    havePublished = true;
+    // The longest path of an image of at most the second order is shorter than three times the diagonal of the room (even for a source or a microphone in a corner).
+    const double diagonal = std::sqrt (room.room.width * room.room.width + room.room.depth * room.room.depth + room.room.height * room.room.height);
+    const int needed = (int) std::ceil (3.0 * diagonal / kSlowestSound * rate) + 16;
+
+    const bool fits = bankInfo.valid && ! bankStale.load() && bankInfo.sources == sources && bankInfo.classes >= classes && bankInfo.capacity >= needed
+                   && bankInfo.block == block && juce::exactlyEqual (bankInfo.sampleRate, rate);
+    if (fits || sources == 0)
+        return;
+
+    // Room for a quarter more than needed, so that a room that grows a little does not make a new bank each time.
+    const int capacity = needed + needed / 4;
+    const int allClasses = vimic::filterClassCount (vimic::kMaxOrder) - 1;
+    auto bank = std::make_unique<ReflectionBank>();
+    bank->sources = sources;
+    bank->classes = std::max (classes, std::min (allClasses, std::max (classes, bankInfo.classes)));
+    bank->capacity = capacity;
+    bank->lines.assign ((size_t) (sources * bank->classes), vimic::DelayLine());
+    for (auto& line : bank->lines)
+        line.prepare (capacity, block);
+    bank->splitters.assign ((size_t) sources, vimic::BandSplitter());
+
+    bankInfo = { true, sources, bank->classes, capacity, block, rate, (std::size_t) sources * (std::size_t) bank->classes * (std::size_t) (capacity + block + 8) };
+    bankStale = false;
+    bankExchange.publish (std::move (bank));
 }
 
 void ViMiCAudioProcessor::stateRestored()
@@ -174,8 +268,10 @@ void ViMiCAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBlo
     const int n = std::min (getTotalNumInputChannels(), tlos::kMaxChannels);
     const int block = std::max (samplesPerBlock, 1);
     inputCopy.setSize (std::max (n, 1), block, false, false, true);
+    for (auto* v : { &bandLow, &bandMid, &bandHigh })
+        v->assign ((size_t) block, 0.0f);
 
-    // One second of every source: the longest path at +-100 m is about 0.8 s.
+    // One second of every source: the longest direct path at +-100 m is about 0.8 s.
     lines.assign ((size_t) std::max (n, 1), vimic::DelayLine());
     for (auto& line : lines)
         line.prepare ((int) std::ceil (sampleRate) + 8, block);
@@ -185,6 +281,11 @@ void ViMiCAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBlo
         key.valid = false;
     restartRamp = true;
 
+    // The reflection bank depends on these; the message thread makes it (it allocates).
+    preparedSampleRate = sampleRate;
+    preparedBlock = block;
+    bankStale = true;
+
     // First run only: give the active channels a sensible default layout.
     initialiseLayoutIfFirstRun();
 }
@@ -192,11 +293,13 @@ void ViMiCAudioProcessor::prepareToPlay (double newSampleRate, int samplesPerBlo
 void ViMiCAudioProcessor::releaseResources()
 {
     exchange.release();
+    bankExchange.release();
 }
 
 void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+    namespace g = vimic::params;
 
     const int n = std::min (getTotalNumInputChannels(),  tlos::kMaxChannels);
     const int m = std::min (getTotalNumOutputChannels(), tlos::kMaxChannels);
@@ -215,13 +318,15 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     recordInputLevels (buffer, n);
 
     const MicSet* mics = exchange.acquire();
+    const ReflectionBank* bank = bankExchange.acquire();
     const int usedSources = getActiveSources();
     const int usedSpeakers = getActiveSpeakers();
     const int activeSources = std::min (n, usedSources);
 
     // The settings and the microphones' orientation, read every block: a change recomputes the paths of every source.
     const auto pathSettings = getPathSettings();
-    const bool absolute = getDelayMode() == vimic::params::DelayMode::Absolute;
+    const auto roomSettings = getRoomSettings();
+    const bool absolute = getDelayMode() == g::DelayMode::Absolute;
 
     std::array<vimic::Microphone, tlos::kMaxChannels> micArray {};
     const int micCount = mics != nullptr ? std::min ((int) mics->channelOf.size(), tlos::kMaxChannels) : 0;
@@ -240,23 +345,55 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         micArray[(size_t) k] = { mics->positions[(size_t) k], (double) settings.yaw[(size_t) k] * kDegreesToRadians, (double) settings.pattern[(size_t) k] };
     }
 
-    const auto sameSettings = [&] (const Settings& a, const Settings& b)
+    // Only what the paths depend on (not the absorption, the crossovers and the air cut-off, which only change the filters) recomputes them.
+    const auto equal = [] (float p, float q) { return juce::exactlyEqual (p, q); };
+    const bool sameSettings = usedSettings.valid && usedSettings.setId == settings.setId && juce::exactlyEqual (usedSettings.sampleRate, settings.sampleRate)
+                           && std::equal (usedSettings.globals.begin(), usedSettings.globals.begin() + (long) g::FilterFirst, settings.globals.begin(), equal)
+                           && std::equal (usedSettings.yaw.begin(), usedSettings.yaw.begin() + micCount, settings.yaw.begin(), equal)
+                           && std::equal (usedSettings.pattern.begin(), usedSettings.pattern.begin() + micCount, settings.pattern.begin(), equal);
+    if (! sameSettings)
     {
-        const auto equal = [] (float p, float q) { return juce::exactlyEqual (p, q); };
-        return a.valid && b.valid && a.setId == b.setId && juce::exactlyEqual (a.sampleRate, b.sampleRate)
-            && std::equal (a.globals.begin(), a.globals.end(), b.globals.begin(), equal)
-            && std::equal (a.yaw.begin(), a.yaw.begin() + micCount, b.yaw.begin(), equal)
-            && std::equal (a.pattern.begin(), a.pattern.begin() + micCount, b.pattern.begin(), equal);
-    };
-
-    if (! sameSettings (usedSettings, settings))
-    {
-        const bool modeChanged = usedSettings.valid && ! juce::exactlyEqual (usedSettings.globals[vimic::params::DelayModeIndex], settings.globals[vimic::params::DelayModeIndex]);
-        usedSettings = settings;
+        const bool modeChanged = usedSettings.valid && ! juce::exactlyEqual (usedSettings.globals[g::DelayModeIndex], settings.globals[g::DelayModeIndex]);
         for (auto& key : pathKeys)
             key.valid = false;
         if (modeChanged)
             restartRamp = true;   // a different delay mode is a different set of delays: no sweep from one to the other
+    }
+    usedSettings = settings;
+
+    // The reflections need a bank that fits: this many sources, the wall sequences of the order, and the memory for the room.
+    const int order = roomSettings.order;
+    const auto imageTable = vimic::images (vimic::kMaxOrder);
+    const int imageCount = (int) vimic::images (order).size();
+    const int classes = vimic::filterClassCount (order) - 1;
+    const bool useReflections = order > 0 && bank != nullptr && bank->sources >= n && bank->classes >= classes;
+    std::array<vimic::BandGains, 24> newClassGains {};     // the band gains of the wall sequences for this block
+
+    if (useReflections)
+    {
+        // The splitting of the sources follows the crossovers and the air cut-off (a new design keeps the memory of the filters, so nothing clicks); the gains of
+        // the walls in the three bands follow the absorption (the lines are written with gains that ramp to the new ones across the block).
+        const bool filtersUpToDate = bank->designed && std::equal (bank->designedFor.begin() + (long) g::FilterFirst, bank->designedFor.end(),
+                                                                   settings.globals.begin() + (long) g::FilterFirst, equal);
+        if (! filtersUpToDate)
+        {
+            const auto walls = getWalls();
+            for (int s = 0; s < bank->sources; ++s)
+                bank->splitters[(size_t) s].design (sampleRate, walls.lowMidHz, walls.midHighHz, getAirCutoff());
+
+            for (int c = 1; c <= bank->classes; ++c)
+                newClassGains[(size_t) c - 1] = vimic::bandGains (vimic::classHits (c), walls);
+
+            if (! bank->designed)
+                bank->classGains = newClassGains;       // the first time: nothing to ramp from
+
+            bank->designedFor = settings.globals;
+            bank->designed = true;
+        }
+        else
+        {
+            newClassGains = bank->classGains;
+        }
     }
 
     // The time a delay of 0 is: the smallest delay the interpolation allows (the plugin's latency).
@@ -266,14 +403,12 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     for (int s = 0; s < n; ++s)
     {
         auto& key = pathKeys[(size_t) s];
-        auto& gainRow = panGains[(size_t) s];
-        auto& delayRow = delays[(size_t) s];
 
         if (s >= activeSources || mics == nullptr || micCount == 0)
         {
             key.valid = false;
-            gainRow.fill (0.0f);
-            delayRow.fill (0.0f);
+            std::fill_n (panGains.begin() + (long) at (s, 0, 0), tlos::kMaxChannels * kMaxImages, 0.0f);
+            std::fill_n (delays.begin() + (long) at (s, 0, 0), tlos::kMaxChannels * kMaxImages, 0.0f);
             continue;
         }
 
@@ -285,37 +420,48 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
         const vimic::Source source ({ (double) x, (double) y }, (double) yaw * kDegreesToRadians, (double) pattern);
 
-        std::array<vimic::PathResult, tlos::kMaxChannels> paths {};
+        // Relative delays: only the differences from the shortest direct path (the reflections come later than the direct sound); absolute: the true time of flight.
         double shortest = std::numeric_limits<double>::max();
-        for (int k = 0; k < micCount; ++k)
-        {
-            paths[(size_t) k] = vimic::computeDirectPath (source, micArray[(size_t) k], pathSettings);
-            shortest = std::min (shortest, paths[(size_t) k].delaySeconds);
-        }
+        if (! absolute)
+            for (int k = 0; k < micCount; ++k)
+                shortest = std::min (shortest, vimic::computeDirectPath (source, micArray[(size_t) k], pathSettings).delaySeconds);
+        else
+            shortest = 0.0;
 
-        // Relative delays: only the differences between the microphones; absolute: the true time of flight.
-        gainRow.fill (0.0f);
-        delayRow.fill (0.0f);
+        std::fill_n (panGains.begin() + (long) at (s, 0, 0), tlos::kMaxChannels * kMaxImages, 0.0f);
+        std::fill_n (delays.begin() + (long) at (s, 0, 0), tlos::kMaxChannels * kMaxImages, 0.0f);
+
         for (int k = 0; k < micCount; ++k)
         {
             const int channel = mics->channelOf[(size_t) k];
-            const double seconds = absolute ? paths[(size_t) k].delaySeconds : paths[(size_t) k].delaySeconds - shortest;
-            gainRow[(size_t) channel] = (float) paths[(size_t) k].gain;
-            delayRow[(size_t) channel] = (float) std::clamp (seconds * sampleRate + minimum, minimum, longest);
+            for (int i = 0; i < imageCount; ++i)
+            {
+                const auto path = vimic::computeImagePath (source, micArray[(size_t) k], imageTable[(size_t) i], pathSettings, roomSettings);
+                panGains[at (s, channel, i)] = (float) path.gain;
+                delays[at (s, channel, i)] = (float) std::clamp ((path.delaySeconds - shortest) * sampleRate + minimum, minimum, longest * 8.0);
+            }
         }
 
         key = { x, y, yaw, pattern, true };
     }
 
-    // Trim, mute and solo of the sources and microphones, the gain of the direct sound and the output gain scale the path gains.
+    // Trim, mute and solo of the sources and microphones, the gain of the direct sound and the output gain scale the path gains. Reflections are silent until
+    // there is a bank to read them from.
     tlos::ChannelGains channelGains;
     getChannelGains (channelGains);
-    const float levelGain = juce::Decibels::decibelsToGain (globalParam[vimic::params::DirectGain]->load(), (float) vimic::params::kMinGainDb)
-                          * juce::Decibels::decibelsToGain (globalParam[vimic::params::OutputGain]->load(), (float) vimic::params::kMinGainDb);
+    const float outputGain = juce::Decibels::decibelsToGain (settings.globals[g::OutputGain], (float) g::kMinGainDb);
+    const float directGain = juce::Decibels::decibelsToGain (settings.globals[g::DirectGain], (float) g::kMinGainDb);
 
     for (int s = 0; s < n; ++s)
-        for (int k = 0; k < tlos::kMaxChannels; ++k)
-            targetGains[(size_t) s][(size_t) k] = panGains[(size_t) s][(size_t) k] * channelGains.sources[(size_t) s] * channelGains.speakers[(size_t) k] * levelGain;
+        for (int k = 0; k < m; ++k)
+        {
+            const float level = channelGains.sources[(size_t) s] * channelGains.speakers[(size_t) k] * outputGain;
+            for (int i = 0; i < kMaxImages; ++i)
+            {
+                const auto index = at (s, k, i);
+                targetGains[index] = panGains[index] * level * (i == 0 ? directGain : (useReflections ? 1.0f : 0.0f));
+            }
+        }
 
     targetDelays = delays;
 
@@ -329,14 +475,14 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     // A path that was silent starts at its new delay (nothing is heard to sweep), and one that becomes silent keeps its last delay.
     for (int s = 0; s < n; ++s)
         for (int k = 0; k < m; ++k)
-        {
-            auto& previous = prevDelays[(size_t) s][(size_t) k];
-            auto& next = targetDelays[(size_t) s][(size_t) k];
-            if (juce::exactlyEqual (prevGains[(size_t) s][(size_t) k], 0.0f))
-                previous = next;
-            else if (juce::exactlyEqual (targetGains[(size_t) s][(size_t) k], 0.0f))
-                next = previous;
-        }
+            for (int i = 0; i < kMaxImages; ++i)
+            {
+                const auto index = at (s, k, i);
+                if (juce::exactlyEqual (prevGains[index], 0.0f))
+                    prevDelays[index] = targetDelays[index];
+                else if (juce::exactlyEqual (targetGains[index], 0.0f))
+                    targetDelays[index] = prevDelays[index];
+            }
 
     // Gains and delays ramp linearly from the previous block's values to the new ones across the whole block.
     // Blocks larger than the prepared size are processed in chunks, keeping the ramps continuous.
@@ -357,23 +503,50 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         for (int s = 0; s < n; ++s)
         {
             auto& line = lines[(size_t) s];
-            line.write (inputCopy.getReadPointer (s), len);
-            const auto& prevG = prevGains[(size_t) s];
-            const auto& nextG = targetGains[(size_t) s];
-            const auto& prevD = prevDelays[(size_t) s];
-            const auto& nextD = targetDelays[(size_t) s];
+            const float* in = inputCopy.getReadPointer (s);
+            line.write (in, len);
+
+            // The filtered copies of the source for the walls its reflections hit: the three bands of the source with the gains of the walls (ramping to a new
+            // absorption across the block).
+            if (useReflections)
+            {
+                bank->splitters[(size_t) s].process (in, bandLow.data(), bandMid.data(), bandHigh.data(), len);
+                for (int c = 1; c <= classes; ++c)
+                {
+                    const auto& was = bank->classGains[(size_t) c - 1];
+                    const auto& now = newClassGains[(size_t) c - 1];
+                    const float from[3] { (float) (was.low + (now.low - was.low) * f0), (float) (was.mid + (now.mid - was.mid) * f0), (float) (was.high + (now.high - was.high) * f0) };
+                    const float to[3] { (float) (was.low + (now.low - was.low) * f1), (float) (was.mid + (now.mid - was.mid) * f1), (float) (was.high + (now.high - was.high) * f1) };
+                    bank->lines[(size_t) (s * bank->classes + c - 1)].writeMix (bandLow.data(), bandMid.data(), bandHigh.data(), from, to, len);
+                }
+            }
 
             // The previous gains may belong to a larger set of microphones, so go through every output.
             for (int k = 0; k < speakerLimit; ++k)
             {
-                const float g0 = prevG[(size_t) k], g1 = nextG[(size_t) k];
-                if (juce::exactlyEqual (g0, 0.0f) && juce::exactlyEqual (g1, 0.0f))
-                    continue;
+                float* out = buffer.getWritePointer (k) + start;
 
-                const float d0 = prevD[(size_t) k], d1 = nextD[(size_t) k];
-                line.addTap (buffer.getWritePointer (k) + start, len,
-                             (double) (d0 + (d1 - d0) * f0), (double) (d0 + (d1 - d0) * f1),
-                             g0 + (g1 - g0) * f0, g0 + (g1 - g0) * f1);
+                for (int i = 0; i < kMaxImages; ++i)
+                {
+                    const auto index = at (s, k, i);
+                    const float g0 = prevGains[index], g1 = targetGains[index];
+                    if (juce::exactlyEqual (g0, 0.0f) && juce::exactlyEqual (g1, 0.0f))
+                        continue;
+
+                    // The direct sound is read from the source's own line, a reflection from the filtered copy of its wall sequence.
+                    const vimic::DelayLine* tapLine = &line;
+                    if (i > 0)
+                    {
+                        const int c = imageTable[(size_t) i].filterClass;
+                        if (bank == nullptr || s >= bank->sources || c > bank->classes)
+                            continue;
+                        tapLine = &bank->lines[(size_t) (s * bank->classes + c - 1)];
+                    }
+
+                    const float d0 = prevDelays[index], d1 = targetDelays[index];
+                    tapLine->addTap (out, len, (double) (d0 + (d1 - d0) * f0), (double) (d0 + (d1 - d0) * f1),
+                                     g0 + (g1 - g0) * f0, g0 + (g1 - g0) * f1);
+                }
             }
         }
     }
@@ -386,11 +559,11 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         {
             float* data = buffer.getWritePointer (ch);
             const float step = 1.0f / (float) numSamples;
-            float g = 1.0f;
+            float gain = 1.0f;
             for (int i = 0; i < numSamples; ++i)
             {
-                data[i] *= g;
-                g -= step;
+                data[i] *= gain;
+                gain -= step;
             }
         }
         else
@@ -400,11 +573,11 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     }
     prevUsedSpeakers = usedSpeakers;
 
-    for (int s = 0; s < n; ++s)
-    {
-        prevGains[(size_t) s] = targetGains[(size_t) s];
-        prevDelays[(size_t) s] = targetDelays[(size_t) s];
-    }
+    if (useReflections)
+        bank->classGains = newClassGains;      // the next block ramps from here
+
+    prevGains = targetGains;
+    prevDelays = targetDelays;
 
     recordOutputLevels (buffer, m);
 }

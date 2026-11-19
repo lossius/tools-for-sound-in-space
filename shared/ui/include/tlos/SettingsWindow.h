@@ -45,9 +45,13 @@ public:
 
     /** Adds a row of the plugin's own to the Panning section. The control belongs to the caller, which must keep it
         alive as long as the content exists; the content only shows it.
-        @param caption  The text to the left of the control.
-        @param control  The control, for example a slider. */
-    void addRow (const juce::String& caption, juce::Component& control);
+        @param caption  The text to the left of the control; if it is empty the control takes the whole width of the row.
+        @param control  The control, for example a slider.
+        @param height   The height of the row in pixels (0: kRowHeight). */
+    void addRow (const juce::String& caption, juce::Component& control, int height = 0);
+
+    /** Adds a heading of the plugin's own to the Panning section, above the rows that follow (for a plugin with many settings). */
+    void addSection (const juce::String& title);
 
     /** @return The height in pixels that shows everything. */
     int getPreferredHeight() const noexcept { return preferredHeight; }
@@ -77,8 +81,9 @@ private:
     /** A row: a caption and a control. */
     struct Row
     {
-        juce::Label* caption;       ///< The caption.
-        juce::Component* control;   ///< The control.
+        juce::Label* caption;       ///< The caption (or the heading text), or nullptr for a control that takes the whole row.
+        juce::Component* control;   ///< The control, or nullptr for a heading.
+        int height;                 ///< The height of the row in pixels.
     };
 
     /** Timer callback. */
@@ -125,8 +130,17 @@ public:
     /** Shows the window in front of the plug-in window; a window that is not showing yet is placed beside it. */
     void show (juce::Component* around);
 
+    /** Sets the size of the window: as tall as the content needs, or, if that is more than the screen has room for, as tall as fits, with a scroll bar. Called when the
+        content's height changes and when the window is shown. */
+    void fitToContent();
+
+    /** @return Whether the content is taller than the window, so that it scrolls. */
+    bool isScrolling() const noexcept { return scrolling; }
+
 private:
     SettingsContent& settings;   ///< The content (not owned).
+    juce::Viewport viewport;     ///< Shows the content, and scrolls it when it is taller than the screen allows.
+    bool scrolling = false;      ///< Whether the window is shorter than the content.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SettingsWindow)
 };

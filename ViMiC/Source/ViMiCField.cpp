@@ -45,6 +45,15 @@ juce::Path ViMiCField::lobePath (double ratio, int power, bool restrictPolarity,
 
 void ViMiCField::paintBackdrop (juce::Graphics& g)
 {
+    // The room, while the reflections are on: the same dashed outline and faint tint as the region without falloff in the other plugins.
+    const auto room = vimicProcessor.getRoomSettings();
+    if (room.order > 0)
+    {
+        const double w = 0.5 * room.room.width, d = 0.5 * room.room.depth;
+        const std::vector<tlos::Vec2> corners { { -w, -d }, { w, -d }, { w, d }, { -w, d } };
+        paintFalloffRegion (g, tlos::Hull (corners));
+    }
+
     const auto settings = vimicProcessor.getPathSettings();
     const auto mics = vimicProcessor.getMicrophones (includedSpeakers);
 

@@ -9,6 +9,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 
 #include "tlos/Parameters.h"
+#include "vimic/Absorption.h"
 #include "vimic/Path.h"
 
 #include <memory>
@@ -30,14 +31,57 @@ inline const juce::String kSourceHeightId { "sourceHeight" };     ///< Height of
 inline const juce::String kMicHeightId { "micHeight" };           ///< Height of the microphones in metres.
 inline const juce::String kDirectGainId { "directGain" };         ///< Gain of the direct sound in dB.
 inline const juce::String kOutputGainId { "outputGain" };         ///< Output gain in dB.
+inline const juce::String kRoomWidthId { "roomWidth" };           ///< Size of the room along x in metres.
+inline const juce::String kRoomDepthId { "roomDepth" };           ///< Size of the room along y in metres.
+inline const juce::String kRoomHeightId { "roomHeight" };         ///< Size of the room along z in metres.
+inline const juce::String kReflOrderId { "reflOrder" };           ///< The highest number of reflections that is rendered: Off, 1st or 2nd order.
+inline const juce::String kRefl1GainId { "refl1Gain" };           ///< Gain of the first-order reflections in dB.
+inline const juce::String kRefl2GainId { "refl2Gain" };           ///< Gain of the second-order reflections in dB.
+inline const juce::String kThresholdId { "renderThreshold" };     ///< Reflections below this level are not rendered, in dB (the lowest value: none are left out).
+inline const juce::String kAirCutoffId { "airCutoff" };           ///< Cut-off of the air absorption of the reflections in Hz.
+inline const juce::String kLowMidId { "absorbLowMid" };           ///< Crossover between the low and the middle absorption band in Hz.
+inline const juce::String kMidHighId { "absorbMidHigh" };         ///< Crossover between the middle and the high absorption band in Hz.
 /// @}
 
 /** The model parameters in the order they are listed (and in which the processor reads them). */
 enum Global : size_t
 {
     Law, Power, Db, MinDistance, MicPower, Polarity, SourcePower, DelayModeIndex, Temperature, SourceHeight, MicHeight, DirectGain, OutputGain,
-    GlobalCount   ///< How many model parameters there are.
+    RoomWidth, RoomDepth, RoomHeight, ReflOrder, Refl1Gain, Refl2Gain, RenderThreshold,
+    /** The first parameter that only changes the filters of the reflections (from here on, a change does not change any path). */
+    FilterFirst,
+    AirCutoff = FilterFirst, LowMid, MidHigh,
+    AbsorptionFirst,                         ///< The first of the 18 absorption parameters: wall w (vimic::Wall), band b (0 low, 1 mid, 2 high) is AbsorptionFirst + 3 w + b.
+    GlobalCount = AbsorptionFirst + 18       ///< How many model parameters there are.
 };
+
+/** @return The ID of the absorption of a wall (vimic::Wall) in a band (0 low, 1 mid, 2 high), for example "absorbLeftLow". */
+inline juce::String absorptionId (int wall, int band)
+{
+    static const char* walls[] { "Left", "Right", "Front", "Rear", "Floor", "Ceiling" };
+    static const char* bands[] { "Low", "Mid", "High" };
+    return juce::String ("absorb") + walls[wall] + bands[band];
+}
+
+/** @return The name of a wall for the interface. */
+inline juce::String wallName (int wall)
+{
+    static const char* names[] { "Left", "Right", "Front", "Rear", "Floor", "Ceiling" };
+    return names[wall];
+}
+
+/** The reflection order menu. */
+enum class ReflectionOrder
+{
+    Off,      ///< Direct sound only.
+    First,    ///< Direct sound and the 6 first-order reflections.
+    Second    ///< And the 18 second-order reflections.
+};
+
+/** Smallest and largest room dimension in metres. */
+inline constexpr float kMinRoomSize = 1.0f, kMaxRoomSize = 40.0f;
+/** The lowest value of the render threshold in dB, which means that no reflection is left out. */
+inline constexpr float kThresholdOff = -100.0f;
 
 /** @return The ID of the yaw (direction of the source's axis in degrees, counter-clockwise from the front) of source `index` (zero-based), for example "src1yaw". */
 inline juce::String srcYawId (int index) { return "src" + juce::String (index + 1) + "yaw"; }
@@ -90,6 +134,33 @@ inline tlos::params::PluginParameters createParameters()
     g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kMicHeightId, 1 }, "Microphone Height", NormalisableRange<float> (0.0f, kMaxHeight), 1.5f, juce::AudioParameterFloatAttributes().withLabel ("m")));
     g.push_back (gain (kDirectGainId, "Direct Gain"));
     g.push_back (gain (kOutputGainId, "Output Gain"));
+
+    // The room and its reflections.
+    const auto size = [] (const juce::String& id, const juce::String& name, float defaultValue)
+    {
+        return std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, NormalisableRange<float> (kMinRoomSize, kMaxRoomSize), defaultValue, juce::AudioParameterFloatAttributes().withLabel ("m"));
+    };
+    g.push_back (size (kRoomWidthId, "Room Width", 10.0f));
+    g.push_back (size (kRoomDepthId, "Room Depth", 10.0f));
+    g.push_back (size (kRoomHeightId, "Room Height", 3.0f));
+    g.push_back (std::make_unique<juce::AudioParameterChoice> (ParameterID { kReflOrderId, 1 }, "Reflections", juce::StringArray { "Off", "1st order", "2nd order" }, 0));
+    g.push_back (gain (kRefl1GainId, "1st Order Gain"));
+    g.push_back (gain (kRefl2GainId, "2nd Order Gain"));
+    g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kThresholdId, 1 }, "Render Threshold", NormalisableRange<float> (kThresholdOff, -20.0f), kThresholdOff, juce::AudioParameterFloatAttributes().withLabel ("dB")));
+    g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kAirCutoffId, 1 }, "Air Cutoff", NormalisableRange<float> (500.0f, 19000.0f, 0.0f, 0.4f), 10000.0f, juce::AudioParameterFloatAttributes().withLabel ("Hz")));
+    g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kLowMidId, 1 }, "Absorption Low/Mid Crossover", NormalisableRange<float> (50.0f, 2000.0f, 0.0f, 0.5f), 500.0f, juce::AudioParameterFloatAttributes().withLabel ("Hz")));
+    g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kMidHighId, 1 }, "Absorption Mid/High Crossover", NormalisableRange<float> (1000.0f, 12000.0f, 0.0f, 0.5f), 3500.0f, juce::AudioParameterFloatAttributes().withLabel ("Hz")));
+
+    // The absorption of the walls: four walls of drywall, a plaster ceiling and a wooden floor.
+    const char* defaults[vimic::WallCount] { "drywall", "drywall", "drywall", "drywall", "wood", "plaster" };
+    for (int wall = 0; wall < vimic::WallCount; ++wall)
+    {
+        const auto& surface = vimic::findSurfacePreset (defaults[wall])->surface;
+        const double values[3] { surface.low, surface.mid, surface.high };
+        for (int band = 0; band < 3; ++band)
+            g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { absorptionId (wall, band), 1 }, wallName (wall) + " Absorption " + juce::String (band == 0 ? "Low" : band == 1 ? "Mid" : "High"),
+                                                                NormalisableRange<float> (0.1f, 99.9f), (float) values[band], juce::AudioParameterFloatAttributes().withLabel ("%")));
+    }
 
     for (int i = 0; i < 64; ++i)
     {

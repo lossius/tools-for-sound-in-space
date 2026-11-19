@@ -42,6 +42,14 @@ public:
         @param count  How many (at most the maxBlockSize of prepare(); more are cut). */
     void write (const float* input, int count) noexcept;
 
+    /** Appends a block that is the sum of three signals, each with a gain that changes linearly across the block (from the first value to the second): the filtered
+        copy of a source for a wall sequence is `gl low + gm mid + gh high` (see BandSplitter). Like write().
+        @param low   The first signal. @param mid  The second. @param high  The third.
+        @param gains  The gains at the start of the block (low, mid, high).
+        @param gainsEnd  The gains at the end of the block.
+        @param count  How many samples (at most the maxBlockSize of prepare()). */
+    void writeMix (const float* low, const float* mid, const float* high, const float* gains, const float* gainsEnd, int count) noexcept;
+
     /** Adds the last block that write() stored, delayed and scaled, to `output`.
         Sample j (0 .. count - 1) of the block is read `delay(j)` samples earlier, with `delay(j) = delayStart + (delayEnd - delayStart) j / count`,
         and scaled by `gainStart + (gainEnd - gainStart) j / count`. Delays are limited to kMinDelay .. maxDelay(). Does nothing if the

@@ -31,16 +31,20 @@ target_sources(ViMiC PRIVATE
     Source/PluginEditor.h
     Source/ViMiCField.cpp
     Source/ViMiCField.h
+    Source/AbsorptionPanel.cpp
+    Source/AbsorptionPanel.h
     Source/ViMiCParameters.h)
 # In the IDE, sources and headers sit in separate subfolders.
 source_group("Sources/src" FILES
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/AbsorptionPanel.cpp
     Source/ViMiCField.cpp)
 source_group("Sources/include" FILES
     Source/PluginProcessor.h
     Source/PluginEditor.h
     Source/ViMiCField.h
+    Source/AbsorptionPanel.h
     Source/ViMiCParameters.h)
 
 tlos_finish_plugin(ViMiC)

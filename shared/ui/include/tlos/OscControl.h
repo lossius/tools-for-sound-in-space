@@ -178,7 +178,7 @@ private:
     std::array<Slot, kMaxChannels> spkExclude;  ///< Last exclusion sent for each speaker.
     std::array<std::array<Slot, kMaxChannels>, 4> srcExtra;    ///< Last value of each of the plugin's own per-source parameters sent for each source.
     std::array<std::array<Slot, kMaxChannels>, 4> spkExtra;    ///< Last value of each of the plugin's own per-speaker parameters sent for each speaker.
-    std::array<Slot, 24> globals;               ///< Last room size, outside rolloff, counts (4) and the plugin's own parameters (at most 20) sent.
+    std::array<Slot, 68> globals;               ///< Last room size, outside rolloff, counts (4) and the plugin's own parameters (at most 64) sent.
     std::array<Slot, kMaxChannels> admXYZ;      ///< Last ADM-OSC position sent for each source.
     std::array<Slot, kMaxChannels> admGain;     ///< Last ADM-OSC gain sent for each source.
     std::array<Slot, kMaxChannels> admMute;     ///< Last ADM-OSC mute sent for each source.

@@ -274,7 +274,7 @@ public:
     /** @return An action on all speakers that the speakers table window offers as a button, if the plugin has one (the default is none). */
     virtual std::optional<SpeakerAction> getSpeakerAction() { return std::nullopt; }
 
-    /** @return The plugin's own parameters that can be set over OSC, with their addresses (two-part addresses such as "/vimic/temperature", at most 20; the default is
+    /** @return The plugin's own parameters that can be set over OSC, with their addresses (two-part addresses such as "/vimic/temperature", at most 64; the default is
         none). DistPan: /dbap/rolloff and /dbap/blur. */
     virtual std::vector<OscParameter> getOscParameters() const { return {}; }
 

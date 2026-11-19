@@ -124,22 +124,42 @@ SettingsContent::~SettingsContent()
     stopTimer();
 }
 
-void SettingsContent::addRow (const juce::String& caption, juce::Component& control)
+void SettingsContent::addRow (const juce::String& caption, juce::Component& control, int height)
 {
-    auto label = std::make_unique<juce::Label> ("", caption);
-    label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
-    addAndMakeVisible (*label);
+    juce::Label* labelPointer = nullptr;
+    if (caption.isNotEmpty())
+    {
+        auto label = std::make_unique<juce::Label> ("", caption);
+        label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
+        addAndMakeVisible (*label);
+        labelPointer = label.get();
+        pluginCaptions.push_back (std::move (label));
+    }
+
     addAndMakeVisible (control);
-    pluginRows.push_back ({ label.get(), &control });
+    pluginRows.push_back ({ labelPointer, &control, height > 0 ? height : kRowHeight });
+    updateLayoutData();
+}
+
+void SettingsContent::addSection (const juce::String& title)
+{
+    auto label = std::make_unique<juce::Label> ("", title);
+    label->setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    label->setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.75f));
+    addAndMakeVisible (*label);
+    pluginRows.push_back ({ label.get(), nullptr, kRowHeight });
     pluginCaptions.push_back (std::move (label));
     updateLayoutData();
 }
 
 void SettingsContent::updateLayoutData()
 {
-    const int panningRows = (processor.usesOutsideRolloff() ? 1 : 0) + (processor.supportsVirtualSpeakers() ? 1 : 0) + (int) pluginRows.size();
+    int panningRows = (processor.usesOutsideRolloff() ? kRowHeight : 0) + (processor.supportsVirtualSpeakers() ? kRowHeight : 0);
+    for (const auto& pluginRow : pluginRows)
+        panningRows += pluginRow.height;
+
     const int height = 12 + (kRowHeight + 4 + 2 * kRowHeight)                      // Room: header and two rows
-                     + 10 + (kRowHeight + 4 + panningRows * kRowHeight)           // Panning: header and rows
+                     + 10 + (kRowHeight + 4 + panningRows)                         // Panning: header and rows
                      + 10 + (kRowHeight + 4 + OscSettingsPanel::kHeight) + 12;    // OSC: header and the panel
 
     if (height != preferredHeight)
@@ -206,7 +226,18 @@ void SettingsContent::resized()
         virtualModeBox.setBounds (r.removeFromLeft (120).reduced (0, 2));
     }
     for (auto& pluginRow : pluginRows)
-        row (*pluginRow.caption, *pluginRow.control);
+    {
+        auto r = area.removeFromTop (pluginRow.height);
+        if (pluginRow.control == nullptr)
+            pluginRow.caption->setBounds (r);                                    // a heading
+        else if (pluginRow.caption == nullptr)
+            pluginRow.control->setBounds (r);                                    // a control that takes the whole row
+        else
+        {
+            pluginRow.caption->setBounds (r.removeFromLeft (kLabelWidth));
+            pluginRow.control->setBounds (r.reduced (0, 2));
+        }
+    }
     area.removeFromTop (10);
 
     section (oscHeader);
@@ -222,20 +253,32 @@ SettingsWindow::SettingsWindow (const juce::String& title, SettingsContent& cont
     // Plug-in windows are usually floating windows of the host; an ordinary window would open behind them.
     setAlwaysOnTop (true);
 
-    setContentNonOwned (&content, true);
+    // The content goes in a viewport: with many rows (ViMiC has more than fit on a laptop screen) it scrolls instead of being cut off.
+    viewport.setViewedComponent (&content, false);
+    viewport.setScrollBarsShown (true, false);
+    setContentNonOwned (&viewport, true);
     setResizable (false, false);
 
-    content.onSizeChanged = [this]
-    {
-        setContentComponentSize (SettingsContent::kWidth, settings.getPreferredHeight());
-    };
+    content.onSizeChanged = [this] { fitToContent(); };
+}
+
+void SettingsWindow::fitToContent()
+{
+    // Leave room for the title bar and the menu bar and dock around the window.
+    int maxHeight = 100000;
+    if (const auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
+        maxHeight = std::max (300, juce::roundToInt (display->userBounds.getHeight()) - 110);
+
+    const int wanted = settings.getPreferredHeight();
+    scrolling = wanted > maxHeight;
+    setContentComponentSize (SettingsContent::kWidth + (scrolling ? viewport.getScrollBarThickness() : 0), std::min (wanted, maxHeight));
 }
 
 void SettingsWindow::show (juce::Component* around)
 {
     if (! isVisible())
     {
-        setContentComponentSize (SettingsContent::kWidth, settings.getPreferredHeight());
+        fitToContent();
         placeBeside (*this, around);
     }
 
