@@ -201,7 +201,9 @@ private:
     std::vector<float> prevDelays;             ///< Delays in samples at the end of the previous block.
     std::vector<float> delays;                 ///< Delays in samples of the paths alone: what the cache holds.
     std::vector<float> targetDelays;           ///< Delays wanted at the end of this block.
-    std::vector<float> bandLow, bandMid, bandHigh;   ///< A block of the three bands of a source.
+    std::vector<float> bandLow;                ///< A block of the low band of a source.
+    std::vector<float> bandMid;                ///< A block of the middle band of a source.
+    std::vector<float> bandHigh;               ///< A block of the high band of a source.
     int prevUsedSpeakers = 0;                  ///< Microphones in use in the previous block.
     Settings usedSettings;                     ///< What the cached paths were computed with.
     std::array<PathKey, tlos::kMaxChannels> pathKeys {};   ///< Per source: what its paths were computed from.

@@ -44,9 +44,13 @@ private:
     /** Normalises the coefficients by a0. */
     void set (double b0In, double b1In, double b2In, double a0, double a1In, double a2In) noexcept;
 
-    double b0 = 1.0, b1 = 0.0, b2 = 0.0;   ///< The numerator.
-    double a1 = 0.0, a2 = 0.0;             ///< The denominator (without a0 = 1).
-    double z1 = 0.0, z2 = 0.0;             ///< The memory.
+    double b0 = 1.0;   ///< Numerator coefficient of z^0.
+    double b1 = 0.0;   ///< Numerator coefficient of z^-1.
+    double b2 = 0.0;   ///< Numerator coefficient of z^-2.
+    double a1 = 0.0;   ///< Denominator coefficient of z^-1 (a0 is 1).
+    double a2 = 0.0;   ///< Denominator coefficient of z^-2.
+    double z1 = 0.0;   ///< The first memory.
+    double z2 = 0.0;   ///< The second memory.
     bool identity = true;                  ///< Whether it does nothing.
 };
 

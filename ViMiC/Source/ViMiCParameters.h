@@ -78,8 +78,10 @@ enum class ReflectionOrder
     Second    ///< And the 18 second-order reflections.
 };
 
-/** Smallest and largest room dimension in metres. */
-inline constexpr float kMinRoomSize = 1.0f, kMaxRoomSize = 40.0f;
+/** Smallest room dimension in metres. */
+inline constexpr float kMinRoomSize = 1.0f;
+/** Largest room dimension in metres. */
+inline constexpr float kMaxRoomSize = 40.0f;
 /** The lowest value of the render threshold in dB, which means that no reflection is left out. */
 inline constexpr float kThresholdOff = -100.0f;
 

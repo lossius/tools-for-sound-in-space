@@ -15,8 +15,10 @@ constexpr int kBoxWidth = 128;      ///< Width of the preset menus in pixels.
 constexpr int kSliderWidth = 78;    ///< Width of an absorption slider in pixels.
 constexpr int kGap = 6;             ///< Space between the columns in pixels.
 
-/** Menu item IDs: 1 is "custom" (no preset), the presets follow. */
-constexpr int kCustomId = 1, kFirstPresetId = 2;
+/** Menu item ID of "custom" (no preset). */
+constexpr int kCustomId = 1;
+/** Menu item ID of the first preset; the others follow. */
+constexpr int kFirstPresetId = 2;
 
 /** Fills a preset menu. @param box  The menu. @param first  The text of the first item (shown when nothing matches). */
 void fillPresetBox (juce::ComboBox& box, const juce::String& first)

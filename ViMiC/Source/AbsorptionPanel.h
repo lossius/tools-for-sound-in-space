@@ -49,7 +49,9 @@ private:
     void timerCallback() override { refresh(); }
 
     ViMiCAudioProcessor& processor;                                          ///< The processor whose parameters are shown and edited.
-    juce::Label lowTitle, midTitle, highTitle;                               ///< The column titles.
+    juce::Label lowTitle;                                                    ///< The title of the low band column.
+    juce::Label midTitle;                                                    ///< The title of the middle band column.
+    juce::Label highTitle;                                                   ///< The title of the high band column.
     juce::Label allLabel { {}, "All walls" };                                ///< Caption of the row for all walls.
     juce::ComboBox allBox;                                                   ///< Gives every wall the same preset.
     std::array<std::unique_ptr<juce::Label>, vimic::WallCount> wallLabels;   ///< The wall names.
