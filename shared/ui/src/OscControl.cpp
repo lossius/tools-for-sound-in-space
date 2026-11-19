@@ -116,7 +116,16 @@ void OscControl::configure (const OscSettings& s)
         receiveFailed = false;
         if (settings.receive)
         {
-            receiving = receiver.connect (settings.receivePort);
+            // JUCE's receiver sets SO_REUSEADDR, which on Windows lets a second instance share a port that is already taken (macOS refuses). So test the
+            // port first with a socket that does not reuse addresses: if another instance listens there, this one must not.
+            bool free = true;
+            {
+                juce::DatagramSocket probe (false);
+                probe.setEnablePortReuse (false);
+                free = probe.bindToPort (settings.receivePort);
+            }
+
+            receiving = free && receiver.connect (settings.receivePort);
             receiveFailed = ! receiving;
         }
     }
