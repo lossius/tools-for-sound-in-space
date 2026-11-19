@@ -9,7 +9,7 @@ on:
     tags: ['v*']
   pull_request:
 
-# AAX is not built here: the Avid AAX SDK is not redistributable. See README.md.
+# AAX is not built here: Pro Tools only loads AAX plugins signed through Avid's PACE process. See README.md.
 # Both plugins are built, tested, validated and packaged here (zips for TriPan, DistPan, VecPan and ViMiC).
 
 env:

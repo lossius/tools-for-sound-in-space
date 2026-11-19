@@ -10,8 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 
-option(TLOS_ENABLE_AAX "Build the AAX format (requires the Avid AAX SDK)" OFF)
-set(TLOS_AAX_SDK_PATH "" CACHE PATH "Path to the Avid AAX SDK (not redistributable, keep outside the repo)")
+option(TLOS_ENABLE_AAX "Build the AAX format (uses the AAX SDK bundled with JUCE)" OFF)
 
 # Copy the VST3 into the user's plug-in folder after every build (macOS only by default;
 # the Windows system VST3 folder needs administrator rights). CI turns this off.

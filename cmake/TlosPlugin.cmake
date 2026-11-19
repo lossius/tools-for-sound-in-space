@@ -16,10 +16,7 @@ if(APPLE)
 endif()
 
 if(TLOS_ENABLE_AAX)
-    if(NOT EXISTS "${TLOS_AAX_SDK_PATH}")
-        message(FATAL_ERROR "TLOS_ENABLE_AAX is ON but TLOS_AAX_SDK_PATH does not exist: '${TLOS_AAX_SDK_PATH}'")
-    endif()
-    juce_set_aax_sdk_path("${TLOS_AAX_SDK_PATH}")
+    # JUCE (since 9.0.6) bundles the AAX SDK (offered under Avid's licence or GPLv3); it is used automatically, no path is needed.
     list(APPEND TLOS_PLUGIN_FORMATS AAX)
 endif()
 

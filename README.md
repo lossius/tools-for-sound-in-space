@@ -429,10 +429,9 @@ cmake --build build --config Release --target TriPan_VST3 TriPan_Standalone
 ```
 
 ## AAX (Pro Tools), optional
-The Avid AAX SDK is not included and cannot be redistributed. Download it from Avid, keep it outside
-this repository, and check its current licence terms before publishing AAX builds.
+JUCE (since 9.0.6) bundles the Avid AAX SDK 2.10, and the build uses it automatically: nothing to download.
 ```
-cmake -B build -G Xcode -DTLOS_ENABLE_AAX=ON -DTLOS_AAX_SDK_PATH=/path/to/AAX_SDK
+cmake -B build -G Xcode -DTLOS_ENABLE_AAX=ON
 cmake --build build --config Release --target TriPan_AAX
 ```
 Every AAX build is copied to Pro Tools' system folder (`/Library/Application Support/Avid/Audio/Plug-Ins` on

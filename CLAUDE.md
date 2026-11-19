@@ -57,8 +57,8 @@ For threading checks, build `TriPanProcessorTests` in a separate dir with
 `-DCMAKE_CXX_FLAGS=-fsanitize=thread` (clean as of M5); it includes a test that automates parameters
 on one thread while another processes audio.
 
-AAX (optional): `-DTLOS_ENABLE_AAX=ON -DTLOS_AAX_SDK_PATH=/path/to/AAX_SDK`; every AAX target then copies the bundle to Avid's system plug-in folder (`-DTLOS_INSTALL_AAX=OFF`, `-DTLOS_AAX_INSTALL_DIR=...`). The Avid AAX SDK is
-not redistributable: keep it outside this repo. Check its current licence before publishing AAX builds (SDK 2.10.0 compiles; its LICENSE.txt offers Avid's licence or GPLv3).
+AAX (optional): `-DTLOS_ENABLE_AAX=ON` (JUCE bundles the AAX SDK since 9.0.6 and it is used automatically); every AAX target then copies the bundle to Avid's system plug-in folder (`-DTLOS_INSTALL_AAX=OFF`, `-DTLOS_AAX_INSTALL_DIR=...`). The bundled SDK (2.10) is
+offered under Avid's licence or GPLv3 (its LICENSE.txt); Pro Tools still only loads AAX plugins signed through Avid's PACE.
 
 IDE layout (Xcode / Visual Studio): `source_group` calls in the CMake files give the project navigator the groups
 `Sources`, `Core` (each with `src` and `include`), `Tests`, and `JUCE` (one subgroup per JUCE module, each with `src` =
