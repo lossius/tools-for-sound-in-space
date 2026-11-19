@@ -26,6 +26,7 @@ public:
     /// @{
     juce::ComboBox& getDistanceLawBox() noexcept { return lawBox; }              ///< Inverse / Exponential.
     juce::ComboBox& getDelayModeBox() noexcept { return delayBox; }              ///< Relative / Absolute.
+    juce::ComboBox& getDelayRenderBox() noexcept { return renderBox; }           ///< Smooth / Cross-fade.
     juce::ToggleButton& getPolarityButton() noexcept { return polarityButton; }  ///< Restrict the polarity.
     juce::ComboBox& getReflectionBox() noexcept { return reflectionBox; }        ///< Off / 1st order / 2nd order.
     AbsorptionPanel& getAbsorptionPanel() noexcept { return absorptionPanel; }   ///< The absorption of the walls.
@@ -41,6 +42,7 @@ private:
 
     juce::ComboBox lawBox;                     ///< Distance law.
     juce::ComboBox delayBox;                   ///< Delay mode.
+    juce::ComboBox renderBox;                  ///< How a change of delay is rendered.
     juce::ToggleButton polarityButton;         ///< Restrict polarity.
     juce::ComboBox reflectionBox;              ///< The reflection order.
     AbsorptionPanel absorptionPanel;           ///< The absorption of the walls.
@@ -48,6 +50,7 @@ private:
     std::vector<juce::String> sliderIds;                                                 ///< The parameter ID of each slider.
     std::vector<std::unique_ptr<juce::SliderParameterAttachment>> sliderAttachments;     ///< Tie the sliders to their parameters.
     std::unique_ptr<juce::ComboBoxParameterAttachment> lawAttachment;     ///< Ties the distance law menu to its parameter.
+    std::unique_ptr<juce::ComboBoxParameterAttachment> renderAttachment;  ///< Ties the delay change menu to its parameter.
     std::unique_ptr<juce::ComboBoxParameterAttachment> reflectionAttachment;   ///< Ties the reflection order menu to its parameter.
     std::unique_ptr<juce::ComboBoxParameterAttachment> delayAttachment;   ///< Ties the delay mode menu to its parameter.
     std::unique_ptr<juce::ButtonParameterAttachment> polarityAttachment;                 ///< Ties the toggle to its parameter.

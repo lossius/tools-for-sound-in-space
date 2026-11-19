@@ -43,6 +43,15 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
                          "Absolute: the true time of flight, so that a moving source gives a Doppler shift. Switching may click.");
     delayAttachment = std::make_unique<juce::ComboBoxParameterAttachment> (*apvts.getParameter (ids::kDelayModeId), delayBox, nullptr);
     addSettingsRow ("Delay", delayBox);
+
+    renderBox.addItem ("Smooth (Doppler)", 1);
+    renderBox.addItem ("Cross-fade", 2);
+    renderBox.setTooltip ("Smooth: a changing delay is read with an interpolation, so a moving source is shifted in pitch (with Absolute delays). Cross-fade: a delay stays as it is until the new one "
+                          "is further away than the fade threshold, and then the two fade into each other. Good for sources that move a little or jump; a source that moves all the time gives a series of fades. Switching may click.");
+    renderAttachment = std::make_unique<juce::ComboBoxParameterAttachment> (*apvts.getParameter (ids::kDelayRenderId), renderBox, nullptr);
+    addSettingsRow ("Delay change", renderBox);
+    addSliderRow ("Fade threshold", ids::kFadeThresholdId, " ms", 2, "Cross-fade: how far a path's delay has to be from the one in use before it fades to the new one. A larger value gives fewer fades and less accurate delays.");
+    addSliderRow ("Fade time", ids::kFadeTimeId, " ms", 0, "Cross-fade: how long a fade takes.");
     addSliderRow ("Temperature", ids::kTemperatureId, " C", 1, "The temperature of the air, which sets the speed of sound and so the delays.");
 
     addSliderRow ("Source height", ids::kSourceHeightId, " m", 2, "The height of every source. It lengthens the paths to the microphones.");

@@ -101,6 +101,21 @@ int main (int argc, char** argv)
                 CHECK (std::abs (slider->getValue() - (double) value (p, id)) < 1e-3);                   // shows the parameter
         }
 
+        // How a change of delay is rendered, and the fade settings.
+        CHECK (editor->getDelayRenderBox().isVisible() && editor->getDelayRenderBox().getSelectedId() == 1);
+        editor->getDelayRenderBox().setSelectedId (2, juce::sendNotificationSync);
+        CHECK (p.getDelayRender() == vimic::params::DelayRender::CrossFade);
+        setParam (p, vimic::params::kDelayRenderId, 0.0f);
+        CHECK (editor->getDelayRenderBox().getSelectedId() == 1);
+        for (const auto& id : { vimic::params::kFadeThresholdId, vimic::params::kFadeTimeId })
+        {
+            auto* slider = editor->getSlider (id);
+            CHECK (slider != nullptr && slider->isVisible() && slider->getWidth() > 50 && std::abs (slider->getValue() - (double) value (p, id)) < 0.01);
+        }
+        editor->getSlider (vimic::params::kFadeTimeId)->setValue (120.0, juce::sendNotificationSync);
+        CHECK (std::abs (value (p, vimic::params::kFadeTimeId) - 120.0f) < 0.5f);
+        setParam (p, vimic::params::kFadeTimeId, 50.0f);
+
         // The room, the reflections and the walls.
         for (const auto& id : { vimic::params::kRoomWidthId, vimic::params::kRoomDepthId, vimic::params::kRoomHeightId, vimic::params::kRefl1GainId, vimic::params::kRefl2GainId,
                                 vimic::params::kThresholdId, vimic::params::kAirCutoffId, vimic::params::kLowMidId, vimic::params::kMidHighId })

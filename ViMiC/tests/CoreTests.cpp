@@ -310,6 +310,48 @@ static void testDelayLineFractional()
     }
 }
 
+/** A changing delay against the exact interpolation of every sample (the fast version reads in runs): slow and fast drifts, in both directions, across the buffer end. */
+static void testDelayLineVariableAgainstReference()
+{
+    for (const double drift : { 0.0003, -0.0003, 0.02, -0.02, 0.9, -0.9 })           // delay change per sample
+        for (const double start : { 20.0, 333.3, 1000.7 })
+        {
+            const int blockSize = 100;
+            DelayLine line;
+            line.prepare (1500, blockSize);
+            std::vector<double> signal;
+            std::vector<float> in (blockSize), out (blockSize);
+            double delay = start;
+            double worst = 0.0;
+
+            for (int block = 0; block < 700; ++block)           // 70000 samples: the buffer wraps round about 40 times
+            {
+                for (int i = 0; i < blockSize; ++i)
+                {
+                    const double v = std::sin (0.21 * (double) signal.size()) + 0.5 * std::sin (0.013 * (double) signal.size() + 1.0);
+                    in[(size_t) i] = (float) v;
+                    signal.push_back ((double) (float) v);
+                }
+
+                const double next = std::clamp (delay + drift * blockSize, 3.0, 1400.0);
+                line.write (in.data(), blockSize);
+                std::fill (out.begin(), out.end(), 0.0f);
+                line.addTap (out.data(), blockSize, delay, next, 1.0f, 1.0f);
+
+                for (int i = 0; i < blockSize; ++i)
+                {
+                    const long n = (long) signal.size() - blockSize + i;
+                    const double d = delay + (next - delay) * i / blockSize;
+                    worst = std::max (worst, std::abs ((double) out[(size_t) i] - hermiteAt (signal, (double) n - d)));
+                }
+
+                delay = next;
+            }
+
+            CHECK (worst < 2e-3);
+        }
+}
+
 /** A moving source: the delay changes across a block (and carries on in the next one), giving a Doppler shift without discontinuities. */
 static void testDelayLineDoppler()
 {
@@ -735,6 +777,7 @@ int main()
     testSourceDirectivity();
     testDelayLineIntegerAndRamp();
     testDelayLineFractional();
+    testDelayLineVariableAgainstReference();
     testDelayLineDoppler();
     testImageTable();
     testImagesAgainstBruteForce();

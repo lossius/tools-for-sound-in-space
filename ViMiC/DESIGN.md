@@ -1,6 +1,6 @@
 # ViMiC (Virtual Microphone Control) — design note
 
-Status: **milestones 1 (direct sound), 2 (source directivity) and 3 (early reflections) are implemented**; the rest is still a plan. Decisions already taken: positions stay in the family's 2D plane with global
+Status: **milestones 1 (direct sound), 2 (source directivity), 3 (early reflections) and 4 (cross-fade mode, performance) are implemented**; what is left is listed in 7e. Decisions already taken: positions stay in the family's 2D plane with global
 source and microphone heights (for the room); the first version renders direct sound only, early reflections come second; the late reverb
 tail is left to an external reverb.
 
@@ -239,6 +239,13 @@ changing delay), 4.1 (lobes on the pad; microphone setups; the coordinates start
 - **Source directivity of a reflection** uses the direction from the real source towards the image of the microphone in the same walls in the reverse order.
 - The settings window got a scroll bar (the window is as tall as fits on the screen), headings and whole-width rows; it is long (about 1400 pixels) and wants a better arrangement.
 - Cost (Release, 512-sample blocks at 48 kHz): 8 x 8 with the second order 0.44 ms static / 2.6 ms moving; 16 x 16: 1.4 ms / 10 ms. Moving sources cost most; milestone 4.
+
+## 7e. What milestone 4 turned out like
+
+- **Performance**: the changing delay is read in runs of constant integer drift (contiguous input, smoothly changing weights), which the compiler vectorises, and the per-block work only covers the sources in use and the images that exist or fade out. Release, 512-sample blocks at 48 kHz: 64 x 64 direct sound moving 6.5 -> 2.7 ms; 8 x 8 with 2nd-order reflections moving 2.6 -> 0.94 ms; 16 x 16 moving 10 -> 3.4 ms.
+- **Cross-fade mode** (3.3): `delayRender` (Smooth / Cross-fade), `fadeThreshold`, `fadeTime`. The fade is linear (the two taps' weights ramp linearly, which the tap's gain ramp does exactly); the cosine and other envelopes of the manual were not done. As in j.vimic~, changes during a fade wait for its end. With a source that moves all the time the cross-fade mode gives a series of fades and on average the same Doppler shift as the Smooth mode (so "no Doppler"
+  in the manual holds for movements smaller than the threshold and for jumps); I had described it too simply.
+- **Not done**: pitch of the microphones (a 3D axis), OSC aliases in ViMiC's own namespace, the optional intensity normalisation, a compact settings window (the long one scrolls). They are still open points below.
 
 ## 8. Open points for you
 

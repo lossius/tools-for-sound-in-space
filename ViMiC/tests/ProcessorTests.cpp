@@ -191,7 +191,8 @@ static void testParameterOrder()
     CHECK (std::abs (getParam (p, vimic::params::kTemperatureId) - 20.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kDistancePowerId) - 1.0f) < 1e-4f);
     CHECK (std::abs (getParam (p, vimic::params::kMinDistanceId) - 1.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kSourceHeightId) - 1.5f) < 1e-4f);
     CHECK (std::abs (getParam (p, vimic::params::micPatternId (7)) - 0.5f) < 1e-4f && getParam (p, vimic::params::kMicPolarityId) > 0.5f);
-    CHECK (p.getDelayMode() == vimic::params::DelayMode::Relative);
+    CHECK (p.getDelayMode() == vimic::params::DelayMode::Relative && p.getDelayRender() == vimic::params::DelayRender::Smooth);
+    CHECK (idOf (3 + vimic::params::DelayRenderIndex) == vimic::params::kDelayRenderId && idOf (3 + vimic::params::FadeThreshold) == vimic::params::kFadeThresholdId && idOf (3 + vimic::params::FadeTime) == vimic::params::kFadeTimeId);
 
     // What ViMiC tells the shared code.
     CHECK (p.getOutputNoun() == "Microphone" && ! p.usesSpread() && ! p.usesOutsideRolloff() && ! p.supportsVirtualSpeakers());
@@ -671,6 +672,119 @@ static void testMovingSource()
     CHECK (stepAbsolute < 2.0 * std::numbers::pi * 0.02 * 1.1 && stepRelative < 2.0 * std::numbers::pi * 0.02 * 1.1);   // no jumps (gain ramps are slow)
 }
 
+/** The cross-fade delay mode: a delay stays as it is until the new one is further away than the threshold, then fades to it (no discontinuity); a continuous movement
+    keeps the Doppler pitch on average; a path that was silent starts at its new delay. */
+static void testCrossFade()
+{
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 1, 256));
+    const double c = vimic::speedOfSound (20.0);
+    placeMic (p, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+    setParam (p, vimic::params::kDelayModeId, 1.0f);                // absolute: the delay is the true time of flight
+    setParam (p, vimic::params::kDelayRenderId, 1.0f);              // cross-fade
+    setParam (p, vimic::params::kFadeTimeId, 20.0f);
+    CHECK (p.getDelayRender() == vimic::params::DelayRender::CrossFade);
+    CHECK (std::abs (getParam (p, vimic::params::kFadeThresholdId) - 0.5f) < 1e-4f);
+    placeSource (p, 0, 3.0f, 0.0f);
+    p.refreshLayout();
+
+    const auto delayOf = [&] (double& gain)
+    {
+        auto out = impulseResponse (p, 1, 1, 4096);
+        return centroid (out, 0, gain);
+    };
+
+    double gain = 0.0;
+    const double first = delayOf (gain);
+    CHECK (std::abs (first - (2.0 + 3.0 / c * 48000.0)) < 0.02 && std::abs (gain - 1.0 / 3.0) < 1e-3);
+
+    // A small move (5 cm: 0.15 ms, below the 0.5 ms threshold): the gain follows, the delay is kept.
+    placeSource (p, 0, 3.05f, 0.0f);
+    const double small = delayOf (gain);
+    CHECK (std::abs (small - first) < 0.02 && std::abs (gain - 1.0 / 3.05) < 1e-3);
+
+    // A big move (3 to 6 m: 8.7 ms): after the fade (20 ms) the delay is the new one.
+    placeSource (p, 0, 6.0f, 0.0f);
+    const double moved = delayOf (gain);                             // the impulse response of the block comes after three silent blocks of 4096 samples: the fade is over
+    CHECK (std::abs (moved - (2.0 + 6.0 / c * 48000.0)) < 0.02 && std::abs (gain - 1.0 / 6.0) < 1e-3);
+
+    // During the fade the sound is the mix of the old and the new delay: one impulse shows both delays, each with the weight of the fade at its arrival.
+    ViMiCAudioProcessor q;
+    CHECK (configure (q, 1, 1, 256));
+    placeMic (q, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+    setParam (q, vimic::params::kMinDistanceId, 0.1f);
+    setParam (q, vimic::params::kDistancePowerId, 0.0f);            // no distance gain: only the delays differ
+    setParam (q, vimic::params::kDelayModeId, 1.0f);
+    setParam (q, vimic::params::kDelayRenderId, 1.0f);
+    setParam (q, vimic::params::kFadeTimeId, 50.0f);                // 2400 samples: about 9 blocks
+    placeSource (q, 0, 3.0f, 0.0f);
+    q.refreshLayout();
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> buf (1, 256);
+    for (int block = 0; block < 5; ++block)
+    {
+        buf.clear();
+        q.processBlock (buf, midi);
+    }
+    placeSource (q, 0, 4.0f, 0.0f);                                  // 1 m further: 140 samples
+    const double oldDelay = 2.0 + 3.0 / c * 48000.0, newDelay = 2.0 + 4.0 / c * 48000.0;
+    std::vector<float> response;
+    for (int block = 0; block < 40; ++block)
+    {
+        buf.clear();
+        if (block == 0)
+            buf.setSample (0, 0, 1.0f);                              // one impulse, at the start of the fade
+        q.processBlock (buf, midi);
+        for (int i = 0; i < 256; ++i)
+            response.push_back (buf.getSample (0, i));
+    }
+    auto window = [&] (double position)
+    {
+        double sum = 0.0;
+        for (int i = (int) position - 3; i <= (int) position + 4; ++i)
+            sum += (double) response[(size_t) i];
+        return sum;
+    };
+    const double weightOld = window (oldDelay), weightNew = window (newDelay);
+    // The fade is linear over 2400 samples from the start of the block that sees the move: the old delay has the weight 1 - t / 2400 where it arrives and the new one t / 2400 where it arrives.
+    CHECK (std::abs (weightOld - (1.0 - oldDelay / 2400.0)) < 0.02 && std::abs (weightNew - newDelay / 2400.0) < 0.02);
+
+    // No jumps: a long sine from a source that moves back and forth, the largest step stays near that of the sine (the sum of two copies at most twice as large).
+    ViMiCAudioProcessor r;
+    CHECK (configure (r, 1, 1, 256));
+    placeMic (r, 0, 0.0f, 0.0f, 0.0f, 1.0f);
+    setParam (r, vimic::params::kDelayModeId, 1.0f);
+    setParam (r, vimic::params::kDelayRenderId, 1.0f);
+    juce::AudioBuffer<float> sine (1, 256);
+    double largestStep = 0.0;
+    float previous = 0.0f;
+    long t0 = 0;
+    for (int block = 0; block < 400; ++block)
+    {
+        placeSource (r, 0, 0.0f, 4.0f + 3.0f * (float) std::sin (0.05 * block));
+        for (int i = 0; i < 256; ++i, ++t0)
+            sine.setSample (0, i, (float) std::sin (2.0 * std::numbers::pi * 0.02 * (double) t0));
+        r.processBlock (sine, midi);
+        for (int i = 0; i < 256; ++i)
+        {
+            if (block > 20)
+                largestStep = std::max (largestStep, (double) std::abs (sine.getSample (0, i) - previous));
+            previous = sine.getSample (0, i);
+        }
+        CHECK (allFinite (sine, 1));
+    }
+    CHECK (largestStep < 2.0 * 2.0 * std::numbers::pi * 0.02 * 1.1);
+
+    // Switching the delay change mode restarts the ramps (no sweep from one to the other) and the output stays finite.
+    setParam (r, vimic::params::kDelayRenderId, 0.0f);
+    for (int block = 0; block < 10; ++block)
+    {
+        placeSource (r, 0, 0.0f, 5.0f + 0.2f * (float) block);
+        r.processBlock (sine, midi);
+        CHECK (allFinite (sine, 1));
+    }
+}
+
 /** Positions, yaw, pattern, delay mode, the edit modes and the coordinate mode survive a save and a restore. */
 static void testStateRoundTrip()
 {
@@ -1018,6 +1132,7 @@ int main (int argc, char** argv)
     testPatternAndYaw();
     testSourceDirectivity();
     testHeights();
+    testCrossFade();
     testReflections();
     testReflectionBank();
     testChannelControls();

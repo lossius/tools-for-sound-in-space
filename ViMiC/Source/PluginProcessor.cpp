@@ -28,7 +28,7 @@ const std::vector<juce::String>& globalIds()
     {
         namespace p = vimic::params;
         std::vector<juce::String> v { p::kDistanceLawId, p::kDistancePowerId, p::kDistanceDbId, p::kMinDistanceId, p::kMicPowerId, p::kMicPolarityId,
-                                      p::kSourcePowerId, p::kDelayModeId, p::kTemperatureId, p::kSourceHeightId, p::kMicHeightId, p::kDirectGainId,
+                                      p::kSourcePowerId, p::kDelayModeId, p::kDelayRenderId, p::kFadeThresholdId, p::kFadeTimeId, p::kTemperatureId, p::kSourceHeightId, p::kMicHeightId, p::kDirectGainId,
                                       p::kOutputGainId, p::kRoomWidthId, p::kRoomDepthId, p::kRoomHeightId, p::kReflOrderId, p::kRefl1GainId,
                                       p::kRefl2GainId, p::kThresholdId, p::kAirCutoffId, p::kLowMidId, p::kMidHighId };
         for (int wall = 0; wall < vimic::WallCount; ++wall)
@@ -59,8 +59,9 @@ ViMiCAudioProcessor::ViMiCAudioProcessor()
     }
 
     const std::size_t paths = (std::size_t) tlos::kMaxChannels * tlos::kMaxChannels * kMaxImages;
-    for (auto* v : { &prevGains, &panGains, &targetGains, &prevDelays, &delays, &targetDelays })
+    for (auto* v : { &prevGains, &panGains, &targetGains, &prevDelays, &delays, &targetDelays, &heldDelay, &fadeFrom })
         v->assign (paths, 0.0f);
+    fadeAt.assign (paths, -1);
 
     setLatencySamples ((int) vimic::DelayLine::kMinDelay);
 }
@@ -68,7 +69,7 @@ ViMiCAudioProcessor::ViMiCAudioProcessor()
 std::vector<tlos::OscParameter> ViMiCAudioProcessor::getOscParameters() const
 {
     std::vector<juce::String> addresses { "/vimic/law", "/vimic/power", "/vimic/db", "/vimic/mindist", "/vimic/micpower", "/vimic/polarity",
-                                          "/vimic/sourcepower", "/vimic/delaymode", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight",
+                                          "/vimic/sourcepower", "/vimic/delaymode", "/vimic/delayrender", "/vimic/fadethreshold", "/vimic/fadetime", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight",
                                           "/vimic/directgain", "/vimic/gain", "/vimic/roomwidth", "/vimic/roomdepth", "/vimic/roomheight",
                                           "/vimic/reflorder", "/vimic/refl1gain", "/vimic/refl2gain", "/vimic/threshold", "/vimic/aircutoff",
                                           "/vimic/lowmid", "/vimic/midhigh" };
@@ -157,6 +158,11 @@ double ViMiCAudioProcessor::getAirCutoff() const noexcept
 vimic::params::DelayMode ViMiCAudioProcessor::getDelayMode() const noexcept
 {
     return globalParam[vimic::params::DelayModeIndex]->load() >= 0.5f ? vimic::params::DelayMode::Absolute : vimic::params::DelayMode::Relative;
+}
+
+vimic::params::DelayRender ViMiCAudioProcessor::getDelayRender() const noexcept
+{
+    return globalParam[vimic::params::DelayRenderIndex]->load() >= 0.5f ? vimic::params::DelayRender::CrossFade : vimic::params::DelayRender::Smooth;
 }
 
 std::vector<vimic::Microphone> ViMiCAudioProcessor::getMicrophones (const tlos::IncludedSpeakers& speakers) const
@@ -353,7 +359,8 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                            && std::equal (usedSettings.pattern.begin(), usedSettings.pattern.begin() + micCount, settings.pattern.begin(), equal);
     if (! sameSettings)
     {
-        const bool modeChanged = usedSettings.valid && ! juce::exactlyEqual (usedSettings.globals[g::DelayModeIndex], settings.globals[g::DelayModeIndex]);
+        const bool modeChanged = usedSettings.valid && (! juce::exactlyEqual (usedSettings.globals[g::DelayModeIndex], settings.globals[g::DelayModeIndex])
+                                                        || ! juce::exactlyEqual (usedSettings.globals[g::DelayRenderIndex], settings.globals[g::DelayRenderIndex]));
         for (auto& key : pathKeys)
             key.valid = false;
         if (modeChanged)
@@ -365,6 +372,8 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     const int order = roomSettings.order;
     const auto imageTable = vimic::images (vimic::kMaxOrder);
     const int imageCount = (int) vimic::images (order).size();
+    const int imageLimit = std::max (imageCount, lastImageCount);          // the paths of a higher order that are fading out are visited too
+    const std::size_t used = (std::size_t) n * tlos::kMaxChannels * kMaxImages;   // the rows of the sources in use
     const int classes = vimic::filterClassCount (order) - 1;
     const bool useReflections = order > 0 && bank != nullptr && bank->sources >= n && bank->classes >= classes;
     std::array<vimic::BandGains, 24> newClassGains {};     // the band gains of the wall sequences for this block
@@ -456,26 +465,27 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
         for (int k = 0; k < m; ++k)
         {
             const float level = channelGains.sources[(size_t) s] * channelGains.speakers[(size_t) k] * outputGain;
-            for (int i = 0; i < kMaxImages; ++i)
+            for (int i = 0; i < imageLimit; ++i)
             {
                 const auto index = at (s, k, i);
                 targetGains[index] = panGains[index] * level * (i == 0 ? directGain : (useReflections ? 1.0f : 0.0f));
             }
         }
 
-    targetDelays = delays;
+    std::copy_n (delays.begin(), (long) used, targetDelays.begin());
 
-    if (restartRamp.exchange (false))
+    const bool restarted = restartRamp.exchange (false);
+    if (restarted)
     {
-        prevGains = targetGains;
-        prevDelays = targetDelays;
+        std::copy_n (targetGains.begin(), (long) used, prevGains.begin());
+        std::copy_n (targetDelays.begin(), (long) used, prevDelays.begin());
         prevUsedSpeakers = usedSpeakers;
     }
 
     // A path that was silent starts at its new delay (nothing is heard to sweep), and one that becomes silent keeps its last delay.
     for (int s = 0; s < n; ++s)
         for (int k = 0; k < m; ++k)
-            for (int i = 0; i < kMaxImages; ++i)
+            for (int i = 0; i < imageLimit; ++i)
             {
                 const auto index = at (s, k, i);
                 if (juce::exactlyEqual (prevGains[index], 0.0f))
@@ -483,6 +493,32 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                 else if (juce::exactlyEqual (targetGains[index], 0.0f))
                     targetDelays[index] = prevDelays[index];
             }
+
+    // Cross-fade mode: a path keeps the delay it is rendered with until the new one is further away than the threshold, and then fades to the new one. A path that was
+    // silent starts at its new delay; a restart (or a switch of the mode) takes every path to its new delay.
+    const bool crossFade = settings.globals[g::DelayRenderIndex] >= 0.5f;
+    const int fadeLength = std::max (16, (int) std::lround ((double) settings.globals[g::FadeTime] * 0.001 * sampleRate));
+    if (crossFade)
+    {
+        const float threshold = (float) ((double) settings.globals[g::FadeThreshold] * 0.001 * sampleRate);
+        for (int s = 0; s < n; ++s)
+            for (int k = 0; k < m; ++k)
+                for (int i = 0; i < imageLimit; ++i)
+                {
+                    const auto index = at (s, k, i);
+                    if (juce::exactlyEqual (prevGains[index], 0.0f) || restarted)
+                    {
+                        heldDelay[index] = targetDelays[index];
+                        fadeAt[index] = -1;
+                    }
+                    else if (fadeAt[index] < 0 && std::abs (targetDelays[index] - heldDelay[index]) > threshold)
+                    {
+                        fadeFrom[index] = heldDelay[index];
+                        heldDelay[index] = targetDelays[index];
+                        fadeAt[index] = 0;
+                    }
+                }
+    }
 
     // Gains and delays ramp linearly from the previous block's values to the new ones across the whole block.
     // Blocks larger than the prepared size are processed in chunks, keeping the ramps continuous.
@@ -526,7 +562,7 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
             {
                 float* out = buffer.getWritePointer (k) + start;
 
-                for (int i = 0; i < kMaxImages; ++i)
+                for (int i = 0; i < imageLimit; ++i)
                 {
                     const auto index = at (s, k, i);
                     const float g0 = prevGains[index], g1 = targetGains[index];
@@ -543,9 +579,28 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                         tapLine = &bank->lines[(size_t) (s * bank->classes + c - 1)];
                     }
 
-                    const float d0 = prevDelays[index], d1 = targetDelays[index];
-                    tapLine->addTap (out, len, (double) (d0 + (d1 - d0) * f0), (double) (d0 + (d1 - d0) * f1),
-                                     g0 + (g1 - g0) * f0, g0 + (g1 - g0) * f1);
+                    const float chunkGain0 = g0 + (g1 - g0) * f0, chunkGain1 = g0 + (g1 - g0) * f1;
+
+                    if (! crossFade)
+                    {
+                        const float d0 = prevDelays[index], d1 = targetDelays[index];
+                        tapLine->addTap (out, len, (double) (d0 + (d1 - d0) * f0), (double) (d0 + (d1 - d0) * f1), chunkGain0, chunkGain1);
+                        continue;
+                    }
+
+                    // Cross-fade: one tap at the delay in use, or two while the path fades from the old delay to the new one (the weights ramp linearly across the chunk).
+                    const int at0 = fadeAt[index];
+                    if (at0 < 0)
+                    {
+                        tapLine->addTap (out, len, (double) heldDelay[index], (double) heldDelay[index], chunkGain0, chunkGain1);
+                    }
+                    else
+                    {
+                        const float p0 = std::min (1.0f, (float) at0 / (float) fadeLength), p1 = std::min (1.0f, (float) (at0 + len) / (float) fadeLength);
+                        tapLine->addTap (out, len, (double) fadeFrom[index], (double) fadeFrom[index], chunkGain0 * (1.0f - p0), chunkGain1 * (1.0f - p1));
+                        tapLine->addTap (out, len, (double) heldDelay[index], (double) heldDelay[index], chunkGain0 * p0, chunkGain1 * p1);
+                        fadeAt[index] = at0 + len >= fadeLength ? -1 : at0 + len;
+                    }
                 }
             }
         }
@@ -576,8 +631,9 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     if (useReflections)
         bank->classGains = newClassGains;      // the next block ramps from here
 
-    prevGains = targetGains;
-    prevDelays = targetDelays;
+    std::copy_n (targetGains.begin(), (long) used, prevGains.begin());
+    std::copy_n (targetDelays.begin(), (long) used, prevDelays.begin());
+    lastImageCount = imageCount;
 
     recordOutputLevels (buffer, m);
 }

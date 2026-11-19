@@ -98,6 +98,9 @@ public:
     /** @return The delay mode as it is now. Safe to call from any thread. */
     vimic::params::DelayMode getDelayMode() const noexcept;
 
+    /** @return How a change of delay is rendered as it is now (smoothly or by a cross-fade). Safe to call from any thread. */
+    vimic::params::DelayRender getDelayRender() const noexcept;
+
     /** @return Source `index` (zero-based) as it is now: position, yaw and radiation pattern. Safe to call from any thread. */
     vimic::Source getSource (int index) const noexcept;
 
@@ -209,10 +212,14 @@ private:
     std::vector<float> prevDelays;             ///< Delays in samples at the end of the previous block.
     std::vector<float> delays;                 ///< Delays in samples of the paths alone: what the cache holds.
     std::vector<float> targetDelays;           ///< Delays wanted at the end of this block.
+    std::vector<float> heldDelay;              ///< Cross-fade mode: the delay a path is rendered with (it only changes by a fade).
+    std::vector<float> fadeFrom;               ///< Cross-fade mode: the delay a path is fading away from, while it fades.
+    std::vector<int> fadeAt;                   ///< Cross-fade mode: how many samples of its fade a path has had (-1: not fading).
     std::vector<float> bandLow;                ///< A block of the low band of a source.
     std::vector<float> bandMid;                ///< A block of the middle band of a source.
     std::vector<float> bandHigh;               ///< A block of the high band of a source.
     int prevUsedSpeakers = 0;                  ///< Microphones in use in the previous block.
+    int lastImageCount = 1;                    ///< How many images (paths per source and microphone) the previous block had, so that paths that fade out are still visited.
     Settings usedSettings;                     ///< What the cached paths were computed with.
     std::array<PathKey, tlos::kMaxChannels> pathKeys {};   ///< Per source: what its paths were computed from.
     std::atomic<bool> restartRamp { true };    ///< Set from any thread: the next block starts at its target gains and delays.

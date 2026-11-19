@@ -119,27 +119,67 @@ void DelayLine::addTap (float* output, int count, double delayStart, double dela
         return;
     }
 
-    // A changing delay: the read position moves by 1 - (d1 - d0) / count samples per sample (a Doppler shift). The position within the block is kept
-    // relative to the integer position of its first sample, in float: a block is short, so the error is far below a thousandth of a sample.
+    // A changing delay: the read position of sample j is `i00 + j + r(j)`, with the fractional drift `r(j) = r0 + slope j` (slope = -(d1 - d0) / count: a Doppler shift).
+    // The drift changes by less than a sample or two in a block, so its integer part is constant over a few long runs. Inside a run the input is read contiguously
+    // (one sample further for every output sample) and only the four weights change smoothly, which the compiler can vectorise.
     const double position0 = (double) blockStart - d0;
     const double base0 = std::floor (position0);
     const std::int64_t i00 = (std::int64_t) base0;
-    const float fraction0 = (float) (position0 - base0);
-    const float step = (float) (1.0 - (d1 - d0) / (double) count);
+    const double r0 = position0 - base0;
+    const double slope = -(d1 - d0) / (double) count;
 
-    for (int j = 0; j < count; ++j)
+    int j = 0;
+    while (j < count)
     {
-        const float q = fraction0 + step * (float) j;
-        const int whole = (int) std::floor (q);
-        const float mu = q - (float) whole, mu2 = mu * mu, mu3 = mu2 * mu;
-        const float w0 = -0.5f * mu3 + mu2 - 0.5f * mu;
-        const float w1 = 1.5f * mu3 - 2.5f * mu2 + 1.0f;
-        const float w2 = -1.5f * mu3 + 2.0f * mu2 + 0.5f * mu;
-        const float w3 = 0.5f * mu3 - 0.5f * mu2;
+        const int whole = (int) std::floor (r0 + slope * (double) j);
 
-        const std::uint32_t k = (std::uint32_t) (i00 - 1 + whole) & mask;
-        output[j] += (gainStart + gainStep * (float) j)
-                   * (w0 * data[k] + w1 * data[(k + 1) & mask] + w2 * data[(k + 2) & mask] + w3 * data[(k + 3) & mask]);
+        // The first sample after the run: where the drift leaves [whole, whole + 1).
+        int end = count;
+        if (slope > 0.0)
+            end = (int) std::min<double> (count, std::ceil ((whole + 1.0 - r0) / slope));
+        else if (slope < 0.0)
+            end = (int) std::min<double> (count, std::floor ((whole - r0) / slope) + 1.0);
+        end = std::max (end, j + 1);
+        while (end > j + 1 && (int) std::floor (r0 + slope * (double) (end - 1)) != whole)   // rounding: never let the run reach into the next integer
+            --end;
+        while (end < count && (int) std::floor (r0 + slope * (double) end) == whole)
+            ++end;
+
+        const int length = end - j;
+        const float mu0 = (float) (r0 + slope * (double) j - (double) whole);
+        const float muStep = (float) slope;
+        const std::uint32_t first = (std::uint32_t) (i00 - 1 + j + whole) & mask;
+        float* out = output + j;
+
+        if ((std::int64_t) first + length + 3 <= (std::int64_t) mask + 1)
+        {
+            const float* in = data + first;
+            for (int n = 0; n < length; ++n)
+            {
+                const float mu = mu0 + muStep * (float) n, mu2 = mu * mu, mu3 = mu2 * mu;
+                const float w0 = -0.5f * mu3 + mu2 - 0.5f * mu;
+                const float w1 = 1.5f * mu3 - 2.5f * mu2 + 1.0f;
+                const float w2 = -1.5f * mu3 + 2.0f * mu2 + 0.5f * mu;
+                const float w3 = 0.5f * mu3 - 0.5f * mu2;
+                out[n] += (gainStart + gainStep * (float) (j + n)) * (w0 * in[n] + w1 * in[n + 1] + w2 * in[n + 2] + w3 * in[n + 3]);
+            }
+        }
+        else
+        {
+            for (int n = 0; n < length; ++n)
+            {
+                const float mu = mu0 + muStep * (float) n, mu2 = mu * mu, mu3 = mu2 * mu;
+                const float w0 = -0.5f * mu3 + mu2 - 0.5f * mu;
+                const float w1 = 1.5f * mu3 - 2.5f * mu2 + 1.0f;
+                const float w2 = -1.5f * mu3 + 2.0f * mu2 + 0.5f * mu;
+                const float w3 = 0.5f * mu3 - 0.5f * mu2;
+                const std::uint32_t k = (first + (std::uint32_t) n) & mask;
+                out[n] += (gainStart + gainStep * (float) (j + n))
+                        * (w0 * data[k] + w1 * data[(k + 1) & mask] + w2 * data[(k + 2) & mask] + w3 * data[(k + 3) & mask]);
+            }
+        }
+
+        j = end;
     }
 }
 }
