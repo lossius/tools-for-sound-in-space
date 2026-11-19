@@ -149,18 +149,20 @@ PositionTable::PositionTable (SpatialProcessor& p, Content c)
     table.getHeader().addColumn ("Y (m)", yColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
     if (content == Content::Sources && processor.usesSpread())
         table.getHeader().addColumn ("Spread (m)", spreadColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
-    if (content == Content::Sources)
-        table.getHeader().addColumn ("Group", groupColumn, kGroupColumnWidth, kGroupColumnWidth, kGroupColumnWidth, flags);
+    // After the position: the plugin's own columns (height, yaw, pitch, pattern ...), then trim, exclude, mute, solo and the group.
+    for (int k = 0; k < (int) extraColumns().size(); ++k)
+        table.getHeader().addColumn (extraColumns()[(size_t) k].title, extraColumn + k, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
+    if (content != Content::VirtualSpeakers)
+        table.getHeader().addColumn ("Trim (dB)", trimColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
+    if (content == Content::Speakers)
+        table.getHeader().addColumn ("Excl.", excludeColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
     if (content != Content::VirtualSpeakers)
     {
-        table.getHeader().addColumn ("Trim (dB)", trimColumn, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
         table.getHeader().addColumn ("Mute", muteColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
         table.getHeader().addColumn ("Solo", soloColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
     }
-    if (content == Content::Speakers)
-        table.getHeader().addColumn ("Excl.", excludeColumn, kSwitchColumnWidth, kSwitchColumnWidth, kSwitchColumnWidth, flags);
-    for (int k = 0; k < (int) extraColumns().size(); ++k)
-        table.getHeader().addColumn (extraColumns()[(size_t) k].title, extraColumn + k, kValueColumnWidth, kValueColumnWidth, kValueColumnWidth, flags);
+    if (content == Content::Sources)
+        table.getHeader().addColumn ("Group", groupColumn, kGroupColumnWidth, kGroupColumnWidth, kGroupColumnWidth, flags);
 
     addAndMakeVisible (table);
 

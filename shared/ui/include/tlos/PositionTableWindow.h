@@ -35,7 +35,7 @@ public:
         VirtualSpeakers   ///< The manual virtual speakers: x and y.
     };
 
-    /** Column IDs, which are also the order of the columns. */
+    /** Column IDs. The order on screen is: #, X, Y, Spread, the plugin's own columns, Trim, Exclude, Mute, Solo, Group. */
     enum Column
     {
         indexColumn = 1,  ///< Row number (1-based), not editable.
