@@ -38,7 +38,7 @@ if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1
 
 if [ "$(git rev-parse --abbrev-ref HEAD)" = main ]; then ok "on the main branch"; else fail "not on the main branch"; fi
 if [ -z "$(git status --porcelain)" ]; then ok "no uncommitted changes"; else fail "uncommitted changes (commit or stash them first)"; fi
-if git remote get-url origin >/dev/null 2>&1; then ok "GitHub repository: $(git remote get-url origin)"; else fail "no GitHub repository connected (RELEASING.md, step 3)"; fi
+if git remote get-url origin >/dev/null 2>&1; then ok "GitHub repository: $(git remote get-url origin)"; elif [ "$MODE" = build ]; then note "no GitHub repository connected yet (needed for publish)"; else fail "no GitHub repository connected (RELEASING.md, step 3)"; fi
 if [ -f JUCE/CMakeLists.txt ]; then ok "JUCE submodule present"; else fail "JUCE submodule missing: git submodule update --init"; fi
 if command -v cmake >/dev/null 2>&1 && xcodebuild -version >/dev/null 2>&1; then ok "cmake and Xcode"; else fail "cmake or Xcode missing"; fi
 current="$(sed -n 's/^project(ToolsForSoundInSpace VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
