@@ -84,7 +84,7 @@ ls -1 dist/*-macOS-*.zip
 # ---------------------------------------------------------------- publish
 if [ "$MODE" = publish ]; then
     git add CMakeLists.txt
-    git commit -m "Version $VERSION"
+    git diff --cached --quiet || git commit -m "Version $VERSION"   # nothing to commit if the version was already set
     git tag -a "v$VERSION" -m "Version $VERSION"
     git push origin main "v$VERSION"
     if command -v gh >/dev/null 2>&1; then
