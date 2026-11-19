@@ -98,8 +98,6 @@ public:
     /** @return The delay mode as it is now. Safe to call from any thread. */
     vimic::params::DelayMode getDelayMode() const noexcept;
 
-    /** @return How a change of delay is rendered as it is now (smoothly or by a cross-fade). Safe to call from any thread. */
-    vimic::params::DelayRender getDelayRender() const noexcept;
 
     /** @return Source `index` (zero-based) as it is now: position, yaw and radiation pattern. Safe to call from any thread. */
     vimic::Source getSource (int index) const noexcept;

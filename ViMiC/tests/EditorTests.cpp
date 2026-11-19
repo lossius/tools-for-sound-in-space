@@ -101,17 +101,24 @@ int main (int argc, char** argv)
                 CHECK (std::abs (slider->getValue() - (double) value (p, id)) < 1e-3);                   // shows the parameter
         }
 
-        // How a change of delay is rendered, and the fade settings.
-        CHECK (editor->getDelayRenderBox().isVisible() && editor->getDelayRenderBox().getSelectedId() == 1);
-        editor->getDelayRenderBox().setSelectedId (2, juce::sendNotificationSync);
-        CHECK (p.getDelayRender() == vimic::params::DelayRender::CrossFade);
-        setParam (p, vimic::params::kDelayRenderId, 0.0f);
-        CHECK (editor->getDelayRenderBox().getSelectedId() == 1);
+        // The delay modes are one menu of four; the fade settings are only enabled in the cross-fade modes.
+        CHECK (editor->getDelayModeBox().getNumItems() == 4 && editor->getDelayModeBox().getSelectedId() == 1);
         for (const auto& id : { vimic::params::kFadeThresholdId, vimic::params::kFadeTimeId })
         {
             auto* slider = editor->getSlider (id);
             CHECK (slider != nullptr && slider->isVisible() && slider->getWidth() > 50 && std::abs (slider->getValue() - (double) value (p, id)) < 0.01);
+            CHECK (slider != nullptr && ! slider->isEnabled());
         }
+        editor->getDelayModeBox().setSelectedId (4, juce::sendNotificationSync);
+        CHECK (p.getDelayMode() == vimic::params::DelayMode::AbsoluteCrossFade);
+        CHECK (editor->getSlider (vimic::params::kFadeTimeId)->isEnabled() && editor->getSlider (vimic::params::kFadeThresholdId)->isEnabled());
+        setParam (p, vimic::params::kDelayModeId, 2.0f);                // a host change: Absolute, Doppler
+        editor->updateFadeSliders();                                    // (a timer does this in a host)
+        CHECK (editor->getDelayModeBox().getSelectedId() == 3 && ! editor->getSlider (vimic::params::kFadeTimeId)->isEnabled());
+        setParam (p, vimic::params::kDelayModeId, 1.0f);                // Relative, cross-fade
+        editor->updateFadeSliders();
+        CHECK (editor->getSlider (vimic::params::kFadeTimeId)->isEnabled());
+        setParam (p, vimic::params::kDelayModeId, 0.0f);
         editor->getSlider (vimic::params::kFadeTimeId)->setValue (120.0, juce::sendNotificationSync);
         CHECK (std::abs (value (p, vimic::params::kFadeTimeId) - 120.0f) < 0.5f);
         setParam (p, vimic::params::kFadeTimeId, 50.0f);
@@ -168,8 +175,8 @@ int main (int argc, char** argv)
         CHECK (value (p, vimic::params::kDistanceLawId) > 0.5f);
         setParam (p, vimic::params::kDistanceLawId, 0.0f);
         CHECK (editor->getDistanceLawBox().getSelectedId() == 1);
-        editor->getDelayModeBox().setSelectedId (2, juce::sendNotificationSync);
-        CHECK (p.getDelayMode() == vimic::params::DelayMode::Absolute);
+        editor->getDelayModeBox().setSelectedId (3, juce::sendNotificationSync);
+        CHECK (p.getDelayMode() == vimic::params::DelayMode::AbsoluteDoppler);
         editor->getPolarityButton().setToggleState (false, juce::sendNotificationSync);
         CHECK (value (p, vimic::params::kMicPolarityId) < 0.5f);
         setParam (p, vimic::params::kMicPolarityId, 1.0f);

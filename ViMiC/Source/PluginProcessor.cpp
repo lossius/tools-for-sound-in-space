@@ -28,7 +28,7 @@ const std::vector<juce::String>& globalIds()
     {
         namespace p = vimic::params;
         std::vector<juce::String> v { p::kDistanceLawId, p::kDistancePowerId, p::kDistanceDbId, p::kMinDistanceId, p::kMicPowerId, p::kMicPolarityId,
-                                      p::kSourcePowerId, p::kDelayModeId, p::kDelayRenderId, p::kFadeThresholdId, p::kFadeTimeId, p::kTemperatureId, p::kSourceHeightId, p::kMicHeightId, p::kDirectGainId,
+                                      p::kSourcePowerId, p::kDelayModeId, p::kFadeThresholdId, p::kFadeTimeId, p::kTemperatureId, p::kSourceHeightId, p::kMicHeightId, p::kDirectGainId,
                                       p::kOutputGainId, p::kRoomWidthId, p::kRoomDepthId, p::kRoomHeightId, p::kReflOrderId, p::kRefl1GainId,
                                       p::kRefl2GainId, p::kThresholdId, p::kAirCutoffId, p::kLowMidId, p::kMidHighId };
         for (int wall = 0; wall < vimic::WallCount; ++wall)
@@ -69,7 +69,7 @@ ViMiCAudioProcessor::ViMiCAudioProcessor()
 std::vector<tlos::OscParameter> ViMiCAudioProcessor::getOscParameters() const
 {
     std::vector<juce::String> addresses { "/vimic/law", "/vimic/power", "/vimic/db", "/vimic/mindist", "/vimic/micpower", "/vimic/polarity",
-                                          "/vimic/sourcepower", "/vimic/delaymode", "/vimic/delayrender", "/vimic/fadethreshold", "/vimic/fadetime", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight",
+                                          "/vimic/sourcepower", "/vimic/delaymode", "/vimic/fadethreshold", "/vimic/fadetime", "/vimic/temperature", "/vimic/sourceheight", "/vimic/micheight",
                                           "/vimic/directgain", "/vimic/gain", "/vimic/roomwidth", "/vimic/roomdepth", "/vimic/roomheight",
                                           "/vimic/reflorder", "/vimic/refl1gain", "/vimic/refl2gain", "/vimic/threshold", "/vimic/aircutoff",
                                           "/vimic/lowmid", "/vimic/midhigh" };
@@ -157,12 +157,7 @@ double ViMiCAudioProcessor::getAirCutoff() const noexcept
 
 vimic::params::DelayMode ViMiCAudioProcessor::getDelayMode() const noexcept
 {
-    return globalParam[vimic::params::DelayModeIndex]->load() >= 0.5f ? vimic::params::DelayMode::Absolute : vimic::params::DelayMode::Relative;
-}
-
-vimic::params::DelayRender ViMiCAudioProcessor::getDelayRender() const noexcept
-{
-    return globalParam[vimic::params::DelayRenderIndex]->load() >= 0.5f ? vimic::params::DelayRender::CrossFade : vimic::params::DelayRender::Smooth;
+    return static_cast<vimic::params::DelayMode> (std::clamp ((int) std::lround (globalParam[vimic::params::DelayModeIndex]->load()), 0, 3));
 }
 
 std::vector<vimic::Microphone> ViMiCAudioProcessor::getMicrophones (const tlos::IncludedSpeakers& speakers) const
@@ -332,7 +327,9 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     // The settings and the microphones' orientation, read every block: a change recomputes the paths of every source.
     const auto pathSettings = getPathSettings();
     const auto roomSettings = getRoomSettings();
-    const bool absolute = getDelayMode() == g::DelayMode::Absolute;
+    const auto delayMode = getDelayMode();
+    const bool absolute = g::isAbsolute (delayMode);
+    const bool crossFade = g::isCrossFade (delayMode);
 
     std::array<vimic::Microphone, tlos::kMaxChannels> micArray {};
     const int micCount = mics != nullptr ? std::min ((int) mics->channelOf.size(), tlos::kMaxChannels) : 0;
@@ -359,8 +356,7 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
                            && std::equal (usedSettings.pattern.begin(), usedSettings.pattern.begin() + micCount, settings.pattern.begin(), equal);
     if (! sameSettings)
     {
-        const bool modeChanged = usedSettings.valid && (! juce::exactlyEqual (usedSettings.globals[g::DelayModeIndex], settings.globals[g::DelayModeIndex])
-                                                        || ! juce::exactlyEqual (usedSettings.globals[g::DelayRenderIndex], settings.globals[g::DelayRenderIndex]));
+        const bool modeChanged = usedSettings.valid && ! juce::exactlyEqual (usedSettings.globals[g::DelayModeIndex], settings.globals[g::DelayModeIndex]);
         for (auto& key : pathKeys)
             key.valid = false;
         if (modeChanged)
@@ -496,7 +492,6 @@ void ViMiCAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
 
     // Cross-fade mode: a path keeps the delay it is rendered with until the new one is further away than the threshold, and then fades to the new one. A path that was
     // silent starts at its new delay; a restart (or a switch of the mode) takes every path to its new delay.
-    const bool crossFade = settings.globals[g::DelayRenderIndex] >= 0.5f;
     const int fadeLength = std::max (16, (int) std::lround ((double) settings.globals[g::FadeTime] * 0.001 * sampleRate));
     if (crossFade)
     {

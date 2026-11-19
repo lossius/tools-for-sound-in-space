@@ -25,8 +25,7 @@ inline const juce::String kMinDistanceId { "minDistance" };       ///< The short
 inline const juce::String kMicPowerId { "micPower" };             ///< The exponent w of the microphone pattern.
 inline const juce::String kMicPolarityId { "micPolarity" };       ///< Whether the pattern may not give anti-phase gains.
 inline const juce::String kSourcePowerId { "sourcePower" };       ///< The exponent of the sources' radiation pattern.
-inline const juce::String kDelayModeId { "delayMode" };           ///< Relative or Absolute delays.
-inline const juce::String kDelayRenderId { "delayRender" };       ///< How a change of delay is rendered: smoothly (with a Doppler shift) or by a cross-fade.
+inline const juce::String kDelayModeId { "delayMode" };           ///< The delay mode: relative or absolute delays, rendered smoothly or by cross-fades (see DelayMode).
 inline const juce::String kFadeThresholdId { "fadeThreshold" };   ///< Cross-fade: how far a delay has to be from the one in use, in milliseconds, before it fades to the new one.
 inline const juce::String kFadeTimeId { "fadeTime" };             ///< Cross-fade: how long a fade takes, in milliseconds.
 inline const juce::String kTemperatureId { "temperature" };       ///< Room temperature in degrees Celsius.
@@ -49,7 +48,7 @@ inline const juce::String kMidHighId { "absorbMidHigh" };         ///< Crossover
 /** The model parameters in the order they are listed (and in which the processor reads them). */
 enum Global : size_t
 {
-    Law, Power, Db, MinDistance, MicPower, Polarity, SourcePower, DelayModeIndex, DelayRenderIndex, FadeThreshold, FadeTime, Temperature, SourceHeight, MicHeight, DirectGain, OutputGain,
+    Law, Power, Db, MinDistance, MicPower, Polarity, SourcePower, DelayModeIndex, FadeThreshold, FadeTime, Temperature, SourceHeight, MicHeight, DirectGain, OutputGain,
     RoomWidth, RoomDepth, RoomHeight, ReflOrder, Refl1Gain, Refl2Gain, RenderThreshold,
     /** The first parameter that only changes the filters of the reflections (from here on, a change does not change any path). */
     FilterFirst,
@@ -98,19 +97,19 @@ inline juce::String micYawId (int index) { return "spk" + juce::String (index + 
 /** @return The ID of the pattern ratio `a` (1 omni, 0.5 cardioid, 0 figure-8) of microphone `index` (zero-based), for example "spk1pattern". */
 inline juce::String micPatternId (int index) { return "spk" + juce::String (index + 1) + "pattern"; }
 
-/** The delay modes. */
+/** The delay modes: what the delays are (relative or absolute) and how a change of a delay is rendered (smoothly or by cross-fades). */
 enum class DelayMode
 {
-    Relative,   ///< Only the differences between the delays to the microphones are rendered (no latency to speak of, little Doppler).
-    Absolute    ///< The true time of flight: a moving source gives a Doppler shift.
+    RelativeSmooth,       ///< Only the differences between the delays to the microphones are rendered (no latency to speak of); a changing delay is read with an interpolation (small pitch shifts between the channels).
+    RelativeCrossFade,    ///< The same differences, each held until the new one is further away than the fade threshold and then faded to.
+    AbsoluteDoppler,      ///< The true time of flight, read with an interpolation: a moving source is shifted in pitch (the Doppler effect).
+    AbsoluteCrossFade     ///< The true time of flight, held until the new one is further away than the fade threshold and then faded to.
 };
 
-/** How a change of the delay of a path is rendered. */
-enum class DelayRender
-{
-    Smooth,      ///< The delay is read with an interpolation and changes smoothly: a moving source gives a Doppler shift (in the Absolute mode).
-    CrossFade    ///< The delay stays as it is until the new one is further away than the threshold; then the two are cross-faded. No Doppler shift.
-};
+/** @return Whether the mode renders the true time of flight (otherwise only the differences between the microphones). */
+inline bool isAbsolute (DelayMode mode) noexcept { return mode == DelayMode::AbsoluteDoppler || mode == DelayMode::AbsoluteCrossFade; }
+/** @return Whether the mode renders a change of delay by a cross-fade (otherwise smoothly). */
+inline bool isCrossFade (DelayMode mode) noexcept { return mode == DelayMode::RelativeCrossFade || mode == DelayMode::AbsoluteCrossFade; }
 
 /** Smallest gain in dB of the gain parameters (and so the gain that counts as off). */
 inline constexpr float kMinGainDb = -60.0f;
@@ -140,8 +139,7 @@ inline tlos::params::PluginParameters createParameters()
     g.push_back (std::make_unique<juce::AudioParameterInt> (ParameterID { kMicPowerId, 1 }, "Microphone Exponent", 0, 9, 1));
     g.push_back (std::make_unique<juce::AudioParameterBool> (ParameterID { kMicPolarityId, 1 }, "Restrict Polarity", true));
     g.push_back (std::make_unique<juce::AudioParameterInt> (ParameterID { kSourcePowerId, 1 }, "Source Exponent", 0, 9, 1));
-    g.push_back (std::make_unique<juce::AudioParameterChoice> (ParameterID { kDelayModeId, 1 }, "Delay", juce::StringArray { "Relative", "Absolute" }, 0));
-    g.push_back (std::make_unique<juce::AudioParameterChoice> (ParameterID { kDelayRenderId, 1 }, "Delay Change", juce::StringArray { "Smooth", "Cross-fade" }, 0));
+    g.push_back (std::make_unique<juce::AudioParameterChoice> (ParameterID { kDelayModeId, 1 }, "Delay", juce::StringArray { "Relative, smooth", "Relative, cross-fade", "Absolute, Doppler", "Absolute, cross-fade" }, 0));
     g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kFadeThresholdId, 1 }, "Fade Threshold", NormalisableRange<float> (0.02f, 10.0f, 0.0f, 0.4f), 0.5f, juce::AudioParameterFloatAttributes().withLabel ("ms")));
     g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kFadeTimeId, 1 }, "Fade Time", NormalisableRange<float> (5.0f, 500.0f, 0.0f, 0.5f), 50.0f, juce::AudioParameterFloatAttributes().withLabel ("ms")));
     g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kTemperatureId, 1 }, "Temperature", NormalisableRange<float> (-20.0f, 40.0f), 20.0f, juce::AudioParameterFloatAttributes().withLabel ("C")));

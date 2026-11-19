@@ -141,7 +141,7 @@ Global (after the shared counts, before everything per source), all automatable:
 | `temperature` | Temperature | −20..40 °C, 20 |
 | `distanceLaw`, `distancePower`, `distanceDb`, `minDistance` | Distance law, exponent q, dB per m k, minimum distance | inverse; 1.0; 6 dB/m; 1 m |
 | `micPower`, `micPolarity` | Microphone exponent w, restrict polarity | 1; on |
-| `delayMode` | Delay | Relative / Absolute (Doppler) / Cross-fade |
+| `delayMode` | Delay | Relative smooth / Relative cross-fade / Absolute Doppler / Absolute cross-fade |
 | `directGain`, `refl1Gain`, `refl2Gain`, `outputGain` | Direct, 1st, 2nd order, output gain | dB |
 | `reflOrder` | Reflections | Off / 1st / 2nd order |
 | `absorb<wall><band>` (6 × 3) | Wall absorption | % |
@@ -243,7 +243,7 @@ changing delay), 4.1 (lobes on the pad; microphone setups; the coordinates start
 ## 7e. What milestone 4 turned out like
 
 - **Performance**: the changing delay is read in runs of constant integer drift (contiguous input, smoothly changing weights), which the compiler vectorises, and the per-block work only covers the sources in use and the images that exist or fade out. Release, 512-sample blocks at 48 kHz: 64 x 64 direct sound moving 6.5 -> 2.7 ms; 8 x 8 with 2nd-order reflections moving 2.6 -> 0.94 ms; 16 x 16 moving 10 -> 3.4 ms.
-- **Cross-fade mode** (3.3): `delayRender` (Smooth / Cross-fade), `fadeThreshold`, `fadeTime`. The fade is linear (the two taps' weights ramp linearly, which the tap's gain ramp does exactly); the cosine and other envelopes of the manual were not done. As in j.vimic~, changes during a fade wait for its end. With a source that moves all the time the cross-fade mode gives a series of fades and on average the same Doppler shift as the Smooth mode (so "no Doppler"
+- **Cross-fade mode** (3.3): `fadeThreshold`, `fadeTime` and one four-way `delayMode` (what the delay is, relative or absolute, times how a change of it is rendered, smoothly or by a cross-fade: the four combinations all differ, and j.vimic~ also has the two choices independently); first built as two menus, merged on request. The fade is linear (the two taps' weights ramp linearly, which the tap's gain ramp does exactly); the cosine and other envelopes of the manual were not done. As in j.vimic~, changes during a fade wait for its end. With a source that moves all the time the cross-fade mode gives a series of fades and on average the same Doppler shift as the Smooth mode (so "no Doppler"
   in the manual holds for movements smaller than the threshold and for jumps); I had described it too simply.
 - **Not done**: pitch of the microphones (a 3D axis), OSC aliases in ViMiC's own namespace, the optional intensity normalisation, a compact settings window (the long one scrolls). They are still open points below.
 

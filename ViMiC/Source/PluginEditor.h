@@ -11,6 +11,7 @@
 #include "ViMiCField.h"
 #include "tlos/SpatialEditor.h"
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -25,11 +26,13 @@ public:
     /// @name Access to the controls (used by the tests)
     /// @{
     juce::ComboBox& getDistanceLawBox() noexcept { return lawBox; }              ///< Inverse / Exponential.
-    juce::ComboBox& getDelayModeBox() noexcept { return delayBox; }              ///< Relative / Absolute.
-    juce::ComboBox& getDelayRenderBox() noexcept { return renderBox; }           ///< Smooth / Cross-fade.
+    juce::ComboBox& getDelayModeBox() noexcept { return delayBox; }              ///< The four delay modes.
     juce::ToggleButton& getPolarityButton() noexcept { return polarityButton; }  ///< Restrict the polarity.
     juce::ComboBox& getReflectionBox() noexcept { return reflectionBox; }        ///< Off / 1st order / 2nd order.
     AbsorptionPanel& getAbsorptionPanel() noexcept { return absorptionPanel; }   ///< The absorption of the walls.
+    /** Enables the fade threshold and fade time sliders if the delay mode uses cross-fades (the menu and a 5 Hz timer call this, so that a change by the host is followed too). */
+    void updateFadeSliders();
+
     /** @return The slider of the parameter with this ID (see vimic::params), or nullptr. */
     juce::Slider* getSlider (const juce::String& parameterId) noexcept;
     /// @}
@@ -38,11 +41,19 @@ private:
     /** Adds a slider row for a parameter, with its text in the given unit and number of decimals. */
     void addSliderRow (const juce::String& caption, const juce::String& parameterId, const juce::String& suffix, int decimals, const juce::String& tooltip);
 
+    /** Calls updateFadeSliders() by a timer. */
+    struct FadeTimer final : public juce::Timer
+    {
+        std::function<void()> callback;   ///< What to call.
+        /** Calls the callback. */
+        void timerCallback() override { if (callback) callback(); }
+    };
+
     ViMiCAudioProcessor& vimicProcessor;       ///< The processor this editor belongs to.
+    FadeTimer fadeTimer;                       ///< Keeps the fade sliders in step with the delay mode.
 
     juce::ComboBox lawBox;                     ///< Distance law.
     juce::ComboBox delayBox;                   ///< Delay mode.
-    juce::ComboBox renderBox;                  ///< How a change of delay is rendered.
     juce::ToggleButton polarityButton;         ///< Restrict polarity.
     juce::ComboBox reflectionBox;              ///< The reflection order.
     AbsorptionPanel absorptionPanel;           ///< The absorption of the walls.
@@ -50,7 +61,6 @@ private:
     std::vector<juce::String> sliderIds;                                                 ///< The parameter ID of each slider.
     std::vector<std::unique_ptr<juce::SliderParameterAttachment>> sliderAttachments;     ///< Tie the sliders to their parameters.
     std::unique_ptr<juce::ComboBoxParameterAttachment> lawAttachment;     ///< Ties the distance law menu to its parameter.
-    std::unique_ptr<juce::ComboBoxParameterAttachment> renderAttachment;  ///< Ties the delay change menu to its parameter.
     std::unique_ptr<juce::ComboBoxParameterAttachment> reflectionAttachment;   ///< Ties the reflection order menu to its parameter.
     std::unique_ptr<juce::ComboBoxParameterAttachment> delayAttachment;   ///< Ties the delay mode menu to its parameter.
     std::unique_ptr<juce::ButtonParameterAttachment> polarityAttachment;                 ///< Ties the toggle to its parameter.

@@ -191,8 +191,8 @@ static void testParameterOrder()
     CHECK (std::abs (getParam (p, vimic::params::kTemperatureId) - 20.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kDistancePowerId) - 1.0f) < 1e-4f);
     CHECK (std::abs (getParam (p, vimic::params::kMinDistanceId) - 1.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kSourceHeightId) - 1.5f) < 1e-4f);
     CHECK (std::abs (getParam (p, vimic::params::micPatternId (7)) - 0.5f) < 1e-4f && getParam (p, vimic::params::kMicPolarityId) > 0.5f);
-    CHECK (p.getDelayMode() == vimic::params::DelayMode::Relative && p.getDelayRender() == vimic::params::DelayRender::Smooth);
-    CHECK (idOf (3 + vimic::params::DelayRenderIndex) == vimic::params::kDelayRenderId && idOf (3 + vimic::params::FadeThreshold) == vimic::params::kFadeThresholdId && idOf (3 + vimic::params::FadeTime) == vimic::params::kFadeTimeId);
+    CHECK (p.getDelayMode() == vimic::params::DelayMode::RelativeSmooth);
+    CHECK (idOf (3 + vimic::params::FadeThreshold) == vimic::params::kFadeThresholdId && idOf (3 + vimic::params::FadeTime) == vimic::params::kFadeTimeId);
 
     // What ViMiC tells the shared code.
     CHECK (p.getOutputNoun() == "Microphone" && ! p.usesSpread() && ! p.usesOutsideRolloff() && ! p.supportsVirtualSpeakers());
@@ -256,7 +256,7 @@ static void testGainsAndDelays()
     CHECK (std::abs (c1 - (2.0 + (5.0 - 1.0) / c * 48000.0)) < 0.02);
 
     // Absolute delays: the full time of flight (and the plugin reports a latency of 2 samples).
-    setParam (p, vimic::params::kDelayModeId, 1.0f);
+    setParam (p, vimic::params::kDelayModeId, 2.0f);                // absolute, Doppler
     out = impulseResponse (p, 1, 2, 4096);
     const double d0 = centroid (out, 0, sum0), d1 = centroid (out, 1, sum1);
     CHECK (std::abs (d0 - (2.0 + 1.0 / c * 48000.0)) < 0.02 && std::abs (d1 - (2.0 + 5.0 / c * 48000.0)) < 0.02);
@@ -628,7 +628,7 @@ static void testMovingSource()
         ViMiCAudioProcessor p;
         CHECK (configure (p, 1, 1, 256));
         placeMic (p, 0, 0.0f, 0.0f, 0.0f, 1.0f);
-        setParam (p, vimic::params::kDelayModeId, absolute ? 1.0f : 0.0f);
+        setParam (p, vimic::params::kDelayModeId, absolute ? 2.0f : 0.0f);                // Absolute, Doppler or Relative, smooth
         juce::MidiBuffer midi;
         juce::AudioBuffer<float> buf (1, 256);
 
@@ -672,6 +672,52 @@ static void testMovingSource()
     CHECK (stepAbsolute < 2.0 * std::numbers::pi * 0.02 * 1.1 && stepRelative < 2.0 * std::numbers::pi * 0.02 * 1.1);   // no jumps (gain ramps are slow)
 }
 
+/** The four delay modes: relative or absolute (what the delay is) and smooth or cross-fade (how a change of it is rendered). */
+static void testDelayModes()
+{
+    using vimic::params::DelayMode;
+    CHECK (vimic::params::isAbsolute (DelayMode::AbsoluteDoppler) && vimic::params::isAbsolute (DelayMode::AbsoluteCrossFade));
+    CHECK (! vimic::params::isAbsolute (DelayMode::RelativeSmooth) && ! vimic::params::isAbsolute (DelayMode::RelativeCrossFade));
+    CHECK (vimic::params::isCrossFade (DelayMode::RelativeCrossFade) && vimic::params::isCrossFade (DelayMode::AbsoluteCrossFade));
+    CHECK (! vimic::params::isCrossFade (DelayMode::RelativeSmooth) && ! vimic::params::isCrossFade (DelayMode::AbsoluteDoppler));
+
+    ViMiCAudioProcessor p;
+    CHECK (configure (p, 1, 2, 4096));
+    placeMic (p, 0, 2.0f, 0.0f, 0.0f, 1.0f);
+    placeMic (p, 1, -2.0f, 0.0f, 0.0f, 1.0f);
+    placeSource (p, 0, 3.0f, 0.0f);
+    p.refreshLayout();
+    const double c = vimic::speedOfSound (20.0);
+
+    // Every mode, with a settled source: the same delays for the two smooth/cross-fade variants of relative and of absolute.
+    for (int mode = 0; mode < 4; ++mode)
+    {
+        setParam (p, vimic::params::kDelayModeId, (float) mode);
+        CHECK (static_cast<int> (p.getDelayMode()) == mode);
+        auto out = impulseResponse (p, 1, 2, 4096);
+        double s0 = 0.0, s1 = 0.0;
+        const double d0 = centroid (out, 0, s0), d1 = centroid (out, 1, s1);
+        const bool absolute = mode >= 2;
+        CHECK (std::abs (d0 - (2.0 + (absolute ? 1.0 / c * 48000.0 : 0.0))) < 0.02);
+        CHECK (std::abs (d1 - (2.0 + (absolute ? 5.0 / c * 48000.0 : 4.0 / c * 48000.0))) < 0.02);
+        CHECK (std::abs (s0 - 1.0) < 1e-3 && std::abs (s1 - 0.2) < 1e-3);
+    }
+
+    // The two Relative modes and the two Absolute ones differ in how a move is rendered: a small move changes the delay smoothly, or not at all (held) in cross-fade.
+    const auto moved = [&] (int mode)
+    {
+        setParam (p, vimic::params::kDelayModeId, (float) mode);
+        placeSource (p, 0, 3.0f, 0.0f);
+        impulseResponse (p, 1, 2, 4096);
+        placeSource (p, 0, 3.0f, 0.3f);                          // 30 cm to the side: the delays change by 0.1 ms and less, below the fade threshold
+        auto out = impulseResponse (p, 1, 2, 4096);
+        double sum = 0.0;
+        return centroid (out, 1, sum);
+    };
+    CHECK (std::abs (moved (0) - moved (1)) > 0.005);                // smooth follows the move, cross-fade holds the old delay
+    CHECK (std::abs (moved (2) - moved (3)) > 0.005);
+}
+
 /** The cross-fade delay mode: a delay stays as it is until the new one is further away than the threshold, then fades to it (no discontinuity); a continuous movement
     keeps the Doppler pitch on average; a path that was silent starts at its new delay. */
 static void testCrossFade()
@@ -680,10 +726,9 @@ static void testCrossFade()
     CHECK (configure (p, 1, 1, 256));
     const double c = vimic::speedOfSound (20.0);
     placeMic (p, 0, 0.0f, 0.0f, 0.0f, 1.0f);
-    setParam (p, vimic::params::kDelayModeId, 1.0f);                // absolute: the delay is the true time of flight
-    setParam (p, vimic::params::kDelayRenderId, 1.0f);              // cross-fade
+    setParam (p, vimic::params::kDelayModeId, 3.0f);                // Absolute, cross-fade: the delay is the true time of flight, held until it fades
     setParam (p, vimic::params::kFadeTimeId, 20.0f);
-    CHECK (p.getDelayRender() == vimic::params::DelayRender::CrossFade);
+    CHECK (p.getDelayMode() == vimic::params::DelayMode::AbsoluteCrossFade && vimic::params::isCrossFade (p.getDelayMode()) && vimic::params::isAbsolute (p.getDelayMode()));
     CHECK (std::abs (getParam (p, vimic::params::kFadeThresholdId) - 0.5f) < 1e-4f);
     placeSource (p, 0, 3.0f, 0.0f);
     p.refreshLayout();
@@ -714,8 +759,7 @@ static void testCrossFade()
     placeMic (q, 0, 0.0f, 0.0f, 0.0f, 1.0f);
     setParam (q, vimic::params::kMinDistanceId, 0.1f);
     setParam (q, vimic::params::kDistancePowerId, 0.0f);            // no distance gain: only the delays differ
-    setParam (q, vimic::params::kDelayModeId, 1.0f);
-    setParam (q, vimic::params::kDelayRenderId, 1.0f);
+    setParam (q, vimic::params::kDelayModeId, 3.0f);                // Absolute, cross-fade
     setParam (q, vimic::params::kFadeTimeId, 50.0f);                // 2400 samples: about 9 blocks
     placeSource (q, 0, 3.0f, 0.0f);
     q.refreshLayout();
@@ -753,8 +797,7 @@ static void testCrossFade()
     ViMiCAudioProcessor r;
     CHECK (configure (r, 1, 1, 256));
     placeMic (r, 0, 0.0f, 0.0f, 0.0f, 1.0f);
-    setParam (r, vimic::params::kDelayModeId, 1.0f);
-    setParam (r, vimic::params::kDelayRenderId, 1.0f);
+    setParam (r, vimic::params::kDelayModeId, 3.0f);                // Absolute, cross-fade
     juce::AudioBuffer<float> sine (1, 256);
     double largestStep = 0.0;
     float previous = 0.0f;
@@ -776,7 +819,7 @@ static void testCrossFade()
     CHECK (largestStep < 2.0 * 2.0 * std::numbers::pi * 0.02 * 1.1);
 
     // Switching the delay change mode restarts the ramps (no sweep from one to the other) and the output stays finite.
-    setParam (r, vimic::params::kDelayRenderId, 0.0f);
+    setParam (r, vimic::params::kDelayModeId, 2.0f);                // Absolute, Doppler (smooth)
     for (int block = 0; block < 10; ++block)
     {
         placeSource (r, 0, 0.0f, 5.0f + 0.2f * (float) block);
@@ -797,7 +840,7 @@ static void testStateRoundTrip()
     setParam (a, vimic::params::kRoomWidthId, 12.5f);
     setParam (a, vimic::params::kReflOrderId, 2.0f);
     setParam (a, vimic::params::absorptionId (vimic::Rear, 2), 77.0f);
-    setParam (a, vimic::params::kDelayModeId, 1.0f);
+    setParam (a, vimic::params::kDelayModeId, 3.0f);
     setParam (a, vimic::params::kTemperatureId, 9.0f);
     a.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Polar);
 
@@ -809,7 +852,7 @@ static void testStateRoundTrip()
     CHECK (configure (b, 4, 6, 256)); // must not overwrite restored values with the defaults
     CHECK (std::abs (getParam (b, tlos::params::speakerId (3, 'x')) - 1.25f) < 1e-4f);
     CHECK (std::abs (getParam (b, vimic::params::micYawId (3)) - 33.0f) < 1e-3f && std::abs (getParam (b, vimic::params::micPatternId (3)) - 0.7f) < 1e-4f);
-    CHECK (b.getDelayMode() == vimic::params::DelayMode::Absolute && std::abs (getParam (b, vimic::params::kTemperatureId) - 9.0f) < 1e-3f);
+    CHECK (b.getDelayMode() == vimic::params::DelayMode::AbsoluteCrossFade && std::abs (getParam (b, vimic::params::kTemperatureId) - 9.0f) < 1e-3f);
     CHECK (std::abs (getParam (b, vimic::params::kRoomWidthId) - 12.5f) < 1e-3f && b.getRoomSettings().order == 2 && std::abs (getParam (b, vimic::params::absorptionId (vimic::Rear, 2)) - 77.0f) < 1e-2f);
     CHECK (std::abs (getParam (b, vimic::params::srcYawId (2)) + 70.0f) < 1e-3f && std::abs (getParam (b, vimic::params::srcPatternId (2)) - 0.4f) < 1e-4f && getParam (b, vimic::params::kSourcePowerId) == 4.0f);
     CHECK (b.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);
@@ -820,7 +863,7 @@ static void testStateRoundTrip()
     juce::AudioProcessor::copyXmlToBinary (foreign, foreignState);
     ViMiCAudioProcessor c;
     c.setStateInformation (foreignState.getData(), (int) foreignState.getSize());
-    CHECK (c.getDelayMode() == vimic::params::DelayMode::Relative);
+    CHECK (c.getDelayMode() == vimic::params::DelayMode::RelativeSmooth);
 }
 
 /** The yaw and the pattern are in the files of the microphone layout, and a file without them leaves them alone (the rule of the other columns). */
@@ -1132,6 +1175,7 @@ int main (int argc, char** argv)
     testPatternAndYaw();
     testSourceDirectivity();
     testHeights();
+    testDelayModes();
     testCrossFade();
     testReflections();
     testReflectionBank();
