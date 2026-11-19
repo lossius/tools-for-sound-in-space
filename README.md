@@ -104,8 +104,7 @@ direction (**yaw**, degrees counter-clockwise from the front) and a **pattern**;
   the microphones are rendered, so there is no latency to speak of and a moving source gives no pitch change but the inter-channel time differences are intact.
   **Absolute (Doppler)**: the true time of flight, so a moving source is shifted in pitch. The delay is read with a 4-point interpolation and changes smoothly,
   never by a jump. Switching the mode may click. The plugin reports a latency of 2 samples (the shortest delay of the interpolation).
-- **Direct sound gain** and **Output gain** (dB) set the levels. All of this is in the settings window (and is host parameters, so it can be automated); the positions are shown
-  in azimuth and distance by default (see *Coordinates*).
+- **Direct sound gain** and **Output gain** (dB) set the levels. All of this is in the settings window (and is host parameters, so it can be automated).
 - **Source directivity**: every source has a **Yaw** and a **Pattern** too (1 = omni, the default; 0.5 = cardioid, 0 = figure-8), set in the source table, in the source files (`yaw`, `pattern`) or as host parameters. A source that radiates more in one direction is louder in the microphones it faces: its gain is
   `(a + (1 - a) cos φ)^w`, where φ is the angle between the source's yaw and the direction to the microphone and `w` the **Source exponent**; a source never radiates in anti-phase (negative values are 0). The default layout turns every source to face the centre.
   On the pad such a source shows its radiation lobe and an arrow along its yaw. (The manual's "center" and "follow" orientation modes and a free-hand directivity curve are not done.)
@@ -126,7 +125,7 @@ The host parameters, the position files and the pad always use x and y in metres
 setting (**Coordinates** in the settings window, also in the table windows): **Cartesian** (x, y) or **Polar** (azimuth in degrees,
 counter-clockwise from the front, so +90 is on the left; and distance in metres). In polar mode the table columns are Azimuth and Distance, typing
 one keeps the other, a source at the centre keeps its last azimuth, the pad draws distance rings and azimuth spokes instead of the grid,
-and the tooltip and the label that follows a dragged source give azimuth and distance. TriPan and DistPan start in Cartesian, VecPan in Polar.
+and the tooltip and the label that follows a dragged source give azimuth and distance. TriPan, DistPan and ViMiC start in Cartesian, VecPan in Polar.
 Position files may give `az` and `dist` instead of `x` and `y` for an entry (`x` and `y` win if both are there); exports always write x and y.
 
 ## Undo

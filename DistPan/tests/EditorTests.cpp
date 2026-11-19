@@ -184,6 +184,7 @@ int main (int argc, char** argv)
 
     // The window is called DistPan in the table windows, and exports are named after the plugin.
     auto& table = editor->showTableWindow (tlos::io::Kind::Sources);
+    CHECK (! editor->showTableWindow (tlos::io::Kind::Speakers).getContent().getVirtualModeBox().isVisible());     // no virtual speakers here, so no menu for them
     CHECK (table.getName().startsWith ("DistPan"));
 
     if (argc > 1)

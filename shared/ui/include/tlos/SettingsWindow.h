@@ -61,7 +61,9 @@ public:
 
     /// @name Access to the controls (used by the tests)
     /// @{
-    juce::Slider& getRoomSlider() noexcept { return roomSlider; }              ///< Room size.
+    juce::Slider& getRoomSlider() noexcept { return roomSlider; }              ///< Room size (the size of the pad).
+    juce::Label& getRoomLabel() noexcept { return roomLabel; }                 ///< Caption of the room size slider (SpatialProcessor::getPadSizeCaption()).
+    juce::Label& getRoomHeader() noexcept { return roomHeader; }               ///< Heading of the first section (SpatialProcessor::getDisplaySectionTitle()).
     juce::ComboBox& getCoordinateBox() noexcept { return coordinateBox; }      ///< Cartesian / Polar.
     juce::Slider& getOutsideSlider() noexcept { return outsideSlider; }        ///< Outside rolloff.
     juce::ComboBox& getVirtualModeBox() noexcept { return virtualModeBox; }    ///< Auto / Manual / Off (plugins with virtual speakers).

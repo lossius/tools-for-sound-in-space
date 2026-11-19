@@ -215,7 +215,7 @@ private:
 
     juce::Label countLabel;            ///< "Number of sources" / "Number of speakers".
     juce::Slider countSlider;          ///< How many are in use.
-    juce::Label virtualLabel { {}, "Virtual speakers" };   ///< Caption of the virtual speaker menu (speakers window).
+    juce::Label virtualLabel { {}, "Virtual speakers" };   ///< Caption of the virtual speaker menu (speakers window of a plugin that has virtual speakers).
     juce::ComboBox virtualModeBox;     ///< Auto / Manual / Off (speakers window).
     juce::ComboBox coordinateBox;      ///< Cartesian / Polar (SpatialProcessor::getCoordinateMode()).
     std::unique_ptr<juce::TextButton> actionButton;   ///< The plugin's action on all speakers (SpatialProcessor::getSpeakerAction()), speakers window only.
@@ -227,6 +227,7 @@ private:
 
     int lastRows = 0;          ///< Row count at the last refresh().
     bool syncing = false;      ///< True while the controls are updated from the parameters.
+    bool hasVirtualMenu = false;   ///< Whether this window has the virtual speaker menu (the speakers window of a plugin that has virtual speakers).
     bool draggingCount = false; ///< True while the count slider is dragged.
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PositionTableContent)

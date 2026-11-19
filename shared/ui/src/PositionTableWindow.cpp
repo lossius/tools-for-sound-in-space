@@ -560,7 +560,8 @@ PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
     };
     addAndMakeVisible (countSlider);
 
-    if (! sources)
+    hasVirtualMenu = ! sources && processor.supportsVirtualSpeakers();
+    if (hasVirtualMenu)
     {
         virtualLabel.setJustificationType (juce::Justification::centredRight);
         virtualLabel.setColour (juce::Label::textColourId, juce::Colours::white.withAlpha (0.85f));
@@ -623,7 +624,8 @@ PositionTableContent::PositionTableContent (SpatialProcessor& p, io::Kind k)
     roomSlider.setSkewFactorFromMidPoint (20.0);
     roomSlider.textFromValueFunction = [] (double v) { return juce::String (v, 1) + " m"; };
     roomSlider.valueFromTextFunction = [] (const juce::String& text) { return text.getDoubleValue(); };
-    roomSlider.setTooltip ("Half the width of the room in metres: how far the pad reaches. Positions typed here may lie beyond it (up to 100 m).");
+    roomLabel.setText (processor.getPadSizeCaption(), juce::dontSendNotification);
+    roomSlider.setTooltip (processor.getPadSizeTooltip());
     roomSlider.setValue (processor.getRoomHalfExtent(), juce::dontSendNotification);
     roomSlider.onValueChange = [this]
     {
@@ -651,7 +653,7 @@ const juce::String& PositionTableContent::countParameterId() const
 
 int PositionTableContent::getPreferredWidth() const
 {
-    const int firstRow = (kind == io::Kind::Sources ? 130 + 110 : 130 + 110 + 16 + 110 + 90)   // count, (virtual speaker menu)
+    const int firstRow = (hasVirtualMenu ? 130 + 110 + 16 + 110 + 90 : 130 + 110)               // count, (virtual speaker menu)
                        + 16 + kCoordinateBoxWidth;                                              // coordinates
     const int secondRow = 76 + 190 + (actionButton != nullptr ? 16 + kActionButtonWidth : 0);   // room size, (action)
     const int topBar = std::max (firstRow, secondRow);
@@ -691,7 +693,7 @@ void PositionTableContent::refresh()
     if (coordinateBox.getSelectedId() != wantedCoordinates)
         coordinateBox.setSelectedId (wantedCoordinates, juce::dontSendNotification);
 
-    if (! sources && virtualModeBox.getSelectedId() != (int) processor.getVirtualMode())
+    if (hasVirtualMenu && virtualModeBox.getSelectedId() != (int) processor.getVirtualMode())
         virtualModeBox.setSelectedId ((int) processor.getVirtualMode(), juce::dontSendNotification);
 
     // The virtual speaker table exists exactly while the virtual speakers can be edited by hand.
@@ -734,7 +736,7 @@ void PositionTableContent::resized()
     auto bar = area.removeFromTop (kTopBarHeight);
     countLabel.setBounds (bar.removeFromLeft (130));
     countSlider.setBounds (bar.removeFromLeft (110).reduced (0, 4));
-    if (kind == io::Kind::Speakers)
+    if (hasVirtualMenu)
     {
         bar.removeFromLeft (16);
         virtualLabel.setBounds (bar.removeFromLeft (110));

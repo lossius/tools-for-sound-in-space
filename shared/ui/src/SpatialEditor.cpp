@@ -52,7 +52,8 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
     setUpModeBox (sourcesModeBox,  "source",  owner.canEditSources(),  [this] (bool e) { owner.setSourcesEditable (e); });
     setUpModeBox (speakersModeBox, "speaker", owner.canEditSpeakers(), [this] (bool e) { owner.setSpeakersEditable (e); });
 
-    settingsButton.setTooltip ("Open the settings: room size, level outside the speakers, virtual speakers, the plugin's own settings and OSC.");
+    settingsButton.setTooltip (owner.supportsVirtualSpeakers() ? "Open the settings: room size, level outside the speakers, virtual speakers, the plugin's own settings and OSC."
+                                                               : "Open the settings: the size of the pad, the plugin's own settings and OSC.");
     settingsButton.onClick = [this] { toggleSettingsWindow(); };
     content.addAndMakeVisible (settingsButton);
 
@@ -125,7 +126,8 @@ SpatialEditor::SpatialEditor (SpatialProcessor& p, std::unique_ptr<FieldComponen
     sourcesTableButton.onClick = [this] { toggleTableWindow (Kind::Sources); };
     content.addAndMakeVisible (sourcesTableButton);
 
-    speakersTableButton.setTooltip ("Open or close a table with the x and y of every speaker (and of the manual virtual speakers), where the values can be typed in");
+    speakersTableButton.setTooltip (owner.supportsVirtualSpeakers() ? "Open or close a table with the x and y of every speaker (and of the manual virtual speakers), where the values can be typed in"
+                                                                    : "Open or close a table with the position and the other values of every " + noun + ", where they can be typed in");
     speakersTableButton.onClick = [this] { toggleTableWindow (Kind::Speakers); };
     content.addAndMakeVisible (speakersTableButton);
 
@@ -313,7 +315,7 @@ juce::Result SpatialEditor::importPositionsFrom (io::Kind kind, const juce::File
             text << ", trim/mute/solo/exclude for " << report.calibrationApplied;
         if (report.groupCount > 0)
             text << ", " << report.groupCount << (report.groupCount == 1 ? " group" : " groups");
-        if (report.virtualMode)
+        if (report.virtualMode && owner.supportsVirtualSpeakers())
         {
             switch (*report.virtualMode)
             {

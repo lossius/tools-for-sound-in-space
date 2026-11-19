@@ -54,9 +54,9 @@ SettingsContent::SettingsContent (SpatialProcessor& p) : processor (p), oscPanel
     roomSlider.setSkewFactorFromMidPoint (20.0);
     roomSlider.textFromValueFunction = [] (double v) { return juce::String (v, 1) + " m"; };
     roomSlider.valueFromTextFunction = [] (const juce::String& text) { return text.getDoubleValue(); };
-    roomSlider.setTooltip ("Half the width of the room in metres. The pad shows this much on each side of you, and sources and "
-                           "speakers stop at its edge when dragged. Positions beyond it are still possible (tables, files, host "
-                           "automation, up to 100 m) and sound as usual.");
+    roomHeader.setText (processor.getDisplaySectionTitle(), juce::dontSendNotification);
+    roomLabel.setText (processor.getPadSizeCaption(), juce::dontSendNotification);
+    roomSlider.setTooltip (processor.getPadSizeTooltip());
     roomSlider.setValue (processor.getRoomHalfExtent(), juce::dontSendNotification);
     roomSlider.onValueChange = [this]
     {

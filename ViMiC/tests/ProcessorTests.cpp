@@ -196,7 +196,8 @@ static void testParameterOrder()
     // What ViMiC tells the shared code.
     CHECK (p.getOutputNoun() == "Microphone" && ! p.usesSpread() && ! p.usesOutsideRolloff() && ! p.supportsVirtualSpeakers());
     CHECK (p.getSpeakerColumns().size() == 2 && p.getSpeakerColumns()[0].attribute == "yaw" && p.getSpeakerColumns()[1].attribute == "pattern");
-    CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);
+    CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Cartesian);          // like the other plugins
+    CHECK (p.getPadSizeCaption() == "Pad size" && p.getDisplaySectionTitle() == "Pad");
     CHECK (p.getSourceColumns().size() == 2 && p.getSourceColumns()[0].attribute == "yaw" && p.getSourceColumns()[1].attribute == "pattern" && p.getSourceColumns()[1].defaultValue == 1.0);
     CHECK (p.getLatencySamples() == 2 && p.getOscParameters().size() == vimic::params::GlobalCount);
     CHECK (p.getOscParameters()[vimic::params::RoomWidth].address == "/vimic/roomwidth" && p.getOscParameters()[vimic::params::AbsorptionFirst].address == "/vimic/absorbleftlow");
@@ -684,7 +685,7 @@ static void testStateRoundTrip()
     setParam (a, vimic::params::absorptionId (vimic::Rear, 2), 77.0f);
     setParam (a, vimic::params::kDelayModeId, 1.0f);
     setParam (a, vimic::params::kTemperatureId, 9.0f);
-    a.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Cartesian);
+    a.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Polar);
 
     juce::MemoryBlock state;
     a.getStateInformation (state);
@@ -697,7 +698,7 @@ static void testStateRoundTrip()
     CHECK (b.getDelayMode() == vimic::params::DelayMode::Absolute && std::abs (getParam (b, vimic::params::kTemperatureId) - 9.0f) < 1e-3f);
     CHECK (std::abs (getParam (b, vimic::params::kRoomWidthId) - 12.5f) < 1e-3f && b.getRoomSettings().order == 2 && std::abs (getParam (b, vimic::params::absorptionId (vimic::Rear, 2)) - 77.0f) < 1e-2f);
     CHECK (std::abs (getParam (b, vimic::params::srcYawId (2)) + 70.0f) < 1e-3f && std::abs (getParam (b, vimic::params::srcPatternId (2)) - 0.4f) < 1e-4f && getParam (b, vimic::params::kSourcePowerId) == 4.0f);
-    CHECK (b.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Cartesian);
+    CHECK (b.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Polar);
 
     // A VecPan session is not a ViMiC session.
     juce::XmlElement foreign ("VecPan");

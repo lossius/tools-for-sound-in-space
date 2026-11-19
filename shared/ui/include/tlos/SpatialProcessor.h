@@ -287,6 +287,19 @@ public:
     /** @return The OSC control (the settings panel and the tests use it). */
     OscControl& getOscControl() noexcept { return *osc; }
 
+    /** @return The title of the settings window's first section, which holds the pad size and the coordinate mode: "Room" (the default). */
+    virtual juce::String getDisplaySectionTitle() const { return "Room"; }
+
+    /** @return The caption of the slider for the size of the pad (see getRoomHalfExtent()): "Room size" (the default). A plugin that has a room of its own (ViMiC) calls it something else. */
+    virtual juce::String getPadSizeCaption() const { return "Room size"; }
+
+    /** @return The tooltip of that slider. */
+    virtual juce::String getPadSizeTooltip() const
+    {
+        return "Half the width of the room in metres. The pad shows this much on each side of you, and sources and speakers stop at its edge when dragged. "
+               "Positions beyond it are still possible (tables, files, host automation, up to 100 m) and sound as usual.";
+    }
+
     /** @return Whether the plugin uses virtual (imaginary) speakers (it was created with their parameters). If not
         (the default), the editor has no menu for them and getVirtualMode() is always Off. */
     virtual bool supportsVirtualSpeakers() const noexcept { return hasVirtualParameters; }

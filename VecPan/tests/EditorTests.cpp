@@ -139,6 +139,7 @@ int main (int argc, char** argv)
 
     // The table windows are named after the plugin, and show azimuth and distance.
     auto& table = editor->showTableWindow (tlos::io::Kind::Sources);
+    CHECK (! editor->showTableWindow (tlos::io::Kind::Speakers).getContent().getVirtualModeBox().isVisible());     // no virtual speakers here, so no menu for them
     CHECK (table.getName().startsWith ("VecPan"));
 
     // The speakers table window has the same "Place speakers on circle" button.

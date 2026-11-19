@@ -85,7 +85,8 @@ int main (int argc, char** argv)
         auto& window = editor->showSettingsWindow();
         CHECK (window.isVisible() && window.getName() == "ViMiC - Settings");
         CHECK (! editor->getOutsideSlider().isVisible() && ! editor->getVirtualModeBox().isVisible());
-        CHECK (editor->getSettingsContent().getCoordinateBox().getSelectedId() == 2);
+        CHECK (editor->getSettingsContent().getCoordinateBox().getSelectedId() == 1);                 // Cartesian, as in the other plugins
+        CHECK (editor->getSettingsContent().getRoomLabel().getText() == "Pad size" && editor->getSettingsContent().getRoomHeader().getText() == "Pad");     // the room of the reflections is further down
 
         auto& content = editor->getSettingsContent();
         CHECK (editor->getDistanceLawBox().isVisible() && editor->getDistanceLawBox().getParentComponent() == &content);
@@ -177,6 +178,8 @@ int main (int argc, char** argv)
         auto& sources = editor->showTableWindow (tlos::io::Kind::Sources);
         auto& speakers = editor->showTableWindow (tlos::io::Kind::Speakers);
         CHECK (speakers.getName() == "ViMiC - Microphones" && sources.getName() == "ViMiC - Sources");
+        CHECK (! speakers.getContent().getVirtualModeBox().isShowing() && ! speakers.getContent().getVirtualModeBox().isVisible());          // no virtual speakers in ViMiC
+        CHECK (speakers.getContent().getVirtualTable() == nullptr);
         auto& sourceHeader = sources.getContent().getMainTable().getTable().getHeader();
         auto& micHeader = speakers.getContent().getMainTable().getTable().getHeader();
         CHECK (sourceHeader.getNumColumns (true) == 9 && micHeader.getNumColumns (true) == 9);        // sources: no Spread, but Yaw and Pattern; microphones: Yaw and Pattern
@@ -229,7 +232,10 @@ int main (int argc, char** argv)
     field.dragTo (field.toView (3.0, -4.0));
     field.release();
     CHECK (std::abs (value (p, tlos::params::sourceId (0, 'x')) - 3.0f) < 0.2f && std::abs (value (p, tlos::params::sourceId (0, 'y')) + 4.0f) < 0.2f);
-    CHECK (field.positionText ({ true, 0 }).startsWith ("azimuth") && field.nameOf ({ false, 2 }) == "Microphone 3");
+    CHECK (field.positionText ({ true, 0 }).startsWith ("x ") && field.nameOf ({ false, 2 }) == "Microphone 3");
+    p.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Polar);
+    CHECK (field.positionText ({ true, 0 }).startsWith ("azimuth"));
+    p.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Cartesian);
 
     // The pickup lobes: the area follows the pattern (omni a circle, cardioid 3/8 of it).
     const double circle = std::numbers::pi * 100.0 * 100.0;
@@ -247,7 +253,7 @@ int main (int argc, char** argv)
         juce::Graphics g (image);
         editor->paintEntireComponent (g, true);
     }
-    p.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Polar);
+    p.setCoordinateMode (tlos::SpatialProcessor::CoordinateMode::Cartesian);
 
     // The room is drawn on the pad while the reflections are on (paints without a problem, in both coordinate modes).
     setParam (p, vimic::params::kReflOrderId, 1.0f);

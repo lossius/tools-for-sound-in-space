@@ -209,7 +209,7 @@ Each milestone is shippable and, as with the other plugins, tested numerically (
 ## 7b. What milestone 1 turned out like
 
 Implemented as designed in 3.2 and 3.3 (direct path, both distance laws, microphone pattern and polarity, yaw, relative and absolute delays with the 4-point interpolated, smoothly
-changing delay), 4.1 (lobes on the pad; microphone setups; polar coordinates by default) and 4.2 (the global parameters of the table, `spk<N>yaw`, `spk<N>pattern`) and 6 (shared changes 1, 3,
+changing delay), 4.1 (lobes on the pad; microphone setups; the coordinates start Cartesian like TriPan and DistPan, after trying it in Reaper) and 4.2 (the global parameters of the table, `spk<N>yaw`, `spk<N>pattern`) and 6 (shared changes 1, 3,
 4, 5 in part, 6 and 7; the per-source parameters of change 2 wait for milestone 2). Differences and additions:
 - The shared "Speakers" wording became a hook (`getOutputNoun`); the host parameters say "Microphone N ...".
 - No room on the pad and no room parameters yet (milestone 3): the room size was not needed for the direct sound.
@@ -217,6 +217,7 @@ changing delay), 4.1 (lobes on the pad; microphone setups; polar coordinates by 
 - The cross-fade mode is not there (as planned: it is last). Switching between Relative and Absolute restarts the ramps and may click.
 - A path that is silent starts at its new delay, so unmuting a microphone or bringing a source close does not sweep the delay.
 - Cost, Release, 64 x 64, 512-sample blocks at 48 kHz: 0.6 ms static, about 6 ms with every source moving (a scalar interpolation per path and sample). Milestone 4 has the performance work.
+- The shared "Room size" slider (the extent of the pad) is called "Pad size" in ViMiC, in a section "Pad", so that it is not mistaken for the room of the reflections (width, depth and height are set under Room and early reflections).
 - The settings window has twelve ViMiC rows, which makes it tall; a better arrangement (sections or tabs) can wait for the room rows.
 
 ## 7c. What milestone 2 turned out like

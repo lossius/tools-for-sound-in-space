@@ -72,8 +72,16 @@ public:
     bool usesSpread() const override { return false; }
     /** @return false: the level of ViMiC follows its distance law, not the outside rolloff. */
     bool usesOutsideRolloff() const override { return false; }
-    /** @return Polar: positions as seen from the listener, like the microphones' yaw. */
-    CoordinateMode defaultCoordinateMode() const override { return CoordinateMode::Polar; }
+    /** @return "Display": the first section of the settings window is about the pad, not about the room (which has its own section). */
+    juce::String getDisplaySectionTitle() const override { return "Pad"; }
+    /** @return "Pad size": the size of the area the pad shows, not the room of the reflections. */
+    juce::String getPadSizeCaption() const override { return "Pad size"; }
+    /** @return What the pad size is, and that the room is set below. */
+    juce::String getPadSizeTooltip() const override
+    {
+        return "How far the pad reaches: half the width of the area it shows, in metres. Sources and microphones stop at its edge when dragged "
+               "(positions beyond it are still possible from the tables, files and the host, up to 100 m). The room of the reflections is set below, under Room and early reflections.";
+    }
 
     /** @return The settings of the model as they are now. Safe to call from any thread. */
     vimic::PathSettings getPathSettings() const noexcept;
