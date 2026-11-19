@@ -448,6 +448,8 @@ The SDK's `LICENSE.txt` offers it under Avid's commercial licence or under GPLv3
 AGPLv3, but read the licence yourself before distributing an AAX build.
 
 ## Signing and notarization (macOS)
+The whole release (build, tests, signing, notarization, GitHub release) is automated: see [RELEASING.md](RELEASING.md). The details below are what its scripts do.
+
 Unsigned downloads are blocked by Gatekeeper, so releases are signed with a **Developer ID
 Application** certificate (not "Apple Development") and notarized.
 

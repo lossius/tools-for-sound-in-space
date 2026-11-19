@@ -148,10 +148,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Only the Windows files: the signed and notarized macOS zips are made on the maintainer's Mac by scripts/release.sh, which creates the
+      # release (with those zips) before this job adds the Windows ones to it. The unsigned macOS zips stay available as build artifacts.
       - uses: actions/download-artifact@v4
         with:
+          name: Windows
           path: dist
-          merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*.zip
