@@ -7,6 +7,7 @@
 #pragma once
 
 #include "tlos/Vec2.h"
+#include "vimic/Room.h"
 
 namespace vimic
 {
@@ -28,31 +29,38 @@ struct PathSettings
     int sourcePower = 1;                      ///< The exponent of the source pattern (0..9).
     bool restrictPolarity = true;             ///< Whether the pattern may not give negative (anti-phase) gains.
     double temperatureCelsius = 20.0;         ///< Room temperature, which sets the speed of sound.
-    double sourceHeight = 1.5;                ///< Height of every source above the plane of the positions, in metres.
-    double micHeight = 1.5;                   ///< Height of every microphone, in metres.
 };
 
-/** A virtual microphone in the plane. */
+/** The unit vector of an axis that points in the direction yaw (counter-clockwise from the front, +y) and pitch (up from the horizontal plane):
+    `(-sin yaw cos pitch, cos yaw cos pitch, sin pitch)`. With a pitch of 0 it lies in the plane, as the azimuths do.
+    @param yaw    The yaw in radians. @param pitch  The pitch in radians. */
+Vec3 axisOf (double yaw, double pitch) noexcept;
+
+/** A virtual microphone: a position in the plane with a height, and the direction of its axis. */
 struct Microphone
 {
-    tlos::Vec2 position;       ///< Position in metres.
+    tlos::Vec2 position;       ///< Position in the plane in metres.
     double yaw = 0.0;          ///< Direction of its axis in radians, counter-clockwise from the front (+y), like azimuths.
     double pattern = 0.5;      ///< The ratio `a` of its pattern (1 omni, 0.5 cardioid, 0 figure-8).
+    double height = 1.5;       ///< Height above the floor in metres.
+    double pitch = 0.0;        ///< Tilt of its axis from the horizontal plane in radians (up is positive).
 };
 
-/** A sound source in the plane. */
+/** A sound source: a position in the plane with a height, and the direction in which it radiates most. */
 struct Source
 {
-    /** A source at the origin facing the front, radiating equally in every direction. */
+    /** A source at the origin, 1.5 m up, facing the front, radiating equally in every direction. */
     Source() = default;
 
-    /** A source with a position, a yaw and a pattern (explicit, so that `{ x, y }` is always a position of the omni overloads). */
-    explicit Source (tlos::Vec2 positionInMetres, double yawRadians = 0.0, double patternRatio = 1.0)
-        : position (positionInMetres), yaw (yawRadians), pattern (patternRatio) {}
+    /** A source with a position, a yaw, a pattern, a height and a pitch (explicit, so that `{ x, y }` is always a position of the omni overloads). */
+    explicit Source (tlos::Vec2 positionInMetres, double yawRadians = 0.0, double patternRatio = 1.0, double heightInMetres = 1.5, double pitchRadians = 0.0)
+        : position (positionInMetres), yaw (yawRadians), pattern (patternRatio), height (heightInMetres), pitch (pitchRadians) {}
 
-    tlos::Vec2 position;       ///< Position in metres.
+    tlos::Vec2 position;       ///< Position in the plane in metres.
     double yaw = 0.0;          ///< Direction in which it radiates most, in radians, counter-clockwise from the front (+y).
     double pattern = 1.0;      ///< The ratio `a` of its radiation pattern: 1 radiates equally in every direction (the default), 0.5 like a cardioid, 0 like a figure-8.
+    double height = 1.5;       ///< Height above the floor in metres.
+    double pitch = 0.0;        ///< Tilt of its axis from the horizontal plane in radians (up is positive).
 };
 
 /** Gain and time of flight of one path. */
@@ -75,9 +83,9 @@ double distanceGain (double distance, const PathSettings& settings) noexcept;
 double sourceDirectivity (double pattern, int power, double cosAngle) noexcept;
 
 /** The direct path from a source to a microphone: the length with the heights, the time of flight, and the gain from the distance law, the
-    microphone's pattern (the angle between its axis and the direction to the source; the axes lie in the plane) and the source's radiation pattern
+    microphone's pattern (the angle between its axis and the direction to the source, in 3D) and the source's radiation pattern
     (the angle between the source's axis and the direction to the microphone).
-    @param source    The source (in the plane; its height is settings.sourceHeight).
+    @param source    The source.
     @param mic       The microphone.
     @param settings  The settings of the model.
     @return          The result; gain 0 if a position is not finite. */

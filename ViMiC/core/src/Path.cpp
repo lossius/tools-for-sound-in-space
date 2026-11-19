@@ -12,6 +12,12 @@
 
 namespace vimic
 {
+Vec3 axisOf (double yaw, double pitch) noexcept
+{
+    const double horizontal = std::cos (pitch);
+    return { -std::sin (yaw) * horizontal, std::cos (yaw) * horizontal, std::sin (pitch) };
+}
+
 double speedOfSound (double temperatureCelsius) noexcept
 {
     const double t = std::isfinite (temperatureCelsius) ? std::clamp (temperatureCelsius, -40.0, 60.0) : 20.0;
@@ -47,14 +53,14 @@ PathResult computeDirectPath (const Source& source, const Microphone& mic, const
 
     const double dx = source.position.x - mic.position.x;
     const double dy = source.position.y - mic.position.y;
-    const double dz = settings.sourceHeight - settings.micHeight;
+    const double dz = source.height - mic.height;
     const double distance = std::sqrt (dx * dx + dy * dy + dz * dz);
 
-    // The axis of the microphone is (-sin yaw, cos yaw, 0): the same convention as azimuths.
-    const double cosAngle = distance > 1e-9 ? (-std::sin (mic.yaw) * dx + std::cos (mic.yaw) * dy) / distance : 1.0;
-
-    // The source's axis is (-sin yaw, cos yaw, 0) too; the direction from the source to the microphone is the opposite of (dx, dy, dz).
-    const double cosRadiation = distance > 1e-9 ? (std::sin (source.yaw) * dx - std::cos (source.yaw) * dy) / distance : 1.0;
+    // The microphone hears the sound from the direction of the source: the angle from its axis to (dx, dy, dz). The source radiates towards the microphone, the opposite
+    // direction: the angle from its axis to (-dx, -dy, -dz).
+    const auto micAxis = axisOf (mic.yaw, mic.pitch), sourceAxis = axisOf (source.yaw, source.pitch);
+    const double cosAngle = distance > 1e-9 ? (micAxis.x * dx + micAxis.y * dy + micAxis.z * dz) / distance : 1.0;
+    const double cosRadiation = distance > 1e-9 ? -(sourceAxis.x * dx + sourceAxis.y * dy + sourceAxis.z * dz) / distance : 1.0;
 
     const double polarityFloor = settings.restrictPolarity ? 0.0 : -1.0;
     const double gain = distanceGain (distance, settings) * directivity (mic.pattern, settings.micPower, cosAngle, settings.restrictPolarity)

@@ -100,7 +100,6 @@ static void testDistanceAndSpeed()
 static void testDirectPath()
 {
     PathSettings s;
-    s.sourceHeight = s.micHeight = 1.5;
     Microphone mic;
     mic.position = { 0.0, 0.0 };
     mic.yaw = 0.0;
@@ -129,10 +128,13 @@ static void testDirectPath()
     // A height difference makes the path longer and turns the source off the axis.
     mic.position = { 0.0, 0.0 };
     mic.yaw = 0.0;
-    s.sourceHeight = 4.5;                                    // 3 m above the microphone
-    r = computeDirectPath ({ 0.0, 4.0 }, mic, s);
+    Source high ({ 0.0, 4.0 });
+    high.height = 4.5;                                       // 3 m above the microphone (at 1.5 m)
+    r = computeDirectPath (high, mic, s);
     CHECK (isNear (r.distance, 5.0) && isNear (r.gain, 0.2 * 0.5 * (1.0 + 4.0 / 5.0)));
-    s.sourceHeight = 1.5;
+    mic.height = 3.0;                                        // the microphone at a height of its own: 1.5 m below the source now
+    CHECK (isNear (computeDirectPath (high, mic, s).distance, std::sqrt (16.0 + 2.25)));
+    mic.height = 1.5;
 
     // Omni microphones: a gain from the distance alone, whatever the direction; power 2 of the pattern changes nothing for omni.
     mic.pattern = 1.0;
@@ -155,6 +157,98 @@ static void testDirectPath()
     Microphone bad = mic;
     bad.position.y = std::numeric_limits<double>::infinity();
     CHECK (computeDirectPath ({ 0.0, 1.0 }, bad, s).gain == 0.0);
+}
+
+/** Pitch and height: the axes in 3D, a microphone tilted up or down, a source that radiates upwards, and the heights of each object. */
+static void testPitchAndHeight()
+{
+    // The axis: the front, straight up, the left, and always a unit vector.
+    const auto front = axisOf (0.0, 0.0), up = axisOf (0.0, rad (90.0)), left = axisOf (rad (90.0), 0.0), tilted = axisOf (rad (30.0), rad (40.0));
+    CHECK (isNear (front.x, 0.0) && isNear (front.y, 1.0) && isNear (front.z, 0.0));
+    CHECK (isNear (up.x, 0.0) && isNear (up.y, 0.0, 1e-9) && isNear (up.z, 1.0));
+    CHECK (isNear (left.x, -1.0) && isNear (left.y, 0.0, 1e-9) && isNear (left.z, 0.0));
+    CHECK (isNear (tilted.x * tilted.x + tilted.y * tilted.y + tilted.z * tilted.z, 1.0) && tilted.z > 0.0 && tilted.x < 0.0 && tilted.y > 0.0);
+
+    PathSettings s;
+    Microphone mic;
+    mic.position = { 0.0, 0.0 };
+    mic.pattern = 0.5;                                                           // a cardioid
+    Source above ({ 0.0, 0.0 });
+    above.height = 4.5;                                                          // 3 m straight above the microphone (at 1.5 m)
+    Source below ({ 0.0, 0.0 });
+    below.height = 0.0;                                                          // 1.5 m straight below
+
+    // A microphone that points up hears what is above it and not what is below; at a pitch of 0 it hears neither on axis (half).
+    mic.pitch = rad (90.0);
+    CHECK (isNear (computeDirectPath (above, mic, s).gain, 1.0 / 3.0) && isNear (computeDirectPath (below, mic, s).gain, 0.0));
+    mic.pitch = 0.0;
+    CHECK (isNear (computeDirectPath (above, mic, s).gain, 0.5 / 3.0) && isNear (computeDirectPath (below, mic, s).gain, 0.5 / 1.5));
+    mic.pitch = rad (-90.0);
+    CHECK (isNear (computeDirectPath (below, mic, s).gain, 1.0 / 1.5) && isNear (computeDirectPath (above, mic, s).gain, 0.0));
+
+    // A tilt of 45 degrees up at the front: a source in front at the same height is at 45 degrees from the axis, one 45 degrees up in front is on axis.
+    mic.pitch = rad (45.0);
+    Source front4 ({ 0.0, 4.0 });
+    CHECK (isNear (computeDirectPath (front4, mic, s).gain, 0.25 * (0.5 + 0.5 * std::cos (rad (45.0)))));
+    Source rising ({ 0.0, 3.0 });
+    rising.height = 4.5;                                                         // 3 m forward and 3 m up: 45 degrees
+    CHECK (isNear (computeDirectPath (rising, mic, s).gain, 1.0 / std::sqrt (18.0)));
+
+    // Yaw and pitch together: a microphone turned to the left and up hears a source at the left and above, on axis.
+    mic.yaw = rad (90.0);
+    Source leftUp ({ -3.0, 0.0 });
+    leftUp.height = 4.5;
+    CHECK (isNear (computeDirectPath (leftUp, mic, s).gain, 1.0 / std::sqrt (18.0)));
+
+    // A source that radiates upwards (pitch 90 degrees): a microphone above it hears it fully, one below not at all, one beside it at half (a cardioid).
+    mic.pitch = 0.0;
+    mic.yaw = 0.0;
+    mic.pattern = 1.0;                                                           // an omni microphone: only the source's pattern shows
+    Source fountain ({ 0.0, 0.0 }, 0.0, 0.5);
+    fountain.pitch = rad (90.0);
+    fountain.height = 0.0;
+    mic.height = 3.0;
+    CHECK (isNear (computeDirectPath (fountain, mic, s).gain, 1.0 / 3.0));
+    mic.height = -3.0;
+    CHECK (isNear (computeDirectPath (fountain, mic, s).gain, 0.0));
+    mic.height = 0.0;
+    mic.position = { 4.0, 0.0 };
+    CHECK (isNear (computeDirectPath (fountain, mic, s).gain, 0.5 / 4.0));
+
+    // In the reflections the pitch matters too: a microphone that points down at a source 4 m away at the same height hears the direct sound from the side (half)
+    // and the floor reflection from the image below, 3 m down (at an angle of 53 degrees from its axis: cos = 3/5), the ceiling reflection (up) from behind.
+    Microphone down;
+    down.position = { 0.0, 0.0 };
+    down.pattern = 0.5;
+    down.pitch = rad (-90.0);
+    const Source ahead ({ 4.0, 0.0 });                                           // both at 1.5 m
+    RoomSettings room;
+    room.room = { 20.0, 20.0, 3.0 };
+    room.order = 1;
+    for (const auto& image : images (1))
+    {
+        const auto path = computeImagePath (ahead, down, image, s, room);
+        if (image.order == 0)
+            CHECK (isNear (path.gain, 0.25 * 0.5));
+        else if (image.hits[Floor] == 1)
+            CHECK (isNear (path.distance, 5.0) && isNear (path.gain, 0.2 * (0.5 + 0.5 * 0.6)));
+        else if (image.hits[Ceiling] == 1)
+            CHECK (isNear (path.distance, 5.0) && isNear (path.gain, 0.2 * (0.5 - 0.5 * 0.6)));
+    }
+
+    // A source that radiates upwards sends its floor reflection nowhere and its ceiling reflection up: the image of the microphone decides.
+    const Source lamp ({ 0.0, 0.0 }, 0.0, 0.0, 1.5, rad (90.0));
+    Microphone omni;
+    omni.position = { 4.0, 0.0 };
+    omni.pattern = 1.0;
+    for (const auto& image : images (1))
+    {
+        const auto path = computeImagePath (lamp, omni, image, s, room);
+        if (image.order == 1 && image.hits[Floor] == 1)
+            CHECK (isNear (path.gain, 0.0));                                      // the sound would go down from the source: the figure-8 source does not radiate downwards
+        else if (image.order == 1 && image.hits[Ceiling] == 1)
+            CHECK (path.gain > 0.0 && isNear (path.gain, (1.0 / path.distance) * (3.0 / path.distance), 1e-9));   // the microphone's image is 3 m above: cos = 3 / 5
+    }
 }
 
 /** The source's radiation pattern: omni changes nothing, a cardioid source radiates in its direction only, yaw is counter-clockwise, the exponent sharpens. */
@@ -189,7 +283,7 @@ static void testSourceDirectivity()
     cardioid.yaw = rad (90.0);
     CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.25 * 0.25));
     s.sourcePower = 1;
-    s.sourceHeight = 4.5;                                                        // 3 m above the microphone: the path is 5 m, the microphone is below and behind
+    cardioid.height = 4.5;                                                       // 3 m above the microphone: the path is 5 m, the microphone is below and behind
     cardioid.yaw = std::numbers::pi;                                             // facing the microphone horizontally
     CHECK (isNear (computeDirectPath (cardioid, mic, s).gain, 0.2 * (0.5 + 0.5 * 4.0 / 5.0)));
     CHECK (isNear (computeDirectPath (Vec2 { 0.0, 4.0 }, mic, PathSettings {}).gain, computeDirectPath (Source { { 0.0, 4.0 }, 1.234, 1.0 }, mic, PathSettings {}).gain));
@@ -685,8 +779,6 @@ static void testDelayLineMix()
 static void testImagePaths()
 {
     PathSettings s;
-    s.sourceHeight = 1.5;
-    s.micHeight = 1.5;
     RoomSettings r;
     r.room = { 10.0, 8.0, 3.0 };
     r.order = 2;
@@ -775,6 +867,7 @@ int main()
     testDistanceAndSpeed();
     testDirectPath();
     testSourceDirectivity();
+    testPitchAndHeight();
     testDelayLineIntegerAndRamp();
     testDelayLineFractional();
     testDelayLineVariableAgainstReference();

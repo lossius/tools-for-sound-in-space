@@ -29,8 +29,6 @@ inline const juce::String kDelayModeId { "delayMode" };           ///< The delay
 inline const juce::String kFadeThresholdId { "fadeThreshold" };   ///< Cross-fade: how far a delay has to be from the one in use, in milliseconds, before it fades to the new one.
 inline const juce::String kFadeTimeId { "fadeTime" };             ///< Cross-fade: how long a fade takes, in milliseconds.
 inline const juce::String kTemperatureId { "temperature" };       ///< Room temperature in degrees Celsius.
-inline const juce::String kSourceHeightId { "sourceHeight" };     ///< Height of the sources in metres.
-inline const juce::String kMicHeightId { "micHeight" };           ///< Height of the microphones in metres.
 inline const juce::String kDirectGainId { "directGain" };         ///< Gain of the direct sound in dB.
 inline const juce::String kOutputGainId { "outputGain" };         ///< Output gain in dB.
 inline const juce::String kRoomWidthId { "roomWidth" };           ///< Size of the room along x in metres.
@@ -48,7 +46,7 @@ inline const juce::String kMidHighId { "absorbMidHigh" };         ///< Crossover
 /** The model parameters in the order they are listed (and in which the processor reads them). */
 enum Global : size_t
 {
-    Law, Power, Db, MinDistance, MicPower, Polarity, SourcePower, DelayModeIndex, FadeThreshold, FadeTime, Temperature, SourceHeight, MicHeight, DirectGain, OutputGain,
+    Law, Power, Db, MinDistance, MicPower, Polarity, SourcePower, DelayModeIndex, FadeThreshold, FadeTime, Temperature, DirectGain, OutputGain,
     RoomWidth, RoomDepth, RoomHeight, ReflOrder, Refl1Gain, Refl2Gain, RenderThreshold,
     /** The first parameter that only changes the filters of the reflections (from here on, a change does not change any path). */
     FilterFirst,
@@ -94,6 +92,16 @@ inline juce::String srcPatternId (int index) { return "src" + juce::String (inde
 
 /** @return The ID of the yaw (direction of the axis in degrees, counter-clockwise from the front) of microphone `index` (zero-based), for example "spk1yaw". */
 inline juce::String micYawId (int index) { return "spk" + juce::String (index + 1) + "yaw"; }
+/** @return The ID of the height above the floor in metres of source `index` (zero-based), for example "src1height". */
+inline juce::String srcHeightId (int index) { return "src" + juce::String (index + 1) + "height"; }
+/** @return The ID of the pitch (elevation of the source's axis in degrees, positive upwards) of source `index` (zero-based), for example "src1pitch". */
+inline juce::String srcPitchId (int index) { return "src" + juce::String (index + 1) + "pitch"; }
+/** @return The ID of the height above the floor in metres of microphone `index` (zero-based), for example "spk1height". */
+inline juce::String micHeightId (int index) { return "spk" + juce::String (index + 1) + "height"; }
+/** @return The ID of the pitch (elevation of the axis in degrees, positive upwards) of microphone `index` (zero-based), for example "spk1pitch". */
+inline juce::String micPitchId (int index) { return "spk" + juce::String (index + 1) + "pitch"; }
+/** Default height of sources and microphones in metres. */
+inline constexpr float kDefaultHeight = 1.5f;
 /** @return The ID of the pattern ratio `a` (1 omni, 0.5 cardioid, 0 figure-8) of microphone `index` (zero-based), for example "spk1pattern". */
 inline juce::String micPatternId (int index) { return "spk" + juce::String (index + 1) + "pattern"; }
 
@@ -143,8 +151,6 @@ inline tlos::params::PluginParameters createParameters()
     g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kFadeThresholdId, 1 }, "Fade Threshold", NormalisableRange<float> (0.02f, 10.0f, 0.0f, 0.4f), 0.5f, juce::AudioParameterFloatAttributes().withLabel ("ms")));
     g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kFadeTimeId, 1 }, "Fade Time", NormalisableRange<float> (5.0f, 500.0f, 0.0f, 0.5f), 50.0f, juce::AudioParameterFloatAttributes().withLabel ("ms")));
     g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kTemperatureId, 1 }, "Temperature", NormalisableRange<float> (-20.0f, 40.0f), 20.0f, juce::AudioParameterFloatAttributes().withLabel ("C")));
-    g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kSourceHeightId, 1 }, "Source Height", NormalisableRange<float> (0.0f, kMaxHeight), 1.5f, juce::AudioParameterFloatAttributes().withLabel ("m")));
-    g.push_back (std::make_unique<AudioParameterFloat> (ParameterID { kMicHeightId, 1 }, "Microphone Height", NormalisableRange<float> (0.0f, kMaxHeight), 1.5f, juce::AudioParameterFloatAttributes().withLabel ("m")));
     g.push_back (gain (kDirectGainId, "Direct Gain"));
     g.push_back (gain (kOutputGainId, "Output Gain"));
 
@@ -177,14 +183,19 @@ inline tlos::params::PluginParameters createParameters()
 
     for (int i = 0; i < 64; ++i)
     {
-        parameters.perSource.push_back (std::make_unique<AudioParameterFloat> (ParameterID { srcYawId (i), 1 }, "Source " + juce::String (i + 1) + " Yaw",
-                                                                               NormalisableRange<float> (-180.0f, 180.0f), 0.0f, juce::AudioParameterFloatAttributes().withLabel ("deg")));
-        parameters.perSource.push_back (std::make_unique<AudioParameterFloat> (ParameterID { srcPatternId (i), 1 }, "Source " + juce::String (i + 1) + " Pattern",
-                                                                               NormalisableRange<float> (0.0f, 1.0f), 1.0f));
-        parameters.perSpeaker.push_back (std::make_unique<AudioParameterFloat> (ParameterID { micYawId (i), 1 }, "Microphone " + juce::String (i + 1) + " Yaw",
-                                                                                NormalisableRange<float> (-180.0f, 180.0f), 0.0f, juce::AudioParameterFloatAttributes().withLabel ("deg")));
-        parameters.perSpeaker.push_back (std::make_unique<AudioParameterFloat> (ParameterID { micPatternId (i), 1 }, "Microphone " + juce::String (i + 1) + " Pattern",
-                                                                                NormalisableRange<float> (0.0f, 1.0f), 0.5f));
+        const auto n = juce::String (i + 1);
+        const auto yaw = [] (const juce::String& id, const juce::String& name) { return std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, NormalisableRange<float> (-180.0f, 180.0f), 0.0f, juce::AudioParameterFloatAttributes().withLabel ("deg")); };
+        const auto pitch = [] (const juce::String& id, const juce::String& name) { return std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, NormalisableRange<float> (-90.0f, 90.0f), 0.0f, juce::AudioParameterFloatAttributes().withLabel ("deg")); };
+        const auto height = [] (const juce::String& id, const juce::String& name) { return std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, NormalisableRange<float> (0.0f, kMaxHeight), kDefaultHeight, juce::AudioParameterFloatAttributes().withLabel ("m")); };
+
+        parameters.perSource.push_back (height (srcHeightId (i), "Source " + n + " Height"));
+        parameters.perSource.push_back (yaw (srcYawId (i), "Source " + n + " Yaw"));
+        parameters.perSource.push_back (pitch (srcPitchId (i), "Source " + n + " Pitch"));
+        parameters.perSource.push_back (std::make_unique<AudioParameterFloat> (ParameterID { srcPatternId (i), 1 }, "Source " + n + " Pattern", NormalisableRange<float> (0.0f, 1.0f), 1.0f));
+        parameters.perSpeaker.push_back (height (micHeightId (i), "Microphone " + n + " Height"));
+        parameters.perSpeaker.push_back (yaw (micYawId (i), "Microphone " + n + " Yaw"));
+        parameters.perSpeaker.push_back (pitch (micPitchId (i), "Microphone " + n + " Pitch"));
+        parameters.perSpeaker.push_back (std::make_unique<AudioParameterFloat> (ParameterID { micPatternId (i), 1 }, "Microphone " + n + " Pattern", NormalisableRange<float> (0.0f, 1.0f), 0.5f));
     }
 
     return parameters;

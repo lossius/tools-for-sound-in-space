@@ -25,8 +25,8 @@ struct RoomSettings
     the distance law, the microphone's pattern for the direction in which the sound arrives, the source's pattern for the direction in which it left, the gain of
     the order and the fade for a source or microphone outside the walls. The colour that the walls give the sound is not in the gain: it is the filter of the image's
     filter class.
-    @param source    The source (in the plane, at settings.sourceHeight).
-    @param mic       The microphone (at settings.micHeight).
+    @param source    The source.
+    @param mic       The microphone.
     @param image     The image (see images()); the first entry is the direct sound, which gives the same as computeDirectPath().
     @param settings  The settings of the model.
     @param room      The room, its order gains and the threshold.

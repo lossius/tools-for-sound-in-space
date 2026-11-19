@@ -161,7 +161,7 @@ static void testParameterOrder()
 {
     ViMiCAudioProcessor p;
     const auto& parameters = p.getParameters();
-    const int total = 3 + (int) vimic::params::GlobalCount + 64 * 9 + 64 * 8;
+    const int total = 3 + (int) vimic::params::GlobalCount + 64 * 11 + 64 * 10;
 
     CHECK (parameters.size() == total);
 
@@ -174,13 +174,15 @@ static void testParameterOrder()
     CHECK (std::abs (getParam (p, vimic::params::kRoomWidthId) - 10.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kRoomHeightId) - 3.0f) < 1e-4f && p.getRoomSettings().order == 0);
     CHECK (std::abs (getParam (p, vimic::params::absorptionId (vimic::Left, 1)) - 50.0f) < 1e-3f && std::abs (getParam (p, vimic::params::absorptionId (vimic::Floor, 2)) - 8.0f) < 1e-3f);     // drywall, wood
     CHECK (idOf (3 + vimic::params::SourcePower) == vimic::params::kSourcePowerId && idOf (3 + vimic::params::DelayModeIndex) == vimic::params::kDelayModeId);
-    CHECK (idOf (globalsEnd + 7) == vimic::params::srcYawId (0) && idOf (globalsEnd + 8) == vimic::params::srcPatternId (0) && idOf (globalsEnd + 9) == tlos::params::sourceId (1, 'x'));
-    CHECK (parameters[globalsEnd + 7]->getName (64) == "Source 1 Yaw" && std::abs (getParam (p, vimic::params::srcPatternId (3)) - 1.0f) < 1e-4f);
-    const int speakers = globalsEnd + 64 * 9;
+    CHECK (idOf (globalsEnd + 7) == vimic::params::srcHeightId (0) && idOf (globalsEnd + 8) == vimic::params::srcYawId (0) && idOf (globalsEnd + 9) == vimic::params::srcPitchId (0)
+           && idOf (globalsEnd + 10) == vimic::params::srcPatternId (0) && idOf (globalsEnd + 11) == tlos::params::sourceId (1, 'x'));
+    CHECK (parameters[globalsEnd + 8]->getName (64) == "Source 1 Yaw" && std::abs (getParam (p, vimic::params::srcPatternId (3)) - 1.0f) < 1e-4f);
+    const int speakers = globalsEnd + 64 * 11;
     CHECK (idOf (speakers) == tlos::params::speakerId (0, 'x'));
-    CHECK (idOf (speakers + 6) == vimic::params::micYawId (0) && idOf (speakers + 7) == vimic::params::micPatternId (0));
-    CHECK (parameters[speakers + 6]->getName (64) == "Microphone 1 Yaw" && parameters[speakers]->getName (64) == "Microphone 1 X");
-    CHECK (idOf (speakers + 8) == tlos::params::speakerId (1, 'x'));
+    CHECK (idOf (speakers + 6) == vimic::params::micHeightId (0) && idOf (speakers + 7) == vimic::params::micYawId (0) && idOf (speakers + 8) == vimic::params::micPitchId (0)
+           && idOf (speakers + 9) == vimic::params::micPatternId (0));
+    CHECK (parameters[speakers + 7]->getName (64) == "Microphone 1 Yaw" && parameters[speakers]->getName (64) == "Microphone 1 X");
+    CHECK (idOf (speakers + 10) == tlos::params::speakerId (1, 'x'));
     CHECK (idOf (total - 1) == vimic::params::micPatternId (63));
 
     const auto& tree = p.getParameterTree();
@@ -189,17 +191,19 @@ static void testParameterOrder()
 
     // Defaults.
     CHECK (std::abs (getParam (p, vimic::params::kTemperatureId) - 20.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kDistancePowerId) - 1.0f) < 1e-4f);
-    CHECK (std::abs (getParam (p, vimic::params::kMinDistanceId) - 1.0f) < 1e-4f && std::abs (getParam (p, vimic::params::kSourceHeightId) - 1.5f) < 1e-4f);
+    CHECK (std::abs (getParam (p, vimic::params::kMinDistanceId) - 1.0f) < 1e-4f && std::abs (getParam (p, vimic::params::srcHeightId (0)) - 1.5f) < 1e-4f);
     CHECK (std::abs (getParam (p, vimic::params::micPatternId (7)) - 0.5f) < 1e-4f && getParam (p, vimic::params::kMicPolarityId) > 0.5f);
     CHECK (p.getDelayMode() == vimic::params::DelayMode::RelativeSmooth);
     CHECK (idOf (3 + vimic::params::FadeThreshold) == vimic::params::kFadeThresholdId && idOf (3 + vimic::params::FadeTime) == vimic::params::kFadeTimeId);
 
     // What ViMiC tells the shared code.
     CHECK (p.getOutputNoun() == "Microphone" && ! p.usesSpread() && ! p.usesOutsideRolloff() && ! p.supportsVirtualSpeakers());
-    CHECK (p.getSpeakerColumns().size() == 2 && p.getSpeakerColumns()[0].attribute == "yaw" && p.getSpeakerColumns()[1].attribute == "pattern");
+    CHECK (p.getSpeakerColumns().size() == 4 && p.getSpeakerColumns()[0].attribute == "z" && p.getSpeakerColumns()[1].attribute == "yaw"
+           && p.getSpeakerColumns()[2].attribute == "pitch" && p.getSpeakerColumns()[3].attribute == "pattern");
     CHECK (p.getCoordinateMode() == tlos::SpatialProcessor::CoordinateMode::Cartesian);          // like the other plugins
     CHECK (p.getPadSizeCaption() == "Pad size" && p.getDisplaySectionTitle() == "Pad");
-    CHECK (p.getSourceColumns().size() == 2 && p.getSourceColumns()[0].attribute == "yaw" && p.getSourceColumns()[1].attribute == "pattern" && p.getSourceColumns()[1].defaultValue == 1.0);
+    CHECK (p.getSourceColumns().size() == 4 && p.getSourceColumns()[0].attribute == "z" && p.getSourceColumns()[1].attribute == "yaw" && p.getSourceColumns()[2].attribute == "pitch"
+           && p.getSourceColumns()[3].attribute == "pattern" && p.getSourceColumns()[3].defaultValue == 1.0);
     CHECK (p.getLatencySamples() == 2 && p.getOscParameters().size() == vimic::params::GlobalCount);
     CHECK (p.getOscParameters()[vimic::params::RoomWidth].address == "/vimic/roomwidth" && p.getOscParameters()[vimic::params::AbsorptionFirst].address == "/vimic/absorbleftlow");
 }
@@ -560,11 +564,26 @@ static void testHeights()
     placeMic (p, 0, 0.0f, 0.0f, 0.0f, 0.5f);
     placeSource (p, 0, 0.0f, 4.0f);
     p.refreshLayout();
-    setParam (p, vimic::params::kSourceHeightId, 4.5f);           // 3 m above the microphone (at 1.5 m)
+    setParam (p, vimic::params::srcHeightId (0), 4.5f);           // 3 m above the microphone (at 1.5 m)
     auto out = impulseResponse (p, 1, 1, 2048);
     double sum = 0.0;
     centroid (out, 0, sum);
     CHECK (std::abs (sum - 0.2 * 0.5 * (1.0 + 4.0 / 5.0)) < 1e-3);   // distance 5 m, cos = 4 / 5
+
+    // A microphone tilted up by 90 degrees hears a source straight above it fully, and one 3 m above the source's own height with the source at the same place
+    // below it not at all.
+    placeSource (p, 0, 0.0f, 0.0f);
+    p.refreshLayout();
+    setParam (p, vimic::params::micPitchId (0), 90.0f);
+    out = impulseResponse (p, 1, 1, 2048);
+    sum = 0.0;
+    centroid (out, 0, sum);
+    CHECK (std::abs (sum - 1.0 / 3.0) < 1e-3);
+    setParam (p, vimic::params::micPitchId (0), -90.0f);
+    out = impulseResponse (p, 1, 1, 2048);
+    sum = 0.0;
+    centroid (out, 0, sum);
+    CHECK (std::abs (sum) < 1e-3);
 }
 
 /** Exclude removes a microphone from the relative delays and silences it; mute silences it; trim scales it; unused microphones and sources are silent. */
@@ -1158,6 +1177,12 @@ static void testMicrophoneSetups (const juce::File& dir)
         if (file.getFileName() == "Stereo-ORTF.xml")
             CHECK (std::abs (getParam (p, vimic::params::micYawId (0)) - 55.0f) < 0.01f && std::abs (getParam (p, vimic::params::micYawId (1)) + 55.0f) < 0.01f
                    && std::abs (getParam (p, vimic::params::micPatternId (1)) - 0.5f) < 0.001f && std::abs (getParam (p, tlos::params::speakerId (1, 'x')) - 0.085f) < 1e-3f);
+
+        // Atmos 7.1.4: the top microphones are 45 degrees up and above the ear layer; the LFE is excluded.
+        if (file.getFileName() == "Atmos-7.1.4-cardioids.xml")
+            CHECK (report.fileCount == 12 && std::abs (getParam (p, vimic::params::micPitchId (8)) - 45.0f) < 0.01f && std::abs (getParam (p, vimic::params::micHeightId (8)) - 2.207f) < 1e-3f
+                   && std::abs (getParam (p, vimic::params::micPitchId (0))) < 0.01f && std::abs (getParam (p, vimic::params::micHeightId (0)) - 1.5f) < 1e-3f
+                   && getParam (p, tlos::params::speakerExcludeId (3)) > 0.5f);
     }
 
     CHECK (count >= 8);

@@ -22,6 +22,12 @@ void ViMiCField::updateOverlay (const tlos::IncludedSpeakers& speakers, const st
     includedSpeakers = speakers;
 }
 
+/** @return How much of a lobe's length shows in the plan view when its axis is tilted by `pitch` radians (cos, never less than 0.2, so a lobe pointing straight up or down stays visible). */
+static float planScale (double pitch) noexcept
+{
+    return (float) std::max (0.2, std::cos (pitch));
+}
+
 juce::Path ViMiCField::lobePath (double ratio, int power, bool restrictPolarity, float radius)
 {
     juce::Path path;
@@ -62,7 +68,7 @@ void ViMiCField::paintBackdrop (juce::Graphics& g)
     for (const auto& mic : mics)
     {
         const auto centre = toView (mic.position.x, mic.position.y);
-        auto lobe = lobePath (mic.pattern, settings.micPower, settings.restrictPolarity, 34.0f);
+        auto lobe = lobePath (mic.pattern, settings.micPower, settings.restrictPolarity, 34.0f * planScale (mic.pitch));
         lobe.applyTransform (juce::AffineTransform::rotation ((float) -mic.yaw).translated (centre.x, centre.y));
         g.setColour (blue.withAlpha (0.14f));
         g.fillPath (lobe);
@@ -82,7 +88,7 @@ void ViMiCField::paintBackdrop (juce::Graphics& g)
         const auto colour = sourceColour (s, groups);
         const auto turn = juce::AffineTransform::rotation ((float) -source.yaw).translated (centre.x, centre.y);
 
-        auto lobe = lobePath (source.pattern, settings.sourcePower, true, 40.0f);
+        auto lobe = lobePath (source.pattern, settings.sourcePower, true, 40.0f * planScale (source.pitch));
         lobe.applyTransform (turn);
         g.setColour (colour.withAlpha (0.14f));
         g.fillPath (lobe);
@@ -91,11 +97,12 @@ void ViMiCField::paintBackdrop (juce::Graphics& g)
 
         // The arrow starts outside the source's circle and points the way it radiates (up the screen before it is turned).
         juce::Path arrow;
+        const float reach = 12.0f + 32.0f * planScale (source.pitch);
         arrow.startNewSubPath (0.0f, -12.0f);
-        arrow.lineTo (0.0f, -44.0f);
-        arrow.startNewSubPath (-4.0f, -39.0f);
-        arrow.lineTo (0.0f, -45.0f);
-        arrow.lineTo (4.0f, -39.0f);
+        arrow.lineTo (0.0f, -reach);
+        arrow.startNewSubPath (-4.0f, -reach + 5.0f);
+        arrow.lineTo (0.0f, -reach - 1.0f);
+        arrow.lineTo (4.0f, -reach + 5.0f);
         arrow.applyTransform (turn);
         g.strokePath (arrow, juce::PathStrokeType (1.5f));
     }

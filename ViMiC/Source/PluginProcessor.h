@@ -60,10 +60,10 @@ public:
     /** @return The addresses /vimic/... of the model settings. */
     std::vector<tlos::OscParameter> getOscParameters() const override;
 
-    /** @return The yaw and the pattern columns of the microphone table and files. */
+    /** @return The height, yaw, pitch and pattern columns of the microphone table and files. */
     std::vector<tlos::SpeakerColumn> getSpeakerColumns() const override;
 
-    /** @return The yaw and the pattern columns of the source table and files. */
+    /** @return The height, yaw, pitch and pattern columns of the source table and files. */
     std::vector<tlos::SpeakerColumn> getSourceColumns() const override;
 
     /** @return "Microphone". */
@@ -99,10 +99,10 @@ public:
     vimic::params::DelayMode getDelayMode() const noexcept;
 
 
-    /** @return Source `index` (zero-based) as it is now: position, yaw and radiation pattern. Safe to call from any thread. */
+    /** @return Source `index` (zero-based) as it is now: position, height, yaw, pitch and radiation pattern. Safe to call from any thread. */
     vimic::Source getSource (int index) const noexcept;
 
-    /** @return The microphones for the speakers in `speakers` (their positions, with the yaw and pattern of each). Safe to call from any thread. */
+    /** @return The microphones for the speakers in `speakers` (their positions, with the height, yaw, pitch and pattern of each). Safe to call from any thread. */
     std::vector<vimic::Microphone> getMicrophones (const tlos::IncludedSpeakers& speakers) const;
 
     /** @return How many floats of memory the reflection bank has, as a measure for the tests (0 if there is none yet). Message thread. */
@@ -160,6 +160,8 @@ private:
         std::array<float, vimic::params::GlobalCount> globals {};   ///< The model parameters.
         std::array<float, tlos::kMaxChannels> yaw {};            ///< Yaw of each microphone in the set (degrees).
         std::array<float, tlos::kMaxChannels> pattern {};        ///< Pattern of each microphone in the set.
+        std::array<float, tlos::kMaxChannels> height {};         ///< Height of each microphone in the set (metres).
+        std::array<float, tlos::kMaxChannels> pitch {};          ///< Pitch of each microphone in the set (degrees).
         std::uint64_t setId = 0;                                 ///< Id of the microphone set.
         double sampleRate = 0.0;                                 ///< The sample rate the delays were computed for.
         bool valid = false;                                      ///< False until set once.
@@ -172,6 +174,8 @@ private:
         float y = 0.0f;            ///< Source y.
         float yaw = 0.0f;          ///< Source yaw in degrees.
         float pattern = 1.0f;      ///< Source pattern.
+        float height = 1.5f;       ///< Source height in metres.
+        float pitch = 0.0f;        ///< Source pitch in degrees.
         bool valid = false;        ///< False until computed.
     };
 
@@ -200,6 +204,10 @@ private:
     std::array<std::atomic<float>*, tlos::kMaxChannels> srcPatternParam {};   ///< Raw values of the source patterns.
     std::array<std::atomic<float>*, tlos::kMaxChannels> yawParam {};      ///< Raw values of the microphone yaws.
     std::array<std::atomic<float>*, tlos::kMaxChannels> patternParam {};  ///< Raw values of the microphone patterns.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> srcHeightParam {};   ///< Raw values of the source heights.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> srcPitchParam {};    ///< Raw values of the source pitches.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> heightParam {};      ///< Raw values of the microphone heights.
+    std::array<std::atomic<float>*, tlos::kMaxChannels> pitchParam {};       ///< Raw values of the microphone pitches.
 
     // Audio thread only
     double sampleRate = 48000.0;               ///< The sample rate from prepareToPlay().

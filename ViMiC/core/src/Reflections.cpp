@@ -22,8 +22,8 @@ PathResult computeImagePath (const Source& source, const Microphone& mic, const 
     if (! std::isfinite (source.position.x) || ! std::isfinite (source.position.y) || ! std::isfinite (mic.position.x) || ! std::isfinite (mic.position.y))
         return result;
 
-    const Vec3 s { source.position.x, source.position.y, settings.sourceHeight };
-    const Vec3 m { mic.position.x, mic.position.y, settings.micHeight };
+    const Vec3 s { source.position.x, source.position.y, source.height };
+    const Vec3 m { mic.position.x, mic.position.y, mic.height };
 
     // The unfolded path: from the image of the source to the microphone.
     const auto s2 = imagePosition (s, room.room, image);
@@ -32,14 +32,15 @@ PathResult computeImagePath (const Source& source, const Microphone& mic, const 
     if (! (distance > 1e-9))
         return result;
 
-    // The microphone hears the sound arrive from the image source: the angle from its axis (-sin yaw, cos yaw, 0) to that direction.
-    const double cosMic = (-std::sin (mic.yaw) * dx + std::cos (mic.yaw) * dy) / distance;
+    // The microphone hears the sound arrive from the image source: the angle from its axis to that direction.
+    const auto micAxis = axisOf (mic.yaw, mic.pitch), sourceAxis = axisOf (source.yaw, source.pitch);
+    const double cosMic = (micAxis.x * dx + micAxis.y * dy + micAxis.z * dz) / distance;
 
     // The sound left the source towards the image of the microphone for the same walls.
     const auto m2 = micImagePosition (m, room.room, image);
-    const double ex = m2.x - s.x, ey = m2.y - s.y;
-    const double leg = std::sqrt (ex * ex + ey * ey + (m2.z - s.z) * (m2.z - s.z));
-    const double cosSource = leg > 1e-9 ? (-std::sin (source.yaw) * ex + std::cos (source.yaw) * ey) / leg : 1.0;
+    const double ex = m2.x - s.x, ey = m2.y - s.y, ez = m2.z - s.z;
+    const double leg = std::sqrt (ex * ex + ey * ey + ez * ez);
+    const double cosSource = leg > 1e-9 ? (sourceAxis.x * ex + sourceAxis.y * ey + sourceAxis.z * ez) / leg : 1.0;
 
     const double orderGain = image.order == 1 ? room.gainFirst : room.gainSecond;
     const double fade = insideFactor (s, room.room) * insideFactor (m, room.room);

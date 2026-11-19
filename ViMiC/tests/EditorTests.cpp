@@ -116,7 +116,7 @@ int main (int argc, char** argv)
         show (editor->getPolarityButton());
         CHECK (editor->getPolarityButton().isVisible());
         for (const auto& id : { vimic::params::kDistancePowerId, vimic::params::kDistanceDbId, vimic::params::kMinDistanceId, vimic::params::kMicPowerId, vimic::params::kSourcePowerId,
-                                vimic::params::kTemperatureId, vimic::params::kSourceHeightId, vimic::params::kMicHeightId,
+                                vimic::params::kTemperatureId,
                                 vimic::params::kDirectGainId, vimic::params::kOutputGainId })
         {
             auto* slider = editor->getSlider (id);
@@ -201,8 +201,6 @@ int main (int argc, char** argv)
         // The controls write to the parameters, and a host change moves them.
         editor->getSlider (vimic::params::kTemperatureId)->setValue (5.0, juce::sendNotificationSync);
         CHECK (std::abs (value (p, vimic::params::kTemperatureId) - 5.0f) < 1e-3f);
-        setParam (p, vimic::params::kMicHeightId, 2.25f);
-        CHECK (std::abs (editor->getSlider (vimic::params::kMicHeightId)->getValue() - 2.25) < 1e-3);
         editor->getDistanceLawBox().setSelectedId (2, juce::sendNotificationSync);
         CHECK (value (p, vimic::params::kDistanceLawId) > 0.5f);
         setParam (p, vimic::params::kDistanceLawId, 0.0f);
@@ -239,25 +237,35 @@ int main (int argc, char** argv)
         CHECK (speakers.getContent().getVirtualTable() == nullptr);
         auto& sourceHeader = sources.getContent().getMainTable().getTable().getHeader();
         auto& micHeader = speakers.getContent().getMainTable().getTable().getHeader();
-        CHECK (sourceHeader.getNumColumns (true) == 9 && micHeader.getNumColumns (true) == 9);        // sources: no Spread, but Yaw and Pattern; microphones: Yaw and Pattern
-        CHECK (sourceHeader.getColumnName (tlos::PositionTable::extraColumn).startsWith ("Yaw") && sourceHeader.getColumnName (tlos::PositionTable::extraColumn + 1) == "Pattern");
-        CHECK (micHeader.getColumnName (tlos::PositionTable::extraColumn).startsWith ("Yaw") && micHeader.getColumnName (tlos::PositionTable::extraColumn + 1) == "Pattern");
+        CHECK (sourceHeader.getNumColumns (true) == 11 && micHeader.getNumColumns (true) == 11);      // sources: no Spread, but Height, Yaw, Pitch and Pattern; microphones: the same
+        CHECK (sourceHeader.getColumnName (tlos::PositionTable::extraColumn).startsWith ("Height") && sourceHeader.getColumnName (tlos::PositionTable::extraColumn + 1).startsWith ("Yaw")
+           && sourceHeader.getColumnName (tlos::PositionTable::extraColumn + 2).startsWith ("Pitch") && sourceHeader.getColumnName (tlos::PositionTable::extraColumn + 3) == "Pattern");
+        CHECK (micHeader.getColumnName (tlos::PositionTable::extraColumn).startsWith ("Height") && micHeader.getColumnName (tlos::PositionTable::extraColumn + 1).startsWith ("Yaw")
+           && micHeader.getColumnName (tlos::PositionTable::extraColumn + 2).startsWith ("Pitch") && micHeader.getColumnName (tlos::PositionTable::extraColumn + 3) == "Pattern");
 
         auto& table = speakers.getContent().getMainTable();
-        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn, "45") == "45.0" && std::abs (value (p, vimic::params::micYawId (1)) - 45.0f) < 1e-3f);
-        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn, "500") == "180.0");                                    // limited to +-180
-        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "0.3") == "0.30" && std::abs (value (p, vimic::params::micPatternId (1)) - 0.3f) < 1e-4f);
-        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "7") == "1.00");                                   // limited to 0..1
-        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "much") == "1.00");                                // rubbish is rejected
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "45") == "45.0" && std::abs (value (p, vimic::params::micYawId (1)) - 45.0f) < 1e-3f);
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 1, "500") == "180.0");                                    // limited to +-180
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 3, "0.3") == "0.30" && std::abs (value (p, vimic::params::micPatternId (1)) - 0.3f) < 1e-4f);
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 3, "7") == "1.00");                                   // limited to 0..1
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 3, "much") == "1.00");                                // rubbish is rejected
         setParam (p, vimic::params::micYawId (1), 0.0f);
         setParam (p, vimic::params::micPatternId (1), 0.5f);
 
         // The sources table has them as well.
         auto& sourceTable = sources.getContent().getMainTable();
-        CHECK (sourceTable.getValue (0, tlos::PositionTable::extraColumn + 1) == 1.0);                                                 // a source is omni by default
-        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn, "-60") == "-60.0" && std::abs (value (p, vimic::params::srcYawId (0)) + 60.0f) < 1e-3f);
-        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 1, "0.5") == "0.50" && std::abs (value (p, vimic::params::srcPatternId (0)) - 0.5f) < 1e-4f);
-        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 1, "9") == "1.00");
+        CHECK (sourceTable.getValue (0, tlos::PositionTable::extraColumn + 3) == 1.0 && sourceTable.getValue (0, tlos::PositionTable::extraColumn) == 1.5);                                                 // a source is omni by default
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 1, "-60") == "-60.0" && std::abs (value (p, vimic::params::srcYawId (0)) + 60.0f) < 1e-3f);
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 3, "0.5") == "0.50" && std::abs (value (p, vimic::params::srcPatternId (0)) - 0.5f) < 1e-4f);
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 3, "9") == "1.00");
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn, "4.5") == "4.50" && std::abs (value (p, vimic::params::srcHeightId (0)) - 4.5f) < 1e-3f);
+        CHECK (sourceTable.setValueFromText (0, tlos::PositionTable::extraColumn + 2, "120") == "90.0");                           // pitch is limited to +-90
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn + 2, "-30") == "-30.0" && std::abs (value (p, vimic::params::micPitchId (1)) + 30.0f) < 1e-3f);
+        CHECK (table.setValueFromText (1, tlos::PositionTable::extraColumn, "-2") == "0.00");                                      // the floor is the lowest height
+        setParam (p, vimic::params::srcHeightId (0), 1.5f);
+        setParam (p, vimic::params::srcPitchId (0), 0.0f);
+        setParam (p, vimic::params::micPitchId (1), 0.0f);
+        setParam (p, vimic::params::micHeightId (1), 1.5f);
         setParam (p, vimic::params::srcYawId (0), 0.0f);
         setParam (p, vimic::params::srcPatternId (0), 1.0f);
     }

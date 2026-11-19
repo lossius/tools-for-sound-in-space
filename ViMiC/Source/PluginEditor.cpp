@@ -61,9 +61,6 @@ ViMiCAudioProcessorEditor::ViMiCAudioProcessorEditor (ViMiCAudioProcessor& p)
     updateFadeSliders();
     addSliderRow ("Temperature", ids::kTemperatureId, " C", 1, "The temperature of the air, which sets the speed of sound and so the delays.");
 
-    addSliderRow ("Source height", ids::kSourceHeightId, " m", 2, "The height of every source. It lengthens the paths to the microphones.");
-    addSliderRow ("Microphone height", ids::kMicHeightId, " m", 2, "The height of every microphone.");
-
     // The room: size, the reflections and what the walls do to them.
     addSettingsSection ("Room");
     reflectionBox.addItem ("Off", 1);
